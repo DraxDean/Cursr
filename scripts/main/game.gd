@@ -24,48 +24,38 @@ const MAP_HEIGHT = 50
 var world_data: Dictionary = {}
 var current_save_path: String = ""
 
-
-# --- Preload ---
+# --- Preload Scripts---
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
-
 
 func _ready():
 	print("game.gd: _ready started.")
-	# --- Node Validation ---
-	# ... (Keep validation) ...
+	# --- Manager Node Validations ---
 	if not is_instance_valid(camera_controller) or not is_instance_valid(ui_manager) \
 	or not is_instance_valid(map_object_manager) or not is_instance_valid(turn_manager):
 		push_error("Game: Manager nodes not found!"); get_tree().quit(); return
 	if SaveLoadManager == null:
 		push_error("Game: SaveLoadManager Autoload not found!"); get_tree().quit(); return
 
-
 # --- Calculate Map Bounds ---
 	var map_pixel_width = 0
 	var map_pixel_height = 0
-	print("Game: Checking TileSet...") # Debug Print
+	print("Game: Checking TileSet...") 
 	if is_instance_valid(tilemap_layer) and is_instance_valid(tilemap_layer.tile_set):
 		var tile_size = tilemap_layer.tile_set.tile_size
-		print("Game: Found TileSet, Tile Size: ", tile_size) # Debug Print
+		print("Game: Found TileSet, Tile Size: ", tile_size) 
 		if tile_size.x > 0 and tile_size.y > 0:
 			map_pixel_width = MAP_WIDTH * tile_size.x
 			map_pixel_height = MAP_HEIGHT * tile_size.y
 			print("Game: Calculated map pixel dimensions: %d x %d" % [map_pixel_width, map_pixel_height]) # Debug Print
 		else:
 			push_error("Game: TileSet has invalid tile_size (<= 0): %s" % str(tile_size))
-			# Stop execution potentially? Or default sizes? For now, error is enough.
 	else:
-		# This case covers both invalid tilemap_layer and missing tile_set
 		if not is_instance_valid(tilemap_layer):
-			# This shouldn't happen if previous validation passed, but good to check
 			push_error("Game: Cannot calculate bounds, tilemap_layer node is invalid!")
 		else:
-			# This is the more likely error cause if validation passed
 			push_error("Game: Cannot calculate bounds, TileMapLayer node is missing its TileSet resource!")
 			push_error("Game: Please assign a TileSet resource to the TileMapLayer node in the editor Inspector.")
-		# Consider quitting if bounds calculation fails, as it's critical
-		# get_tree().quit()
-		return # Stop further execution in _ready if bounds failed
+		return 
 
 	# --- Setup Managers ---
 	print("Game: Setting up CameraController...")
@@ -75,7 +65,6 @@ func _ready():
 	var ui_nodes = { # Verify these paths carefully!
 		"open_menu_button": $UI_Layer/MenuButtonContainer/OpenMenuButton,
 		"modal_menu_panel": $UI_Layer/ModalMenuPanel,
-		"load_button": $UI_Layer/ModalMenuPanel/ModalButtonsVBox/LoadButton,
 		"confirmation_panel": $UI_Layer/ConfirmationPanel,
 		"confirmation_label": $UI_Layer/ConfirmationPanel/VBoxContainer/ConfirmationLabel,
 		"confirm_save_button": $UI_Layer/ConfirmationPanel/VBoxContainer/HBoxContainer/ConfirmSaveButton,
@@ -96,8 +85,6 @@ func _ready():
 
 	# --- Connect Signals ---
 	print("Game: Connecting signals...")
-	# Connect UI buttons to UIManager requests / TurnManager
-	# Using get_node for safety in case @onready vars haven't resolved (unlikely but safe)
 	var open_btn = get_node_or_null("UI_Layer/MenuButtonContainer/OpenMenuButton")
 	if open_btn: open_btn.pressed.connect(ui_manager.open_main_modal)
 	else: push_error("Game: OpenMenuButton not found for connection.")
@@ -106,16 +93,9 @@ func _ready():
 	if return_btn: return_btn.pressed.connect(ui_manager.close_main_modal)
 	else: push_error("Game: ReturnButton not found for connection.")
 
-	# Add connections for SettingsButton if needed, connecting to a UIManager function
-
 	var save_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/SaveButton")
 	if save_btn: save_btn.pressed.connect(_on_save_requested) # Calls local wrapper
 	else: push_error("Game: SaveButton not found for connection.")
-
-	# Add connection for LoadButton (simple version)
-	var load_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/LoadButton")
-	if load_btn: load_btn.pressed.connect(_on_load_pressed) # Calls local simple load
-	else: push_error("Game: LoadButton not found for connection.")
 
 	var main_menu_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/MainMenuButton")
 	if main_menu_btn: main_menu_btn.pressed.connect(ui_manager.request_main_menu)
@@ -129,8 +109,6 @@ func _ready():
 	if end_day_btn: end_day_btn.pressed.connect(turn_manager.end_turn)
 	else: push_error("Game: EndDayButton not found for connection.")
 
-
-	# --- DEBUG: Connect signals *from* UIManager back to game.gd ---
 	print("Game: Connecting signals FROM UIManager...")
 	if is_instance_valid(ui_manager):
 		if not ui_manager.is_connected("save_requested", Callable(self, "_on_save_requested_from_ui")):
@@ -146,28 +124,23 @@ func _ready():
 		else: print("Game: ui_manager.action_confirmed ALREADY connected.")
 	else:
 		push_error("Game: Cannot connect UIManager signals, ui_manager node is invalid!")
-	# --- END DEBUG ---
-
+		
 	print("Game: Connecting signals complete.")
 
 	# --- Initialize Map ---
 	initialize_map()
 	print("game.gd: _ready finished.")
 
-
 func _unhandled_input(event: InputEvent):
 	if event.is_action_pressed("ui_cancel"):
 		if is_instance_valid(ui_manager): ui_manager.handle_escape()
 		get_viewport().set_input_as_handled(); return
-
 	if is_instance_valid(camera_controller):
 		camera_controller.handle_input(event, get_tree().paused)
-
 
 func _process(delta: float):
 	if is_instance_valid(camera_controller):
 		camera_controller.process_movement(delta, get_tree().paused)
-
 
 # --- Map Initialization ---
 func initialize_map():
@@ -195,13 +168,11 @@ func initialize_map():
 	else: print("Game: Map initialization failed.")
 	print("Game: --- Map Initialization Finished ---")
 
-
 func generate_world_data() -> bool:
 	print("Game: Generating world data..."); var generator = WorldGenerator.new()
 	world_data = generator.generate_world_data(MAP_WIDTH, MAP_HEIGHT)
 	if world_data.is_empty(): push_error("Game: World generator returned empty data."); return false
 	print("Game: Generation complete."); return true
-
 
 func _clear_and_draw_map():
 	print("Game: Drawing game map...");
@@ -215,13 +186,10 @@ func _clear_and_draw_map():
 		else: push_warning("Game: Skipping invalid tile data at coords: %s" % str(coords))
 	print("Game: Map drawing complete.")
 
-
 # --- Save/Load Wrappers & UI Callbacks ---
-
 func _on_save_requested():
 	print("Game: Save requested by UI button.")
 	_execute_save()
-
 
 func _on_save_requested_from_ui(pending_action: String):
 	print("Game: _on_save_requested_from_ui called for action: ", pending_action) # DEBUG
@@ -233,7 +201,6 @@ func _on_save_requested_from_ui(pending_action: String):
 		print("Game: Save failed, UI manager should handle reopening menu.") # DEBUG
 		# UIManager's _on_confirm_save already handles reopening main menu on failure
 
-
 func _execute_save() -> bool:
 	var game_state = { "map_data": world_data, "current_day": turn_manager.get_day(), "current_save_path": current_save_path }
 	var saved_path = SaveLoadManager.save_game(game_state, current_save_path)
@@ -241,25 +208,7 @@ func _execute_save() -> bool:
 		current_save_path = saved_path; return true
 	else: print("Game: Save failed in SaveLoadManager."); return false
 
-
 func _on_action_confirmed_from_ui(action_name: String):
 	print("Game: _on_action_confirmed_from_ui called for action: ", action_name) # DEBUG
 	if is_instance_valid(ui_manager):
 		ui_manager._perform_action(action_name) # Tell UI Manager to proceed
-
-
-# Placeholder for simple load button (Needs replacing with UI Manager integration)
-func _on_load_pressed():
-	push_warning("Game: Simple Load button pressed - functionality should be moved to UIManager Load Modal.")
-	var first_save_path = ""
-	var dir = DirAccess.open(SaveLoadManager.SAVE_DIR);
-	if dir: dir.list_dir_begin(); var f=dir.get_next(); while f!="": if !dir.current_is_dir() and f.ends_with(".save"): first_save_path = SaveLoadManager.SAVE_DIR.path_join(f); break; f=dir.get_next()
-	if first_save_path.is_empty(): push_warning("Game: No save file found for simple load."); return
-	print("Game: Attempting simple load of: ", first_save_path)
-	var loaded_state = SaveLoadManager.load_game(first_save_path)
-	if not loaded_state.is_empty():
-		world_data = loaded_state["map_data"]; current_save_path = loaded_state["current_save_path"]
-		turn_manager.set_day(loaded_state["current_day"]); _clear_and_draw_map(); map_object_manager.clear_objects()
-		map_object_manager.place_objects(world_data); camera_controller.center_camera()
-		print("Game: Loaded successfully via simple load.")
-	else: print("Game: Failed simple load.")

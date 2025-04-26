@@ -13,25 +13,79 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_xhf6x")
 
-[node name="CenterContainer" type="CenterContainer" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="MainMenuPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+[node name="CenterContainer" type="CenterContainer" parent="MainMenuPanel"]
 layout_mode = 2
 
-[node name="NewGameButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MainMenuPanel/CenterContainer"]
+layout_mode = 2
+
+[node name="NewGameButton" type="Button" parent="MainMenuPanel/CenterContainer/VBoxContainer"]
 layout_mode = 2
 text = "New Game"
 
-[node name="LoadGameButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="LoadGameButton" type="Button" parent="MainMenuPanel/CenterContainer/VBoxContainer"]
 layout_mode = 2
 text = "Load Game"
 
-[node name="QuitButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="QuitButton" type="Button" parent="MainMenuPanel/CenterContainer/VBoxContainer"]
 layout_mode = 2
 text = "Quit"
+
+[node name="RaceSelectionModal" type="Window" parent="."]
+title = "Choose Your Race:"
+size = Vector2i(500, 500)
+visible = false
+unresizable = true
+popup_window = true
+
+[node name="MarginContainer" type="MarginContainer" parent="RaceSelectionModal"]
+offset_right = 120.0
+offset_bottom = 209.0
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="ModalVBox" type="VBoxContainer" parent="RaceSelectionModal/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="RaceNameLabel" type="Label" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+layout_mode = 2
+text = "Race Name:"
+
+[node name="AspectRatioContainer" type="AspectRatioContainer" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+
+[node name="ColorRect" type="ColorRect" parent="RaceSelectionModal/MarginContainer/ModalVBox/AspectRatioContainer"]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+color = Color(0.144063, 0.144063, 0.144063, 1)
+
+[node name="RaceSprite" type="Sprite2D" parent="RaceSelectionModal/MarginContainer/ModalVBox/AspectRatioContainer"]
+texture_filter = 1
+position = Vector2(200, 50)
+scale = Vector2(3, 3)
+
+[node name="MarginContainer" type="MarginContainer" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="RaceDetailsLabel" type="Label" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+layout_mode = 2
+text = "Details:"
+
+[node name="ChooseRaceButton" type="Button" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+layout_mode = 2
+text = "Choose Race"
