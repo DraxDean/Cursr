@@ -23,6 +23,7 @@ const MAP_HEIGHT = 50
 # --- Variables ---
 var world_data: Dictionary = {}
 var current_save_path: String = ""
+var player_race: String = "notset"
 
 # --- Preload Scripts---
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
@@ -81,6 +82,9 @@ func _ready():
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
 	if not is_instance_valid(day_label): push_error("Game: Day counter label node not found!")
 	turn_manager.setup(day_label)
+	
+	player_race = GameManager.selected_race
+	print("Game: Starting Race: ", player_race)
 
 
 	# --- Connect Signals ---

@@ -5,6 +5,12 @@ extends Control
 const GAME_SCENE_PATH = "res://scenes/main/game_scene.tscn" # Corrected Path
 
 @onready var main_menu_panel = $MainMenuPanel
+@onready var map_creation_panel = $MapCreationPanel
+@onready var create_map_size_x = $MapCreationPanel/VBoxContainer/CreateMapSizeX
+@onready var create_map_size_y = $MapCreationPanel/VBoxContainer/CreateMapSizeY
+@onready var cancel_create_map = $MapCreationPanel/VBoxContainer/HBoxContainer/CancelCreateMapButton
+@onready var confirm_create_map = $MapCreationPanel/VBoxContainer/HBoxContainer/ConfirmCreateMapButton
+#going to move to game.gd
 @onready var race_selection_modal = $RaceSelectionModal
 @onready var race_name_label = $RaceSelectionModal/MarginContainer/ModalVBox/RaceNameLabel
 @onready var race_sprite = $RaceSelectionModal/MarginContainer/ModalVBox/AspectRatioContainer/RaceSprite
@@ -50,34 +56,54 @@ func _ready():
 	load_game_button.pressed.connect(_on_load_game_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	choose_race_button.pressed.connect(_on_choose_race_pressed)
-	
+	create_map_size_x.text_changed.connect(_on_create_map_size_x_text_changed)
+	create_map_size_y.text_changed.connect(_on_create_map_size_y_text_changed)
+	confirm_create_map.pressed.connect(_on_confirm_create_map_pressed)
 	# Setup initial race display if needed immediately,
 	# or wait until the modal is shown.
 	_display_race(current_race_index)
 	
 	# Hide modal initially (can also be done in editor)
 	race_selection_modal.hide()
+	map_creation_panel.hide()
 	
 	# Disable load button if no saves exist using SaveLoadManager
 	load_game_button.disabled = not SaveLoadManager.check_saves_exist()
 	if load_game_button.disabled:
 		load_game_button.tooltip_text = "No saved games found."
-
+		
+func _on_create_map_size_x_text_changed(new_text):
+	print("Create Map Size X changed:", new_text)
+	# You could update another label here to show the live input
+	
+func _on_create_map_size_y_text_changed(new_text):
+	print("Create Map Size Y changed:", new_text)
+	# You could update another label here to show the live input
+	
+func _on_cancel_create_map_pressed():
+	print("Cancel Create Map...")
+	map_creation_panel.hide()
+	main_menu_panel.show()
+		
+func _on_confirm_create_map_pressed():
+	print("Confirm Create Map...")
+	map_creation_panel.hide()
+	race_selection_modal.show()
 
 func _on_new_game_pressed():
 	print("New Game button pressed")
 	# Hide the main menu buttons
 	main_menu_panel.hide()
+	map_creation_panel.show()
 	# Show the race selection modal, centered
-	race_selection_modal.popup_centered()
+	#race_selection_modal.popup_centered()
 	# Ensure the first race is displayed correctly
-	_display_race(current_race_index)
+	#_display_race(current_race_index)
 
 func _on_choose_race_pressed():
 	var chosen_race_id = choose_race_button.get_meta("selected_race_id", "default_race")
-	print("Starting new game with race: ", chosen_race_id)
-
-	# Hide the modal
+	print("Selected Race: ", chosen_race_id)
+	GameManager.selected_race = chosen_race_id
 	race_selection_modal.hide()
 
 	# --- Add your game start logic here ---

@@ -1,13 +1,27 @@
-[gd_scene load_steps=11 format=3 uid="uid://cahoywwt6us5c"]
+[gd_scene load_steps=13 format=3 uid="uid://cahoywwt6us5c"]
 
 [ext_resource type="Script" uid="uid://c0j3tt2dduq3v" path="res://scripts/main/game.gd" id="1_onqr8"]
 [ext_resource type="PackedScene" uid="uid://dlogpnjxp7vys" path="res://scenes/objects/tree.tscn" id="2_bw6k5"]
 [ext_resource type="Texture2D" uid="uid://cqiaq5vf35qhu" path="res://assets/basetiles.png" id="2_ycayy"]
 [ext_resource type="PackedScene" uid="uid://ei48utypbjgo" path="res://scenes/objects/mountain.tscn" id="3_y3j0m"]
+[ext_resource type="Texture2D" uid="uid://d4dv8fnum1bkd" path="res://assets/hextileset.png" id="4_wktqh"]
 [ext_resource type="Script" uid="uid://cuskd62ykpl26" path="res://scripts/managers/camera_controller.gd" id="5_ynmmy"]
 [ext_resource type="Script" uid="uid://rv73t5wb1lu" path="res://scripts/managers/ui_manager.gd" id="6_o41ig"]
 [ext_resource type="Script" uid="uid://qghfvfjku3xu" path="res://scripts/managers/map_object_manager.gd" id="7_wktqh"]
 [ext_resource type="Script" uid="uid://cec0wdtvo70ms" path="res://scripts/managers/turn_manager.gd" id="8_tj35g"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tj35g"]
+texture = ExtResource("4_wktqh")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:1/0 = 0
+0:2/0 = 0
+0:3/0 = 0
+0:4/0 = 0
+0:5/0 = 0
+0:6/0 = 0
+1:6/0 = 0
+2:6/0 = 0
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_v1wow"]
 texture = ExtResource("2_ycayy")
@@ -52,7 +66,8 @@ texture_region_size = Vector2i(32, 32)
 [sub_resource type="TileSet" id="TileSet_mixcd"]
 tile_shape = 3
 tile_size = Vector2i(32, 32)
-sources/0 = SubResource("TileSetAtlasSource_v1wow")
+sources/1 = SubResource("TileSetAtlasSource_v1wow")
+sources/0 = SubResource("TileSetAtlasSource_tj35g")
 
 [node name="Game" type="Control"]
 layout_mode = 3
