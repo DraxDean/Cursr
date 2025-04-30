@@ -213,6 +213,11 @@ title = "Build"
 initial_position = 2
 size = Vector2i(300, 300)
 
+[node name="BuildingGrid" type="GridContainer" parent="UI_Layer/BuildWindow"]
+offset_right = 40.0
+offset_bottom = 40.0
+columns = 2
+
 [node name="Camera2D" type="Camera2D" parent="."]
 
 [node name="MapObjects" type="Node2D" parent="."]

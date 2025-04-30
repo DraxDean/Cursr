@@ -74,9 +74,11 @@ func _ready():
 		
 		"open_build_window": $UI_Layer/CommandsContainer/HBoxContainer/OpenBuildButton,
 		"build_window": $UI_Layer/BuildWindow,
-		
+		"building_grid": $UI_Layer/BuildWindow/BuildingGrid
 	}
 	ui_manager.setup(ui_nodes)
+	if not ui_manager.building_grid:
+		printerr("Error: BuildingGrid node not found!")
 
 	print("Game: Setting up MapObjectManager...")
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3) # Corrected coords

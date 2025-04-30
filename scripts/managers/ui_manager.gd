@@ -13,7 +13,11 @@ var confirm_cancel_button: Button
 
 var build_window: Window
 var open_build_button: Button
+var building_grid: GridContainer
 
+var building_list = [
+	{"name": "human_town_center", "path": "res://assets/sprites/human_towncentre.png"}
+]
 
 # State
 var _pending_action: String = "" # "quit", "main_menu"
@@ -40,11 +44,13 @@ func setup(ui_nodes: Dictionary):
 	
 	build_window = ui_nodes.get("build_window")
 	open_build_button = ui_nodes.get("open_build_button")
+	building_grid = ui_nodes.get("building_grid")
 
 	# --- DEBUG: Validate critical node references ---
 	print("UIManager Setup: modal_menu_panel valid? ", is_instance_valid(modal_menu_panel))
 	print("UIManager Setup: confirmation_panel valid? ", is_instance_valid(confirmation_panel))
 	print("UIManager Setup: build_window valid? ", is_instance_valid(build_window))
+	print("UIManager Setup: building_grid valid? ", is_instance_valid(building_grid))
 	
 	# --- END DEBUG ---
 
@@ -59,6 +65,7 @@ func setup(ui_nodes: Dictionary):
 	confirmation_panel.hide()
 	build_window.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	build_window.hide()
+	populate_building_grid()
 
 	# Connect internal signals here
 	_connect_confirmation_signals()
@@ -189,7 +196,41 @@ func open_build_window():
 	else:
 		build_window.hide()
 		
-		
+func filter_building_list():
+	print("UIManager: filtering building list.")
+	return building_list	
+
+func populate_building_grid():
+	print("UIManager: populate building list.")
+	for building_data in building_list:
+		var button = Button.new()
+		button.name = building_data.name + "_button" # Give the button a unique name
+		button.flat = true # Optional: Make the button appear flat
+
+		var texture_rect = TextureRect.new()
+		var texture = load(building_data.path)
+		if texture is Texture2D or texture is CompressedTexture2D: # Check if loading was successful
+			texture_rect.texture = texture # Assign the loaded texture to the TextureRect
+			button.add_child(texture_rect)
+
+			# Set a minimum size for the button to accommodate the image
+			button.size = texture.get_size() * 2 # Adjust multiplier as needed for padding
+			
+
+			# Store the building data in the button's metadata or a custom property
+			button.set_meta("building_data", building_data)
+			button.connect("pressed", _on_building_button_pressed.bind(building_data)) # Bind the building data to the signal
+			building_grid.add_child(button)
+			for child in building_grid.get_children():
+				print("Added button: ", child.name, " (Type:", child.get_class(), ")")
+		else:
+			printerr("Error loading texture:", building_data.path)
+			button.text = "Error" # Show an error on the button
+
+			
+func _on_building_button_pressed(building_data):
+	emit_signal("building_selected", building_data)
+	
 # --- Public Method Called by game.gd after Save Success ---
 
 func perform_pending_action_after_save():
