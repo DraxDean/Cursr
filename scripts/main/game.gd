@@ -71,6 +71,10 @@ func _ready():
 		"confirm_save_button": $UI_Layer/ConfirmationPanel/VBoxContainer/HBoxContainer/ConfirmSaveButton,
 		"confirm_no_save_button": $UI_Layer/ConfirmationPanel/VBoxContainer/HBoxContainer/ConfirmNoSaveButton,
 		"confirm_cancel_button": $UI_Layer/ConfirmationPanel/VBoxContainer/HBoxContainer/ConfirmCancelButton,
+		
+		"open_build_window": $UI_Layer/CommandsContainer/HBoxContainer/OpenBuildButton,
+		"build_window": $UI_Layer/BuildWindow,
+		
 	}
 	ui_manager.setup(ui_nodes)
 
@@ -88,27 +92,31 @@ func _ready():
 
 
 	# --- Connect Signals ---
+	
+#	Game Menu Modal Connections
 	print("Game: Connecting signals...")
 	var open_btn = get_node_or_null("UI_Layer/MenuButtonContainer/OpenMenuButton")
 	if open_btn: open_btn.pressed.connect(ui_manager.open_main_modal)
 	else: push_error("Game: OpenMenuButton not found for connection.")
-
 	var return_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/ReturnButton")
 	if return_btn: return_btn.pressed.connect(ui_manager.close_main_modal)
 	else: push_error("Game: ReturnButton not found for connection.")
-
 	var save_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/SaveButton")
 	if save_btn: save_btn.pressed.connect(_on_save_requested) # Calls local wrapper
 	else: push_error("Game: SaveButton not found for connection.")
-
 	var main_menu_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/MainMenuButton")
 	if main_menu_btn: main_menu_btn.pressed.connect(ui_manager.request_main_menu)
 	else: push_error("Game: MainMenuButton not found for connection.")
-
 	var quit_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/QuitButton")
 	if quit_btn: quit_btn.pressed.connect(ui_manager.request_quit)
 	else: push_error("Game: QuitButton not found for connection.")
-
+	
+#	Build Modal Connections
+	var open_build_btn = get_node_or_null("UI_Layer/CommandsContainer/HBoxContainer/OpenBuildButton")
+	if open_build_btn: open_build_btn.pressed.connect(ui_manager.open_build_window)
+	else: push_error("Game: QuitButton not found for connection.")
+	
+#	Turn connections
 	var end_day_btn = get_node_or_null("UI_Layer/TurnControlsContainer/TurnVBox/EndDayButton")
 	if end_day_btn: end_day_btn.pressed.connect(turn_manager.end_turn)
 	else: push_error("Game: EndDayButton not found for connection.")

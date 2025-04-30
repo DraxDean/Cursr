@@ -3,32 +3,36 @@ extends Control
 const GAME_SCENE_PATH = "res://scenes/main/game_scene.tscn"
 
 @onready var main_menu_panel = $MainMenuPanel
+
+@onready var new_game_button: Button = $MainMenuPanel/CenterContainer/VBoxContainer/NewGameButton
+@onready var load_game_button: Button = $MainMenuPanel/CenterContainer/VBoxContainer/LoadGameButton
+@onready var quit_button: Button = $MainMenuPanel/CenterContainer/VBoxContainer/QuitButton
+
 @onready var map_creation_panel = $MapCreationPanel
 @onready var create_map_size_x = $MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer/HBoxContainer2/CreateMapSizeX
 @onready var create_map_size_y = $MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer/HBoxContainer3/CreateMapSizeY
 @onready var cancel_create_map = $MapCreationPanel/VBoxContainer/HBoxContainer/CancelCreateMapButton
 @onready var confirm_create_map = $MapCreationPanel/VBoxContainer/HBoxContainer/ConfirmCreateMapButton
+
 @onready var race_selection_modal = $RaceSelectionModal
 @onready var race_name_label = $RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/RaceNameLabel
 @onready var race_sprite = $RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/AspectRatioContainer/RaceSprite
 @onready var race_details_label = $RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer/RaceDetailsLabel
 @onready var choose_race_button = $RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer/HBoxContainer/ChooseRaceButton
 @onready var cancel_race_button = $RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer/HBoxContainer/CancelRaceButton
-@onready var new_game_button: Button = $MainMenuPanel/CenterContainer/VBoxContainer/NewGameButton
-@onready var load_game_button: Button = $MainMenuPanel/CenterContainer/VBoxContainer/LoadGameButton
-@onready var quit_button: Button = $MainMenuPanel/CenterContainer/VBoxContainer/QuitButton
+
 
 var races = [
 	{
 		"name": "Humans",
 		"sprite_path": "res://assets/sprites/human_peon1.png",
-		"details": "Versatile and adaptable, humans excel in many roles. \n Uses wood and stone to make buildings on clear land.",
+		"details": "Versatile and adaptable, humans excel in many roles. \nUses wood and stone to make buildings on clear land.",
 		"id": "human"
 	},
 	{
 		"name": "Elves",
 		"sprite_path": "res://assets/sprites/human_peon1.png",
-		"details": "Agile archers with ancient wisdom. Masters of the forests.",
+		"details": "Agile archers with ancient wisdom. Masters of the forests. \nCan only build on forest.",
 		"id": "elf"
 	}
 ]

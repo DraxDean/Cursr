@@ -11,6 +11,10 @@ var confirm_save_button: Button
 var confirm_no_save_button: Button
 var confirm_cancel_button: Button
 
+var build_window: Window
+var open_build_button: Button
+
+
 # State
 var _pending_action: String = "" # "quit", "main_menu"
 
@@ -33,13 +37,15 @@ func setup(ui_nodes: Dictionary):
 	confirm_save_button = ui_nodes.get("confirm_save_button")
 	confirm_no_save_button = ui_nodes.get("confirm_no_save_button")
 	confirm_cancel_button = ui_nodes.get("confirm_cancel_button")
+	
+	build_window = ui_nodes.get("build_window")
+	open_build_button = ui_nodes.get("open_build_button")
 
 	# --- DEBUG: Validate critical node references ---
 	print("UIManager Setup: modal_menu_panel valid? ", is_instance_valid(modal_menu_panel))
 	print("UIManager Setup: confirmation_panel valid? ", is_instance_valid(confirmation_panel))
-	print("UIManager Setup: confirm_save_button valid? ", is_instance_valid(confirm_save_button))
-	print("UIManager Setup: confirm_no_save_button valid? ", is_instance_valid(confirm_no_save_button))
-	print("UIManager Setup: confirm_cancel_button valid? ", is_instance_valid(confirm_cancel_button))
+	print("UIManager Setup: build_window valid? ", is_instance_valid(build_window))
+	
 	# --- END DEBUG ---
 
 	if not is_instance_valid(modal_menu_panel) or not is_instance_valid(confirmation_panel):
@@ -51,6 +57,8 @@ func setup(ui_nodes: Dictionary):
 	modal_menu_panel.hide()
 	confirmation_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	confirmation_panel.hide()
+	build_window.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	build_window.hide()
 
 	# Connect internal signals here
 	_connect_confirmation_signals()
@@ -171,6 +179,17 @@ func _on_confirm_cancel():
 	emit_signal("action_cancelled")
 
 
+func open_build_window():
+	print("UIManager: open_build_window called.") # DEBUG
+	if not is_instance_valid(build_window): push_error("UIManager: Cannot open build window, window invalid!"); return # DEBUG
+	confirmation_panel.hide() # Ensure confirmation is hidden
+	modal_menu_panel.hide()
+	if not build_window.visible:
+		build_window.show()
+	else:
+		build_window.hide()
+		
+		
 # --- Public Method Called by game.gd after Save Success ---
 
 func perform_pending_action_after_save():

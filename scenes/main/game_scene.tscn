@@ -130,6 +130,21 @@ text = "Main Menu"
 layout_mode = 2
 text = "Quit"
 
+[node name="CommandsContainer" type="PanelContainer" parent="UI_Layer"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -40.0
+offset_right = 48.0
+grow_vertical = 0
+
+[node name="HBoxContainer" type="HBoxContainer" parent="UI_Layer/CommandsContainer"]
+layout_mode = 2
+
+[node name="OpenBuildButton" type="Button" parent="UI_Layer/CommandsContainer/HBoxContainer"]
+layout_mode = 2
+text = "Build"
+
 [node name="TurnControlsContainer" type="MarginContainer" parent="UI_Layer"]
 anchors_preset = 3
 anchor_left = 1.0
@@ -192,6 +207,11 @@ text = "Don't Save"
 [node name="ConfirmCancelButton" type="Button" parent="UI_Layer/ConfirmationPanel/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Cancel"
+
+[node name="BuildWindow" type="Window" parent="UI_Layer"]
+title = "Build"
+initial_position = 2
+size = Vector2i(300, 300)
 
 [node name="Camera2D" type="Camera2D" parent="."]
 
