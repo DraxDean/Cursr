@@ -63,15 +63,130 @@ grow_vertical = 2
 [node name="VBoxContainer" type="VBoxContainer" parent="MapCreationPanel"]
 layout_mode = 2
 
-[node name="CreateMapSizeX" type="LineEdit" parent="MapCreationPanel/VBoxContainer"]
+[node name="HBoxContainer2" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+text = "Map Creation Tool"
+
+[node name="Button" type="Button" parent="MapCreationPanel/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+text = "Defaults"
+
+[node name="SizePanel" type="PanelContainer" parent="MapCreationPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MapCreationPanel/VBoxContainer/SizePanel"]
+layout_mode = 2
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer/HBoxContainer2"]
 layout_mode = 2
 text = "Map Size X:"
+
+[node name="CreateMapSizeX" type="LineEdit" parent="MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
 placeholder_text = "250"
 
-[node name="CreateMapSizeY" type="LineEdit" parent="MapCreationPanel/VBoxContainer"]
+[node name="HBoxContainer3" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer/HBoxContainer3"]
 layout_mode = 2
 text = "Map Size Y:"
+
+[node name="CreateMapSizeY" type="LineEdit" parent="MapCreationPanel/VBoxContainer/SizePanel/VBoxContainer/HBoxContainer3"]
+layout_mode = 2
 placeholder_text = "250"
+
+[node name="OceanPanel" type="PanelContainer" parent="MapCreationPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MapCreationPanel/VBoxContainer/OceanPanel"]
+layout_mode = 2
+
+[node name="OceanLabel" type="Label" parent="MapCreationPanel/VBoxContainer/OceanPanel/VBoxContainer"]
+layout_mode = 2
+text = "Ocean"
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/OceanPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="YesOceansButton" type="Button" parent="MapCreationPanel/VBoxContainer/OceanPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "yes"
+
+[node name="NoOceansButton" type="Button" parent="MapCreationPanel/VBoxContainer/OceanPanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "no"
+
+[node name="BiomePanel" type="PanelContainer" parent="MapCreationPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MapCreationPanel/VBoxContainer/BiomePanel"]
+layout_mode = 2
+
+[node name="BiomesLabel" type="Label" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer"]
+layout_mode = 2
+text = "Biomes"
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Mountain Patches:"
+
+[node name="MountainPatches" type="LineEdit" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+placeholder_text = "2"
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+text = "Dark Forest Patches:"
+
+[node name="DarkForestPatches" type="LineEdit" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+placeholder_text = "2"
+
+[node name="HBoxContainer3" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer3"]
+layout_mode = 2
+text = "Light Forest Patches::"
+
+[node name="LightForestPatches" type="LineEdit" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer3"]
+layout_mode = 2
+placeholder_text = "2"
+
+[node name="HBoxContainer4" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer4"]
+layout_mode = 2
+text = "Desert Patches:"
+
+[node name="DesertPatches" type="LineEdit" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer4"]
+layout_mode = 2
+placeholder_text = "2"
+
+[node name="HBoxContainer5" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer5"]
+layout_mode = 2
+text = "Grassland Patches:"
+
+[node name="GrasslandPatches" type="LineEdit" parent="MapCreationPanel/VBoxContainer/BiomePanel/VBoxContainer/HBoxContainer5"]
+layout_mode = 2
+placeholder_text = "2"
 
 [node name="HBoxContainer" type="HBoxContainer" parent="MapCreationPanel/VBoxContainer"]
 layout_mode = 2
@@ -107,30 +222,45 @@ theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="ModalVBox" type="VBoxContainer" parent="RaceSelectionModal/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="RaceSelectionModal/MarginContainer"]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="RaceSelectionModal/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Button" type="Button" parent="RaceSelectionModal/MarginContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Humans"
+
+[node name="Button2" type="Button" parent="RaceSelectionModal/MarginContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Elves"
+
+[node name="ModalVBox" type="VBoxContainer" parent="RaceSelectionModal/MarginContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="RaceNameLabel" type="Label" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+[node name="RaceNameLabel" type="Label" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox"]
 layout_mode = 2
 text = "Race Name:"
 
-[node name="AspectRatioContainer" type="AspectRatioContainer" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+[node name="AspectRatioContainer" type="AspectRatioContainer" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox"]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
 
-[node name="ColorRect" type="ColorRect" parent="RaceSelectionModal/MarginContainer/ModalVBox/AspectRatioContainer"]
+[node name="ColorRect" type="ColorRect" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/AspectRatioContainer"]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
 color = Color(0.144063, 0.144063, 0.144063, 1)
 
-[node name="RaceSprite" type="Sprite2D" parent="RaceSelectionModal/MarginContainer/ModalVBox/AspectRatioContainer"]
+[node name="RaceSprite" type="Sprite2D" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/AspectRatioContainer"]
 texture_filter = 1
 position = Vector2(200, 50)
 scale = Vector2(3, 3)
+offset = Vector2(13, 0)
 
-[node name="MarginContainer" type="MarginContainer" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+[node name="MarginContainer" type="MarginContainer" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox"]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
 theme_override_constants/margin_left = 5
@@ -138,10 +268,21 @@ theme_override_constants/margin_top = 5
 theme_override_constants/margin_right = 5
 theme_override_constants/margin_bottom = 5
 
-[node name="RaceDetailsLabel" type="Label" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+[node name="VBoxContainer" type="VBoxContainer" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer"]
+layout_mode = 2
+
+[node name="RaceDetailsLabel" type="Label" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 300)
 layout_mode = 2
 text = "Details:"
 
-[node name="ChooseRaceButton" type="Button" parent="RaceSelectionModal/MarginContainer/ModalVBox"]
+[node name="HBoxContainer" type="HBoxContainer" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="CancelRaceButton" type="Button" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Cancel"
+
+[node name="ChooseRaceButton" type="Button" parent="RaceSelectionModal/MarginContainer/VBoxContainer/ModalVBox/MarginContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Choose Race"
