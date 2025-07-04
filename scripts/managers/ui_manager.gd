@@ -16,7 +16,10 @@ var open_build_button: Button
 var building_grid: GridContainer
 
 var building_list = [
-	{"name": "human_town_center", "path": "res://assets/sprites/human_towncentre.png"}
+	{"name": "human_town_center", "path": "res://assets/sprites/human_towncentre.png"},
+	{"name": "human_fishinghut", "path": "res://assets/sprites/human_fishinghut.png"},
+	{"name": "human_barracks", "path": "res://assets/sprites/human_barracks.png"}
+	
 ]
 
 # State
@@ -202,7 +205,7 @@ func filter_building_list():
 
 func populate_building_grid():
 	print("UIManager: populate building list.")
-	for building_data in building_list:
+	for building_data in filter_building_list():
 		var button = Button.new()
 		button.name = building_data.name + "_button" # Give the button a unique name
 		button.flat = true # Optional: Make the button appear flat
@@ -214,21 +217,30 @@ func populate_building_grid():
 			button.add_child(texture_rect)
 
 			# Set a minimum size for the button to accommodate the image
-			button.size = texture.get_size() * 2 # Adjust multiplier as needed for padding
-			
+			button.custom_minimum_size = Vector2(64, 64); # Adjust multiplier as needed for padding
+			#button.stretch_mode = TextureButton.STRETCH_SCALE;
 
 			# Store the building data in the button's metadata or a custom property
-			button.set_meta("building_data", building_data)
-			button.connect("pressed", _on_building_button_pressed.bind(building_data)) # Bind the building data to the signal
-			building_grid.add_child(button)
-			for child in building_grid.get_children():
-				print("Added button: ", child.name, " (Type:", child.get_class(), ")")
-		else:
-			printerr("Error loading texture:", building_data.path)
-			button.text = "Error" # Show an error on the button
+			button.set_meta("building_data", building_data);
+			print("UIManager: Connecting button data: ", building_data);
+			button.pressed.connect(_on_building_button_pressed.bind(building_data));
+			#print("UIManager: Signal connected successfully for button: ", button.name);
+			#print("Button type: ", button.get_class())
+			#print("Button disabled: ", button.disabled)
+			#print("Button mouse filter: ", button.mouse_filter)
+			#print("Connected signals: ", button.pressed.get_connections())
 
+
+			building_grid.add_child(button);
+		else:
+			printerr("Error loading texture:", building_data.path);
+			button.text = "Error" # Show an error on the button
+	for child in building_grid.get_children():
+		print("UIManager: Added button: ", child.name, " (Type:", child.get_class(), ")")
 			
 func _on_building_button_pressed(building_data):
+	print("UIManager: Function called!") # This should appear first
+	print("UIManager: Selected Building: ", building_data)
 	emit_signal("building_selected", building_data)
 	
 # --- Public Method Called by game.gd after Save Success ---
