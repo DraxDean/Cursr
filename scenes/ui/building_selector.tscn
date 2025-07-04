@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://dkacrnegvgwux"]
+
+[ext_resource type="Script" uid="uid://b0gs76kf2mkug" path="res://scripts/ui/building_selector.gd" id="1_bpkx7"]
+
+[node name="Window" type="Window"]
+title = "Build"
+initial_position = 2
+size = Vector2i(300, 300)
+script = ExtResource("1_bpkx7")

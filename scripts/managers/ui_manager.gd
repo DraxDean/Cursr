@@ -10,17 +10,9 @@ var confirmation_label: Label
 var confirm_save_button: Button
 var confirm_no_save_button: Button
 var confirm_cancel_button: Button
-
-var build_window: Window
 var open_build_button: Button
-var building_grid: GridContainer
+var building_window;
 
-var building_list = [
-	{"name": "human_town_center", "path": "res://assets/sprites/human_towncentre.png"},
-	{"name": "human_fishinghut", "path": "res://assets/sprites/human_fishinghut.png"},
-	{"name": "human_barracks", "path": "res://assets/sprites/human_barracks.png"}
-	
-]
 
 # State
 var _pending_action: String = "" # "quit", "main_menu"
@@ -44,17 +36,8 @@ func setup(ui_nodes: Dictionary):
 	confirm_save_button = ui_nodes.get("confirm_save_button")
 	confirm_no_save_button = ui_nodes.get("confirm_no_save_button")
 	confirm_cancel_button = ui_nodes.get("confirm_cancel_button")
-	
-	build_window = ui_nodes.get("build_window")
 	open_build_button = ui_nodes.get("open_build_button")
-	building_grid = ui_nodes.get("building_grid")
 
-	# --- DEBUG: Validate critical node references ---
-	print("UIManager Setup: modal_menu_panel valid? ", is_instance_valid(modal_menu_panel))
-	print("UIManager Setup: confirmation_panel valid? ", is_instance_valid(confirmation_panel))
-	print("UIManager Setup: build_window valid? ", is_instance_valid(build_window))
-	print("UIManager Setup: building_grid valid? ", is_instance_valid(building_grid))
-	
 	# --- END DEBUG ---
 
 	if not is_instance_valid(modal_menu_panel) or not is_instance_valid(confirmation_panel):
@@ -66,9 +49,15 @@ func setup(ui_nodes: Dictionary):
 	modal_menu_panel.hide()
 	confirmation_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	confirmation_panel.hide()
-	build_window.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-	build_window.hide()
-	populate_building_grid()
+	
+	print("UIManager: Starting Building Selector Setup");
+	var building_window = preload("res://scenes/ui/building_selector.tscn").instantiate();
+	add_child(building_window);
+	building_window.setup();
+	building_window.building_selected.connect(_on_building_selected);
+	building_window.process_mode = Node.PROCESS_MODE_WHEN_PAUSED;
+	#building_window.hide()
+	print(building_window);
 
 	# Connect internal signals here
 	_connect_confirmation_signals()
@@ -191,58 +180,20 @@ func _on_confirm_cancel():
 
 func open_build_window():
 	print("UIManager: open_build_window called.") # DEBUG
-	if not is_instance_valid(build_window): push_error("UIManager: Cannot open build window, window invalid!"); return # DEBUG
+	if not is_instance_valid(building_window): push_error("UIManager: Cannot open building window, window invalid!"); return # DEBUG
 	confirmation_panel.hide() # Ensure confirmation is hidden
 	modal_menu_panel.hide()
-	if not build_window.visible:
-		build_window.show()
+	if not building_window.visible:
+		building_window.show()
 	else:
-		build_window.hide()
+		building_window.hide()
 		
-func filter_building_list():
-	print("UIManager: filtering building list.")
-	return building_list	
-
-func populate_building_grid():
-	print("UIManager: populate building list.")
-	for building_data in filter_building_list():
-		var button = Button.new()
-		button.name = building_data.name + "_button" # Give the button a unique name
-		button.flat = true # Optional: Make the button appear flat
-
-		var texture_rect = TextureRect.new()
-		var texture = load(building_data.path)
-		if texture is Texture2D or texture is CompressedTexture2D: # Check if loading was successful
-			texture_rect.texture = texture # Assign the loaded texture to the TextureRect
-			button.add_child(texture_rect)
-
-			# Set a minimum size for the button to accommodate the image
-			button.custom_minimum_size = Vector2(64, 64); # Adjust multiplier as needed for padding
-			#button.stretch_mode = TextureButton.STRETCH_SCALE;
-
-			# Store the building data in the button's metadata or a custom property
-			button.set_meta("building_data", building_data);
-			print("UIManager: Connecting button data: ", building_data);
-			button.pressed.connect(_on_building_button_pressed.bind(building_data));
-			#print("UIManager: Signal connected successfully for button: ", button.name);
-			#print("Button type: ", button.get_class())
-			#print("Button disabled: ", button.disabled)
-			#print("Button mouse filter: ", button.mouse_filter)
-			#print("Connected signals: ", button.pressed.get_connections())
 
 
-			building_grid.add_child(button);
-		else:
-			printerr("Error loading texture:", building_data.path);
-			button.text = "Error" # Show an error on the button
-	for child in building_grid.get_children():
-		print("UIManager: Added button: ", child.name, " (Type:", child.get_class(), ")")
-			
-func _on_building_button_pressed(building_data):
-	print("UIManager: Function called!") # This should appear first
-	print("UIManager: Selected Building: ", building_data)
-	emit_signal("building_selected", building_data)
+func _on_building_selected(building_data):
+	print("Main scene received: ", building_data)
 	
+
 # --- Public Method Called by game.gd after Save Success ---
 
 func perform_pending_action_after_save():

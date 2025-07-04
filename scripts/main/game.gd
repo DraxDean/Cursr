@@ -77,8 +77,6 @@ func _ready():
 		"building_grid": $UI_Layer/BuildWindow/BuildingGrid
 	}
 	ui_manager.setup(ui_nodes)
-	if not ui_manager.building_grid:
-		printerr("Error: BuildingGrid node not found!")
 
 	print("Game: Setting up MapObjectManager...")
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3) # Corrected coords
@@ -116,7 +114,7 @@ func _ready():
 #	Build Modal Connections
 	var open_build_btn = get_node_or_null("UI_Layer/CommandsContainer/HBoxContainer/OpenBuildButton")
 	if open_build_btn: open_build_btn.pressed.connect(ui_manager.open_build_window)
-	else: push_error("Game: QuitButton not found for connection.")
+	else: push_error("Game: OpenBuildButton not found for connection.")
 	
 #	Turn connections
 	var end_day_btn = get_node_or_null("UI_Layer/TurnControlsContainer/TurnVBox/EndDayButton")
