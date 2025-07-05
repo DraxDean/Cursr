@@ -8,27 +8,37 @@ var building_list = [
 	{"name": "human_town_center", "path": "res://assets/sprites/human_towncentre.png"},
 	{"name": "human_fishinghut", "path": "res://assets/sprites/human_fishinghut.png"},
 	{"name": "human_barracks", "path": "res://assets/sprites/human_barracks.png"}
-	
 ]
 
-func _on_building_button_pressed(building_data):
-	print("Building selected: ", building_data)
-	building_selected.emit(building_data)
-	queue_free()  # Close the window
+func _ready():
+	print("Building Selector: Setup...")
+	
+	#building_grid = GridContainer.new()
+	#building_grid.columns = 2  # Set number of columns
+	#
+	#add_child(building_grid)
+	title = "Select Building"
+	popup_centered(Vector2(400, 300))
+	setup()
+
+func setup_buildings():
+	var grid = $VBoxContainer/GridContainer
+	for building_data in building_list:
+		var button = Button.new()
+		button.text = building_data.name
+		button.pressed.connect(_on_building_selected.bind(building_data))
+		grid.add_child(button)
+
+func _on_building_selected(building_data):
+	print("Builing Selector: Select Building: ", building_data )
+	building_selected.emit(building_data);
 
 func filter_building_list():
 	print("UIManager: filtering building list.")
 	return building_list	
 
 func setup():
-	print("Building Selector: Setup...")
-	
-	building_grid = GridContainer.new()
-	building_grid.columns = 2  # Set number of columns
-	
-	# Add it to the scene (assuming you have a parent container)
-	add_child(building_grid)
-
+	var building_grid = $VBoxContainer/GridContainer
 	print("UIManager: populate building list.")
 	for building_data in filter_building_list():
 		var button = Button.new()
@@ -47,19 +57,25 @@ func setup():
 			#button.stretch_mode = TextureButton.STRETCH_SCALE;
 
 			# Store the building data in the button's metadata or a custom property
-			button.set_meta("building_data", building_data);
-			print("UIManager: Connecting button data: ", building_data);
-			button.pressed.connect(_on_building_button_pressed.bind(building_data));
-			#print("UIManager: Signal connected successfully for button: ", button.name);
-			#print("Button type: ", button.get_class())
-			#print("Button disabled: ", button.disabled)
-			#print("Button mouse filter: ", button.mouse_filter)
-			#print("Connected signals: ", button.pressed.get_connections())
-
+			button.set_meta("building_data", building_data)
+			print("UIManager: Connecting button data: ", building_data)
+			button.pressed.connect(_on_building_selected.bind(building_data))
 			building_grid.add_child(button);
+			
+			
 		else:
 			printerr("Error loading texture:", building_data.path);
 			button.text = "Error" # Show an error on the button
+	building_grid.mouse_filter = 0;
+	print("GridContainer mouse filter: ", building_grid.mouse_filter)
+	print("GridContainer clip contents: ", building_grid.clip_contents)
 	for child in building_grid.get_children():
 		print("UIManager: Added button: ", child.name, " (Type:", child.get_class(), ")")
-			
+		
+func _on_building_button_pressed_test():
+	print("TEST FUNCTION CALLED!")
+
+func _on_button_gui_input(event):
+	print("Button received input: ", event)
+	if event is InputEventMouseButton and event.pressed:
+		print("Mouse button pressed on button!")

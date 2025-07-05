@@ -11,8 +11,8 @@ var confirm_save_button: Button
 var confirm_no_save_button: Button
 var confirm_cancel_button: Button
 var open_build_button: Button
-var building_window;
 
+var building_selector;
 
 # State
 var _pending_action: String = "" # "quit", "main_menu"
@@ -50,15 +50,9 @@ func setup(ui_nodes: Dictionary):
 	confirmation_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	confirmation_panel.hide()
 	
-	print("UIManager: Starting Building Selector Setup");
-	var building_window = preload("res://scenes/ui/building_selector.tscn").instantiate();
-	add_child(building_window);
-	building_window.setup();
-	building_window.building_selected.connect(_on_building_selected);
-	building_window.process_mode = Node.PROCESS_MODE_WHEN_PAUSED;
-	#building_window.hide()
-	print(building_window);
-
+	#test_modal();
+	building_selector_modal();
+	
 	# Connect internal signals here
 	_connect_confirmation_signals()
 
@@ -93,7 +87,19 @@ func _connect_confirmation_signals():
 		else: push_error("UIManager: FAILED to connect confirm_cancel_button. Error: %d" % err_cancel)
 	else: print("UIManager: confirm_cancel_button ALREADY connected.")
 
+# In your main scene/ui_manager
+func test_modal():
+	var modal = preload("res://scenes/ui/test_modal.tscn").instantiate()
+	add_child(modal)
+	print("UIManager: Test Modal successfully added to scene")
 
+func building_selector_modal():
+	var modal = preload("res://scenes/ui/building_selector.tscn").instantiate()
+	building_selector = modal;
+	add_child(modal)
+	modal.hide();
+	print("UIManager: Building Selector Modal successfully added to scene")
+	
 # --- Public Methods Called by game.gd or Signals ---
 
 func open_main_modal():
@@ -178,15 +184,12 @@ func _on_confirm_cancel():
 	emit_signal("action_cancelled")
 
 
-func open_build_window():
-	print("UIManager: open_build_window called.") # DEBUG
-	if not is_instance_valid(building_window): push_error("UIManager: Cannot open building window, window invalid!"); return # DEBUG
-	confirmation_panel.hide() # Ensure confirmation is hidden
-	modal_menu_panel.hide()
-	if not building_window.visible:
-		building_window.show()
+func open_building_selector():
+	print("UIManager: open_building_selector called.") # DEBUG
+	if building_selector.visible:
+		building_selector.hide()
 	else:
-		building_window.hide()
+		building_selector.popup_centered()
 		
 
 

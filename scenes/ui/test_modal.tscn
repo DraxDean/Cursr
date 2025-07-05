@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3 uid="uid://qbp22vf73wiu"]
+
+[ext_resource type="Script" uid="uid://bh2k2xct63e60" path="res://scripts/ui/test_modal.gd" id="1_ilv31"]
+
+[node name="AcceptDialog" type="AcceptDialog"]
+visible = true
+script = ExtResource("1_ilv31")
+
+[node name="Button" type="Button" parent="."]
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 92.0
+offset_bottom = 51.0

@@ -113,7 +113,7 @@ func _ready():
 	
 #	Build Modal Connections
 	var open_build_btn = get_node_or_null("UI_Layer/CommandsContainer/HBoxContainer/OpenBuildButton")
-	if open_build_btn: open_build_btn.pressed.connect(ui_manager.open_build_window)
+	if open_build_btn: open_build_btn.pressed.connect(ui_manager.open_building_selector)
 	else: push_error("Game: OpenBuildButton not found for connection.")
 	
 #	Turn connections
