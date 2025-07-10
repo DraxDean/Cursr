@@ -3,7 +3,7 @@ extends Node
 
 # --- Constants ---
 const MAP_WIDTH = 80
-const MAP_HEIGHT = 50
+const MAP_HEIGHT = 80
 
 # --- Export Variables for Scenes ---
 @export var tree_scene: PackedScene
@@ -76,7 +76,7 @@ func _ready():
 		"build_window": $UI_Layer/BuildWindow,
 		"building_grid": $UI_Layer/BuildWindow/BuildingGrid
 	}
-	ui_manager.setup(ui_nodes)
+	ui_manager.setup(ui_nodes, map_object_manager)
 
 	print("Game: Setting up MapObjectManager...")
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3) # Corrected coords
@@ -136,12 +136,18 @@ func _ready():
 		else: print("Game: ui_manager.action_confirmed ALREADY connected.")
 	else:
 		push_error("Game: Cannot connect UIManager signals, ui_manager node is invalid!")
-		
+	
+	ui_manager.building_placement_requested.connect(_on_building_placement_requested)
+	
 	print("Game: Connecting signals complete.")
 
 	# --- Initialize Map ---
 	initialize_map()
 	print("game.gd: _ready finished.")
+
+func _on_building_placement_requested(building_data, coords):
+	# Pass to map object manager
+	map_object_manager.place_building(building_data, coords)
 
 func _unhandled_input(event: InputEvent):
 	if event.is_action_pressed("ui_cancel"):
@@ -224,3 +230,6 @@ func _on_action_confirmed_from_ui(action_name: String):
 	print("Game: _on_action_confirmed_from_ui called for action: ", action_name) # DEBUG
 	if is_instance_valid(ui_manager):
 		ui_manager._perform_action(action_name) # Tell UI Manager to proceed
+
+func create_blueprint(building_data, coords):
+	map_object_manager._place_single_object(building_data, coords, 4);	

@@ -7,7 +7,11 @@ var building_grid;
 var building_list = [
 	{"name": "human_town_center", "path": "res://assets/sprites/human_towncentre.png"},
 	{"name": "human_fishinghut", "path": "res://assets/sprites/human_fishinghut.png"},
-	{"name": "human_barracks", "path": "res://assets/sprites/human_barracks.png"}
+	{"name": "human_barracks", "path": "res://assets/sprites/human_barracks.png"},
+	{"name": "human_house", "path": "res://assets/sprites/human_house.png"},
+	{"name": "elf_towncentre", "path": "res://assets/sprites/elf_towncentre.png"},
+	
+	
 ]
 
 func _ready():
@@ -21,14 +25,6 @@ func _ready():
 	popup_centered(Vector2(400, 300))
 	setup()
 
-func setup_buildings():
-	var grid = $VBoxContainer/GridContainer
-	for building_data in building_list:
-		var button = Button.new()
-		button.text = building_data.name
-		button.pressed.connect(_on_building_selected.bind(building_data))
-		grid.add_child(button)
-
 func _on_building_selected(building_data):
 	print("Builing Selector: Select Building: ", building_data )
 	building_selected.emit(building_data);
@@ -38,12 +34,12 @@ func filter_building_list():
 	return building_list	
 
 func setup():
-	var building_grid = $VBoxContainer/GridContainer
+	var building_grid = $GridContainer
+	building_grid.columns = 6;
 	print("UIManager: populate building list.")
 	for building_data in filter_building_list():
 		var button = Button.new()
 		button.name = building_data.name + "_button" # Give the button a unique name
-		button.text = building_data.name
 		button.flat = true # Optional: Make the button appear flat
 
 		var texture_rect = TextureRect.new()
@@ -61,7 +57,6 @@ func setup():
 			print("UIManager: Connecting button data: ", building_data)
 			button.pressed.connect(_on_building_selected.bind(building_data))
 			building_grid.add_child(button);
-			
 			
 		else:
 			printerr("Error loading texture:", building_data.path);

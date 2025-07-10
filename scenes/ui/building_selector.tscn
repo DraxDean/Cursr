@@ -5,13 +5,6 @@
 [node name="AcceptDialog" type="AcceptDialog"]
 script = ExtResource("1_bpkx7")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="."]
+[node name="GridContainer" type="GridContainer" parent="."]
 offset_right = 40.0
 offset_bottom = 40.0
-
-[node name="Label" type="Label" parent="VBoxContainer"]
-layout_mode = 2
-text = "Build"
-
-[node name="GridContainer" type="GridContainer" parent="VBoxContainer"]
-layout_mode = 2

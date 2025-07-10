@@ -28,6 +28,36 @@ func setup(_camera: Camera2D, _map_width: int, _map_height: int):
 	print("CameraController setup complete.")
 
 
+# NEW: Convert screen position to world position accounting for camera transform
+func screen_to_world(screen_pos: Vector2) -> Vector2:
+	if not is_instance_valid(camera_node):
+		push_error("CameraController: Invalid camera node")
+		return Vector2.ZERO
+	
+	# Get viewport size
+	var viewport_size = get_viewport().get_visible_rect().size
+	
+	# Convert screen position to camera-relative position
+	# Screen coordinates are from top-left, camera position is center-based
+	var camera_relative_pos = (screen_pos - viewport_size / 2.0) / camera_node.zoom
+	
+	# Add camera position to get world position
+	var world_pos = camera_node.position + camera_relative_pos
+	
+	return world_pos
+
+
+# NEW: Get the current mouse position in world coordinates
+func get_world_mouse_position() -> Vector2:
+	var screen_mouse_pos = get_viewport().get_mouse_position()
+	return screen_to_world(screen_mouse_pos)
+
+
+# NEW: Check if a screen position click should be handled by the camera (for UI to check)
+func is_handling_input() -> bool:
+	return is_left_dragging
+
+
 func handle_input(event: InputEvent, is_paused: bool):
 	if is_paused: return # Don't handle camera input if paused
 
@@ -55,13 +85,13 @@ func handle_input(event: InputEvent, is_paused: bool):
 	var zoom_changed = false
 	var target_zoom = camera_node.zoom
 
-	if event is InputEventPanGesture:
-		target_zoom *= pow(zoom_factor, -event.delta.y * trackpad_scroll_zoom_sensitivity); zoom_changed = true
-	elif event is InputEventMagnifyGesture:
-		if event.factor != 0: target_zoom /= event.factor; zoom_changed = true
-	elif event is InputEventMouseButton and event.is_pressed():
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP: target_zoom /= zoom_factor; zoom_changed = true
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: target_zoom *= zoom_factor; zoom_changed = true
+	#if event is InputEventPanGesture:
+		#target_zoom *= pow(zoom_factor, -event.delta.y * trackpad_scroll_zoom_sensitivity); zoom_changed = true
+	#elif event is InputEventMagnifyGesture:
+		#if event.factor != 0: target_zoom /= event.factor; zoom_changed = true
+	#elif event is InputEventMouseButton and event.is_pressed():
+		#if event.button_index == MOUSE_BUTTON_WHEEL_UP: target_zoom /= zoom_factor; zoom_changed = true
+		#elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: target_zoom *= zoom_factor; zoom_changed = true
 
 	if zoom_changed:
 		target_zoom.x = clampf(target_zoom.x, min_zoom, max_zoom); target_zoom.y = clampf(target_zoom.y, min_zoom, max_zoom)
