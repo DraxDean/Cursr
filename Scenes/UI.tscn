@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3 uid="uid://bq48qwcajkuxv"]
+
+[ext_resource type="Script" uid="uid://dmdjpx8lbyaah" path="res://Scripts/ui_manager.gd" id="1_w371h"]
+
+[node name="ui" type="CanvasLayer"]
+script = ExtResource("1_w371h")
+
+[node name="build_button" type="Button" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -31.0
+offset_right = 48.0
+grow_vertical = 0
+text = "Build"

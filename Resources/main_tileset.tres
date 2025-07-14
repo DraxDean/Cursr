@@ -1,0 +1,21 @@
+[gd_resource type="TileSet" load_steps=3 format=3 uid="uid://sufdfouokmyk"]
+
+[ext_resource type="Texture2D" uid="uid://bab4y54nuksy5" path="res://Sprites/hextileset-export.png" id="1_lovjq"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_lovjq"]
+texture = ExtResource("1_lovjq")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:1/0 = 0
+0:2/0 = 0
+0:3/0 = 0
+0:4/0 = 0
+0:5/0 = 0
+0:6/0 = 0
+1:6/0 = 0
+2:6/0 = 0
+
+[resource]
+tile_shape = 3
+tile_size = Vector2i(32, 32)
+sources/0 = SubResource("TileSetAtlasSource_lovjq")

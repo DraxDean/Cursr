@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3 uid="uid://bnnrwms4n8wet"]
+
+[ext_resource type="Script" uid="uid://c4q3djk77ywn7" path="res://Scripts/game.gd" id="1_iukft"]
+[ext_resource type="TileSet" uid="uid://sufdfouokmyk" path="res://Resources/main_tileset.tres" id="2_gl6un"]
+
+[node name="Game" type="Node2D"]
+script = ExtResource("1_iukft")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_gl6un")
+rendering_quadrant_size = 32
+
+[node name="Camera2D" type="Camera2D" parent="."]
+offset = Vector2(1000, 1000)
