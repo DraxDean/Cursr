@@ -80,3 +80,27 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 	var world_pos = tilemap_layer.map_to_local(tile_coords)
 	instance.position = world_pos + Vector2(0, y_offset)
 	map_objects_holder.add_child(instance)
+<<<<<<< Updated upstream
+=======
+
+func place_building(building_data, coords):
+	print("Map Object Manager: Placing building: ", building_data, " at: ", coords);
+	var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
+	# Try to set the script manually
+	if building_scene.get_script() == null:
+		var building_script = preload("res://scripts/objects/building.gd")  # adjust path as needed
+		building_scene.set_script(building_script)
+	
+	if building_scene.has_method("setup"):
+		building_scene.setup(building_data)
+	else:
+		print("ERROR: Building Scene no setup method!")
+		
+	#	add to building list in the future
+
+	#print("Map Object Manager: at tile: ", coords, " before: ", tilemap_layer.get_cell(coords));
+	#tilemap_layer.set_cell(new_cell_data);
+	#print("Map Object Manager: at tile: ", coords, " after: ", tilemap_layer.get_cell(coords));
+
+	
+>>>>>>> Stashed changes
