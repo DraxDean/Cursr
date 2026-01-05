@@ -19,3 +19,17 @@ data_*/
 mono_crash.*.json
 
 # End of https://www.toptal.com/developers/gitignore/api/godot
+
+# Editor junk
+.vs/
+.vscode/
+.idea/
+
+# Godot
+.import/
+.export/
+.godot/
+
+# OS
+.DS_Store
+Thumbs.db
