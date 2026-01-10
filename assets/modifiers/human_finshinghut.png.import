@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c4g5i7k45krej"
-path="res://.godot/imported/mountain.png-45c1aef529c32c610e8510cd0bdb9c64.ctex"
+uid="uid://b0jhfad8tqr5y"
+path="res://.godot/imported/human_finshinghut.png-06f58800724f0991e0daefc80dd5dee3.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/modifiers/mountain.png"
-dest_files=["res://.godot/imported/mountain.png-45c1aef529c32c610e8510cd0bdb9c64.ctex"]
+source_file="res://assets/modifiers/human_finshinghut.png"
+dest_files=["res://.godot/imported/human_finshinghut.png-06f58800724f0991e0daefc80dd5dee3.ctex"]
 
 [params]
 
