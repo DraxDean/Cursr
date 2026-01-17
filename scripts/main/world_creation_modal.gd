@@ -61,6 +61,16 @@ var generation_steps = [
 		"action": "_step_plains"
 	},
 	{
+		"title": "Let there be Mountain Peaks",
+		"description": "Mighty peaks rise from the mountain ranges,\ncreating majestic landmarks across the world.\nPress Continue when satisfied or Reroll to try again.",
+		"action": "_step_mountain_peaks"
+	},
+	{
+		"title": "Let there be Ancient Forests",
+		"description": "Ancient trees take root in the fertile woodlands,\ncreating mystical forests full of life and wonder.\nPress Continue when satisfied or Reroll to try again.",
+		"action": "_step_ancient_forests"
+	},
+	{
 		"title": "Choose Your People",
 		"description": "Select the race that will inhabit this world\nand choose their starting settlement.",
 		"action": "_step_race_select"
@@ -208,7 +218,11 @@ func _show_current_step():
 	# Show/hide buttons based on step
 	if footer_component:
 		footer_component.reroll_button.visible = current_step > 0
-		footer_component.update_buttons_for_step(current_step, generation_steps.size())
+		# Check if this is the race selection step specifically
+		if current_step < generation_steps.size() and generation_steps[current_step]["action"] == "_step_race_select":
+			footer_component.update_buttons(["Back", "Next"])
+		else:
+			footer_component.update_buttons_for_step(current_step, generation_steps.size())
 	
 	# Execute the step action
 	if has_method(step_data["action"]):
@@ -252,12 +266,7 @@ func _step_mountains():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
-	# Place mountain objects immediately
-	var game_node = get_parent()
-	if game_node and game_node.has_method("get_node"):
-		var map_object_manager = game_node.get_node("MapObjectManager")
-		if map_object_manager and map_object_manager.has_method("place_mountains_only"):
-			map_object_manager.place_mountains_only(world_data)
+	# No object placement here - terrain only
 	_center_camera_on_map()
 
 func _step_forests():
@@ -271,12 +280,7 @@ func _step_forests():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
-	# Place tree objects immediately
-	var game_node = get_parent()
-	if game_node and game_node.has_method("get_node"):
-		var map_object_manager = game_node.get_node("MapObjectManager")
-		if map_object_manager and map_object_manager.has_method("place_trees_only"):
-			map_object_manager.place_trees_only(world_data)
+	# No object placement here - terrain only
 	_center_camera_on_map()
 
 func _step_plains():
@@ -290,6 +294,32 @@ func _step_plains():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_mountain_peaks():
+	print("WorldCreation: Executing mountain peaks step")
+	# Place mountain objects on existing mountain terrain
+	var game_node = get_parent()
+	if game_node and game_node.has_method("get_node"):
+		var map_object_manager = game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_mountains_only"):
+			map_object_manager.place_mountains_only(world_data)
+			print("WorldCreation: Mountain peaks placed")
+		else:
+			print("WorldCreation: Map object manager not found or missing method")
+	_center_camera_on_map()
+
+func _step_ancient_forests():
+	print("WorldCreation: Executing ancient forests step")
+	# Place tree objects on existing forest terrain
+	var game_node = get_parent()
+	if game_node and game_node.has_method("get_node"):
+		var map_object_manager = game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_trees_only"):
+			map_object_manager.place_trees_only(world_data)
+			print("WorldCreation: Ancient forests placed")
+		else:
+			print("WorldCreation: Map object manager not found or missing method")
 	_center_camera_on_map()
 
 func _step_race_select():
@@ -367,6 +397,25 @@ func _on_reset_camera_pressed():
 
 func _on_reroll_pressed():
 	print("WorldCreation: Rerolling step %d" % current_step)
+	
+	# Special handling for object placement steps
+	if current_step < generation_steps.size():
+		var step_data = generation_steps[current_step]
+		if step_data["action"] == "_step_mountain_peaks":
+			# Clear only mountain objects before rerolling
+			var game_node = get_parent()
+			if game_node and game_node.has_method("get_node"):
+				var map_object_manager = game_node.get_node("MapObjectManager")
+				if map_object_manager and map_object_manager.has_method("clear_mountains_only"):
+					map_object_manager.clear_mountains_only()
+		elif step_data["action"] == "_step_ancient_forests":
+			# Clear only tree objects before rerolling
+			var game_node = get_parent()
+			if game_node and game_node.has_method("get_node"):
+				var map_object_manager = game_node.get_node("MapObjectManager")
+				if map_object_manager and map_object_manager.has_method("clear_trees_only"):
+					map_object_manager.clear_trees_only()
+	
 	_show_current_step()
 
 func _on_continue_pressed():

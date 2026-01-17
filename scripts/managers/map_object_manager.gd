@@ -114,6 +114,32 @@ func place_trees_only(world_data: Dictionary):
 
 	print("MapObjectManager: Tree placement finished.")
 
+func clear_mountains_only():
+	print("MapObjectManager: Clearing mountain objects only...")
+	if not is_instance_valid(map_objects_holder): 
+		push_error("MapObjects holder node is not valid!")
+		return
+		
+	# Remove only mountain objects
+	for child in map_objects_holder.get_children():
+		if child.name.begins_with("Mountain") or child.scene_file_path.ends_with("mountain.tscn"):
+			child.queue_free()
+	
+	print("MapObjectManager: Mountain objects cleared.")
+
+func clear_trees_only():
+	print("MapObjectManager: Clearing tree objects only...")
+	if not is_instance_valid(map_objects_holder): 
+		push_error("MapObjects holder node is not valid!")
+		return
+		
+	# Remove only tree objects
+	for child in map_objects_holder.get_children():
+		if child.name.begins_with("Tree") or child.scene_file_path.ends_with("tree.tscn"):
+			child.queue_free()
+	
+	print("MapObjectManager: Tree objects cleared.")
+
 
 func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: int = 0):
 	if not scene: return
