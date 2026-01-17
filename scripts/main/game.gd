@@ -22,6 +22,7 @@ const MAP_HEIGHT = 100
 
 # UI Components
 var game_header: Control
+var game_footer: Control
 
 # Info Modals
 var players_modal: Control
@@ -30,6 +31,18 @@ var buildings_modal: Control
 var population_modal: Control
 var army_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
+
+# Building System
+var is_placing_building: bool = false
+var building_to_place: String = ""
+var building_preview_sprite: Sprite2D
+var building_preview_overlay: Sprite2D
+var preview_green_texture: Texture2D
+var preview_red_texture: Texture2D
+
+# Building Modals
+var build_selection_modal: Control
+var building_placement_modal: Control
 
 # --- Variables ---
 var world_data: Dictionary = {}
@@ -44,6 +57,172 @@ var is_in_world_creation: bool = false
 # --- Preload ---
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
 
+
+func _update_building_preview(mouse_pos: Vector2):
+	# Convert screen position to world position
+	var world_pos = camera.get_global_mouse_position()
+	# Convert to tile coordinates
+	var tile_coords = tilemap_layer.local_to_map(world_pos)
+	# Convert back to world position (centers on tile)
+	var centered_world_pos = tilemap_layer.map_to_local(tile_coords)
+	
+	if building_preview_sprite:
+		building_preview_sprite.position = centered_world_pos
+	
+	if building_preview_overlay:
+		building_preview_overlay.position = centered_world_pos
+		# Check if placement is valid and update overlay color
+		var can_place = _can_place_building_at_tile(tile_coords)
+		if can_place:
+			building_preview_overlay.modulate = Color.GREEN
+		else:
+			building_preview_overlay.modulate = Color.RED
+
+func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
+	# Check if tile is within map bounds
+	var used_rect = tilemap_layer.get_used_rect()
+	if not used_rect.has_point(tile_coords):
+		return false
+	
+	# Check if there's already a building at this location
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+				var building_tile = tilemap_layer.local_to_map(child.position)
+				if building_tile == tile_coords:
+					return false
+	
+	# Additional checks could be added here (terrain type, resources, etc.)
+	return true
+
+func _try_place_building(mouse_pos: Vector2):
+	# Convert screen position to tile coordinates
+	var world_pos = camera.get_global_mouse_position()
+	var tile_coords = tilemap_layer.local_to_map(world_pos)
+	
+	if _can_place_building_at_tile(tile_coords):
+		# Place the actual building
+		_place_building_at_tile(tile_coords, building_to_place)
+		_cancel_building_placement()
+	else:
+		print("Cannot place building at this location")
+
+func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
+	# Get building texture path
+	var building_texture_path = _get_building_texture_path(building_type)
+	
+	if ResourceLoader.exists(building_texture_path):
+		var building_texture = load(building_texture_path)
+		var building_sprite = Sprite2D.new()
+		building_sprite.name = "Building_" + building_type + "_" + str(tile_coords.x) + "_" + str(tile_coords.y)
+		building_sprite.texture = building_texture
+		
+		# Add player ownership data
+		building_sprite.set_meta("owner_player", 1)  # Player 1
+		building_sprite.set_meta("building_type", building_type)
+		building_sprite.set_meta("construction_day", turn_manager.get_day())
+		
+		# Position it at the tile location
+		var world_pos = tilemap_layer.map_to_local(tile_coords)
+		building_sprite.position = world_pos
+		building_sprite.z_index = 5  # Above terrain but below UI
+		
+		# Add to map objects holder
+		map_objects_holder.add_child(building_sprite)
+		
+		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
+		
+		# Auto-save after placing building
+		print("Game: Auto-saving after building placement...")
+		if _execute_save():
+			print("Game: Auto-save successful!")
+		else:
+			print("Game: Auto-save failed, but continuing game...")
+	else:
+		print("Warning: Could not find building texture: ", building_texture_path)
+
+func _get_building_texture_path(building_type: String) -> String:
+	match building_type:
+		"house":
+			return "res://assets/buildings/human_house.png"
+		"barracks":
+			return "res://assets/buildings/human_barracks.png"
+		"fishing_hut":
+			return "res://assets/buildings/human_finshinghut.png"
+		"town_center":
+			return "res://assets/buildings/human_towncentre-export.png"
+		_:
+			return "res://assets/buildings/human_towncentre-export.png"
+
+func _start_building_placement(building_type: String):
+	is_placing_building = true
+	building_to_place = building_type
+	
+	# Create preview sprite
+	var building_texture_path = _get_building_texture_path(building_type)
+	if ResourceLoader.exists(building_texture_path):
+		var building_texture = load(building_texture_path)
+		building_preview_sprite = Sprite2D.new()
+		building_preview_sprite.texture = building_texture
+		building_preview_sprite.modulate = Color(1, 1, 1, 0.7)  # Semi-transparent
+		building_preview_sprite.z_index = 10  # Above everything
+		add_child(building_preview_sprite)
+	
+	# Create overlay sprite using a simple colored rectangle
+	building_preview_overlay = Sprite2D.new()
+	# Create a simple white texture that we can tint
+	var overlay_texture = ImageTexture.new()
+	var overlay_image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	overlay_image.fill(Color(1, 1, 1, 0.3))  # Semi-transparent white
+	overlay_texture.set_image(overlay_image)
+	building_preview_overlay.texture = overlay_texture
+	building_preview_overlay.modulate = Color.GREEN  # Start with green
+	building_preview_overlay.z_index = 11  # Above preview
+	add_child(building_preview_overlay)
+	
+	print("Game: Started building placement mode for: ", building_type)
+
+func _cancel_building_placement():
+	is_placing_building = false
+	building_to_place = ""
+	
+	# Clean up preview sprites
+	if building_preview_sprite:
+		building_preview_sprite.queue_free()
+		building_preview_sprite = null
+	
+	if building_preview_overlay:
+		building_preview_overlay.queue_free()
+		building_preview_overlay = null
+	
+	print("Game: Cancelled building placement mode")
+
+func _unhandled_input(event: InputEvent):
+	# Handle building placement mode first
+	if is_placing_building:
+		if event is InputEventMouseMotion:
+			_update_building_preview(event.position)
+		elif event is InputEventMouseButton:
+			if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				_try_place_building(event.position)
+			elif event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+				_cancel_building_placement()
+		return
+	
+	if is_in_world_creation:
+		# During world creation, use camera controller for all input
+		if is_instance_valid(camera_controller):
+			camera_controller.handle_input(event, false)  # Not paused during world creation
+		get_viewport().set_input_as_handled()
+		return
+		
+	# Normal game input handling
+	if event.is_action_pressed("ui_cancel"):
+		if is_instance_valid(ui_manager): ui_manager.handle_escape()
+		get_viewport().set_input_as_handled(); return
+
+	if is_instance_valid(camera_controller):
+		camera_controller.handle_input(event, get_tree().paused)
 
 func _ready():
 	print("game.gd: _ready started.")
@@ -109,6 +288,10 @@ func _ready():
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
 	if not is_instance_valid(day_label): push_error("Game: Day counter label node not found!")
 	turn_manager.setup(day_label)
+	
+	# Load preview textures for building placement
+	# Create simple colored rectangles for overlays since we don't have overlay assets
+	print("Game: Setting up building placement preview system")
 
 
 	# --- Connect Signals ---
@@ -175,23 +358,6 @@ func _ready():
 	print("game.gd: _ready finished.")
 
 
-func _unhandled_input(event: InputEvent):
-	if is_in_world_creation:
-		# During world creation, use camera controller for all input
-		if is_instance_valid(camera_controller):
-			camera_controller.handle_input(event, false)  # Not paused during world creation
-		get_viewport().set_input_as_handled()
-		return
-		
-	# Normal game input handling
-	if event.is_action_pressed("ui_cancel"):
-		if is_instance_valid(ui_manager): ui_manager.handle_escape()
-		get_viewport().set_input_as_handled(); return
-
-	if is_instance_valid(camera_controller):
-		camera_controller.handle_input(event, get_tree().paused)
-
-
 func _process(delta: float):
 	if is_instance_valid(camera_controller):
 		camera_controller.process_movement(delta, get_tree().paused)
@@ -256,6 +422,10 @@ func _start_world_creation_mode():
 	# Hide game header during world creation
 	if game_header:
 		game_header.visible = false
+	
+	# Hide game footer during world creation
+	if game_footer:
+		game_footer.visible = false
 	
 	# Create world creator
 	var WorldCreationModal = preload("res://scripts/main/world_creation_modal.gd")
@@ -333,6 +503,11 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	if game_header:
 		game_header.visible = true
 		print("Game: Game header now visible after world creation")
+	
+	# Show game footer now that the game has started
+	if game_footer:
+		game_footer.visible = true
+		print("Game: Game footer now visible after world creation")
 	
 	# Don't center camera - preserve current position from world creation
 	# camera_controller.center_camera()
@@ -436,6 +611,9 @@ func _setup_game_header():
 	
 	# Setup info modals
 	_setup_info_modals()
+	
+	# Setup game footer
+	_setup_game_footer()
 
 func _restore_buildings(buildings_data: Array):
 	print("Game: Restoring ", buildings_data.size(), " buildings from save data")
@@ -457,6 +635,17 @@ func _restore_buildings(buildings_data: Array):
 			print("Game: Restored building: ", building_sprite.name, " at position: ", building_sprite.position)
 		else:
 			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
+
+func _setup_game_footer():
+	# Create and setup the game footer
+	var GameFooterScript = preload("res://scripts/managers/game_footer.gd")
+	game_footer = GameFooterScript.new()
+	ui_layer.add_child(game_footer)
+	
+	# Connect footer signals
+	game_footer.build_pressed.connect(_on_build_pressed)
+	
+	print("Game: Game footer created and connected")
 
 func _setup_info_modals():
 	# Create info modals with different starting positions
@@ -494,6 +683,51 @@ func _setup_info_modals():
 
 func _on_modal_closed(modal_type: String):
 	print("Game: Modal closed: ", modal_type)
+
+# Footer button handlers
+func _on_build_pressed():
+	print("Game: Build button pressed")
+	_open_build_selection_modal()
+
+func _open_build_selection_modal():
+	# Create build selection modal if it doesn't exist
+	if not build_selection_modal:
+		var BuildSelectionScript = preload("res://scripts/ui/build_selection_modal.gd")
+		build_selection_modal = BuildSelectionScript.new(self, Vector2(200, 100))
+		ui_layer.add_child(build_selection_modal)
+		build_selection_modal.building_selected.connect(_on_building_selected_for_placement)
+	
+	# Toggle the modal
+	build_selection_modal.toggle()
+
+func _on_building_selected_for_placement(building_type: String, building_name: String):
+	print("Game: Building selected for placement: ", building_name)
+	_open_building_placement_modal(building_type, building_name)
+
+func _open_building_placement_modal(building_type: String, building_name: String):
+	# Close existing placement modal if open
+	if building_placement_modal:
+		building_placement_modal.queue_free()
+	
+	# Create new placement modal
+	var PlacementScript = preload("res://scripts/ui/building_placement_modal.gd")
+	building_placement_modal = PlacementScript.new(self, building_type, building_name, Vector2(300, 150))
+	ui_layer.add_child(building_placement_modal)
+	
+	# Connect placement signals
+	building_placement_modal.place_building_confirmed.connect(_on_building_placement_confirmed.bind(building_type))
+	building_placement_modal.placement_cancelled.connect(_on_building_placement_cancelled)
+	
+	# Show the modal
+	building_placement_modal.toggle()
+
+func _on_building_placement_confirmed(building_type: String):
+	print("Game: Building placement confirmed for: ", building_type)
+	# Start building placement preview mode
+	_start_building_placement(building_type)
+
+func _on_building_placement_cancelled():
+	print("Game: Building placement cancelled")
 
 # Header button handlers
 func _on_header_settings_pressed():

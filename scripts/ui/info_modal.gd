@@ -36,6 +36,11 @@ func _ready():
 		# Only set default position if not already positioned
 		if position == Vector2.ZERO:
 			position = Vector2(10, 60)  # Left margin, below header
+		
+		# For build selection modal, make it larger to fit content
+		if modal_type == "build_selection":
+			custom_minimum_size = Vector2(viewport_size.x * 0.35, viewport_size.y * 0.5)
+			size = custom_minimum_size
 
 func _setup_ui(title: String):
 	# Semi-transparent background panel
@@ -91,6 +96,7 @@ func _setup_ui(title: String):
 	# Content container for modal-specific content
 	content_container = VBoxContainer.new()
 	content_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_container.add_theme_constant_override("separation", 5)
 	main_container.add_child(content_container)
 	
