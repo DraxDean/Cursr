@@ -1,5 +1,5 @@
 # scripts/main/world_creation_footer.gd
-extends VBoxContainer
+extends Control
 
 var back_button: Button
 var reset_camera_button: Button
@@ -23,23 +23,26 @@ func _ready():
 	mouse_filter = Control.MOUSE_FILTER_PASS  # Only buttons should capture clicks
 	clip_contents = true  # Don't extend beyond our size
 	
-	_create_background()
-	_create_content()
+	# Create all content as children of this container
+	_setup_footer_container()
 
-func _create_background():
-	# Add semi-transparent background behind buttons only
+func _setup_footer_container():
+	# Add background as first child (behind everything) - use manual positioning
 	var footer_bg = ColorRect.new()
-	footer_bg.color = Color(0, 0, 0, 0.7)
-	footer_bg.position = Vector2(0, 0)  # Relative to container
-	footer_bg.size = Vector2(800, 60)     # Match container size
+	footer_bg.name = "FooterBackground"
+	footer_bg.color = Color(0, 0, 0, 0.25)  # 25% opacity for better visibility
+	footer_bg.position = Vector2(0, 0)
+	footer_bg.size = Vector2(800, 60)  # Match footer size exactly
 	footer_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(footer_bg)
-
-func _create_content():
-	# Add separator
-	var separator = HSeparator.new()
-	separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(separator)
+	
+	# Create content container - positioned over background
+	var content_container = VBoxContainer.new()
+	content_container.name = "ContentContainer"
+	content_container.position = Vector2(10, 5)  # Small padding from edges
+	content_container.size = Vector2(780, 50)    # Slightly smaller than footer
+	content_container.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(content_container)
 	
 	# Create button container
 	var button_container = HBoxContainer.new()
@@ -79,7 +82,7 @@ func _create_content():
 	start_game_button.pressed.connect(_on_start_game_pressed)
 	button_container.add_child(start_game_button)
 	
-	add_child(button_container)
+	content_container.add_child(button_container)
 
 func update_buttons_for_step(current_step: int, max_steps: int):
 	if continue_button and start_game_button:
