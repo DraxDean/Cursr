@@ -245,7 +245,6 @@ func _finish_race_selection():
 			"starting_building": selected_building
 		}
 	
-	# Clean up and start game
+	# Move to tile selection step
 	queue_free()
-	world_creation_modal.cleanup_ui()
-	game_node._finish_world_creation(world_creation_modal.world_data)
+	world_creation_modal._step_choose_starting_tile()

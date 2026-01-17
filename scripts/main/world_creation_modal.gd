@@ -126,6 +126,20 @@ func cleanup_ui():
 			race_ui.queue_free()
 		remove_meta("race_select_ui")
 	
+	# Clean up preview sprite if it exists
+	if has_meta("preview_sprite"):
+		var preview_sprite = get_meta("preview_sprite")
+		if is_instance_valid(preview_sprite):
+			preview_sprite.queue_free()
+		remove_meta("preview_sprite")
+	
+	# Disable tile selection mode (if it was enabled)
+	var camera_controller = game_node.get_node("CameraController")
+	if camera_controller:
+		camera_controller.tile_selection_mode = false
+		if camera_controller.tile_clicked.is_connected(_on_tile_selected):
+			camera_controller.tile_clicked.disconnect(_on_tile_selected)
+	
 	if header_component:
 		header_component.queue_free()
 		header_component = null
@@ -136,6 +150,36 @@ func cleanup_ui():
 	# Show normal UI elements again
 	game_node.get_node("UI_Layer/MenuButtonContainer").show()
 	game_node.get_node("UI_Layer/TurnControlsContainer").show()
+
+func _on_tile_selected(tile_pos: Vector2):
+	# Store starting tile position
+	world_data["starting_tile"] = tile_pos
+	print("Selected starting tile at: ", tile_pos)
+	# Preview fishing hut at selected position
+	_preview_fishing_hut(tile_pos)
+
+func _preview_fishing_hut(tile_pos: Vector2):
+	# Load and place the fishing hut sprite as a preview
+	var fishing_hut_texture = preload("res://assets/buildings/human_finshinghut.png")
+	
+	# Create a sprite node for the preview
+	var preview_sprite = Sprite2D.new()
+	preview_sprite.name = "FishingHutPreview"
+	preview_sprite.texture = fishing_hut_texture
+	
+	# Position it at the center tile
+	if tilemap_layer:
+		var world_pos = tilemap_layer.map_to_local(Vector2i(tile_pos.x, tile_pos.y))
+		preview_sprite.position = world_pos
+		preview_sprite.z_index = 10  # Make sure it's above the tilemap
+		
+		# Add to the tilemap's parent so it's in the right layer
+		tilemap_layer.get_parent().add_child(preview_sprite)
+		
+		# Store reference for cleanup
+		set_meta("preview_sprite", preview_sprite)
+		
+	print("Fishing hut preview placed at: ", tile_pos)
 
 func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D, ui_manager_ref: Node):
 	# Keep this for compatibility but redirect to direct UI
@@ -239,8 +283,15 @@ func _step_plains():
 func _step_race_select():
 	# Don't hide the UI, just update it like other steps
 	# The race selection will be handled within the existing UI framework
+	header_component.update_step("Choose Your Race", "Select your civilization and starting building")
+	footer_component.update_buttons(["Back", "Next"])
 	_show_race_selection_ui()
 	print("WorldCreation: Race selection step activated")
+
+func _step_choose_starting_tile():
+	header_component.update_step("Choose Starting Location", "Your settlement will be built in the center of the world")
+	footer_component.update_buttons(["Back", "Start Game"])
+	_show_tile_selection_preview()
 
 func _show_race_selection_ui():
 	# Create race selection UI in the middle area (between header and footer)
@@ -254,6 +305,22 @@ func _show_race_selection_ui():
 	# Store reference so we can clean it up later
 	if not has_meta("race_select_ui"):
 		set_meta("race_select_ui", race_select_ui)
+
+func _show_tile_selection_preview():
+	# Clean up any existing UI
+	if has_meta("race_select_ui"):
+		var race_ui = get_meta("race_select_ui")
+		if is_instance_valid(race_ui):
+			race_ui.queue_free()
+		remove_meta("race_select_ui")
+	
+	# Automatically select center tile
+	var center_tile = Vector2(MAP_WIDTH / 2, MAP_HEIGHT / 2)
+	world_data["starting_tile"] = center_tile
+	print("Auto-selected center tile: ", center_tile)
+	
+	# Show fishing hut preview at center
+	_preview_fishing_hut(center_tile)
 
 func _center_camera_on_map():
 	if camera and tilemap_layer:
@@ -291,7 +358,17 @@ func _on_reroll_pressed():
 	_show_current_step()
 
 func _on_continue_pressed():
-	print("WorldCreationModal: Continue button pressed - current step: %d" % current_step)
+	print("WorldCreationModal: Continue/Next button pressed - current step: %d" % current_step)
+	
+	# Special handling for race selection step
+	if current_step == generation_steps.size() - 1:  # Race selection step
+		if has_meta("race_select_ui"):
+			var race_ui = get_meta("race_select_ui")
+			if is_instance_valid(race_ui):
+				race_ui._finish_race_selection()
+				return
+	
+	# Normal step progression
 	current_step += 1
 	if current_step < step_states.size():
 		step_states.resize(current_step)
@@ -301,13 +378,15 @@ func _on_continue_pressed():
 func _on_start_game_pressed():
 	print("WorldCreationModal: Start game button pressed")
 	
-	# If we're in race selection mode, finish the race selection
-	if has_meta("race_select_ui"):
-		var race_ui = get_meta("race_select_ui")
-		if is_instance_valid(race_ui):
-			race_ui._finish_race_selection()
-			return
+	# Check if we need to advance to tile selection or finish
+	if current_step == generation_steps.size() - 1:  # Race selection step
+		# If we're in race selection mode, advance to tile selection
+		if has_meta("race_select_ui"):
+			var race_ui = get_meta("race_select_ui")
+			if is_instance_valid(race_ui):
+				race_ui._finish_race_selection()
+				return
 	
-	# Otherwise, normal start game
+	# For tile selection step, just finish (tile is auto-selected)
 	cleanup_ui()
 	game_node._finish_world_creation(world_data)

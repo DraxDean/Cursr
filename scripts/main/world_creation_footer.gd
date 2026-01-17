@@ -93,6 +93,35 @@ func update_buttons_for_step(current_step: int, max_steps: int):
 			continue_button.visible = true
 			start_game_button.visible = false
 
+func update_buttons(button_texts: Array):
+	# Hide all buttons first
+	if back_button: back_button.visible = false
+	if reset_camera_button: reset_camera_button.visible = false
+	if reroll_button: reroll_button.visible = false
+	if continue_button: continue_button.visible = false
+	if start_game_button: start_game_button.visible = false
+	
+	# Show and update buttons based on the provided texts
+	for i in range(button_texts.size()):
+		var text = button_texts[i]
+		match text:
+			"Back":
+				if back_button:
+					back_button.text = "Back"
+					back_button.visible = true
+			"Reset Camera":
+				if reset_camera_button: reset_camera_button.visible = true
+			"Reroll":
+				if reroll_button: reroll_button.visible = true
+			"Continue":
+				if continue_button: continue_button.visible = true
+			"Next":
+				if continue_button:
+					continue_button.text = "Next"
+					continue_button.visible = true
+			"Start Game":
+				if start_game_button: start_game_button.visible = true
+
 # Button signal handlers
 func _on_back_pressed():
 	back_pressed.emit()

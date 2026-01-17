@@ -13,6 +13,11 @@ var camera_node: Camera2D
 var map_pixel_width: int = 0
 var map_pixel_height: int = 0
 
+# World creation mode
+var world_creation_mode: bool = false
+var tile_selection_mode: bool = false
+signal tile_clicked(tile_pos: Vector2)
+
 # State
 var is_left_dragging: bool = false
 var drag_start_mouse_pos: Vector2
@@ -35,6 +40,12 @@ func handle_input(event: InputEvent, is_paused: bool):
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.is_pressed():
+				# Check for tile selection mode first
+				if tile_selection_mode:
+					_handle_tile_click(event.global_position)
+					get_viewport().set_input_as_handled()
+					return
+					
 				is_left_dragging = true
 				drag_start_mouse_pos = get_viewport().get_mouse_position()
 				drag_start_camera_pos = camera_node.position
@@ -118,3 +129,15 @@ func center_camera():
 
 func reset_drag_state():
 	is_left_dragging = false
+
+func _handle_tile_click(global_pos: Vector2):
+	# Convert screen position to world position
+	var world_pos = camera_node.get_global_mouse_position()
+	# Convert world position to tile coordinates (assuming 64x64 tiles)
+	var tile_size = 64
+	var tile_x = int(world_pos.x / tile_size)
+	var tile_y = int(world_pos.y / tile_size)
+	var tile_pos = Vector2(tile_x, tile_y)
+	
+	print("Tile clicked at: ", tile_pos)
+	tile_clicked.emit(tile_pos)
