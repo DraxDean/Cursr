@@ -2,8 +2,8 @@
 extends Node
 
 # Constants
-const MAP_WIDTH = 80
-const MAP_HEIGHT = 50
+const MAP_WIDTH = 100
+const MAP_HEIGHT = 100
 
 # World generation
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
@@ -59,6 +59,11 @@ var generation_steps = [
 		"title": "Let there be Plains",
 		"description": "Rolling grasslands complete the world,\nperfect for civilization to take root.",
 		"action": "_step_plains"
+	},
+	{
+		"title": "Choose Your People",
+		"description": "Select the race that will inhabit this world\nand choose their starting settlement.",
+		"action": "_step_race_select"
 	}
 ]
 
@@ -113,6 +118,13 @@ func _create_world_creation_ui():
 func cleanup_ui():
 	# Clean up our UI elements when done
 	var ui_layer = game_node.get_node("UI_Layer")
+	
+	# Clean up race selection UI if it exists
+	if has_meta("race_select_ui"):
+		var race_ui = get_meta("race_select_ui")
+		if is_instance_valid(race_ui):
+			race_ui.queue_free()
+		remove_meta("race_select_ui")
 	
 	if header_component:
 		header_component.queue_free()
@@ -224,6 +236,25 @@ func _step_plains():
 	_clear_and_draw_map()
 	_center_camera_on_map()
 
+func _step_race_select():
+	# Don't hide the UI, just update it like other steps
+	# The race selection will be handled within the existing UI framework
+	_show_race_selection_ui()
+	print("WorldCreation: Race selection step activated")
+
+func _show_race_selection_ui():
+	# Create race selection UI in the middle area (between header and footer)
+	var ui_layer = game_node.get_node("UI_Layer")
+	
+	# Create race selection container
+	var RaceSelectUI = preload("res://scripts/main/world_creation_race_select_modal.gd")
+	var race_select_ui = RaceSelectUI.new()
+	race_select_ui.setup_integrated(game_node, self, ui_layer)
+	
+	# Store reference so we can clean it up later
+	if not has_meta("race_select_ui"):
+		set_meta("race_select_ui", race_select_ui)
+
 func _center_camera_on_map():
 	if camera and tilemap_layer:
 		# Calculate the center of the map in world coordinates
@@ -269,5 +300,14 @@ func _on_continue_pressed():
 
 func _on_start_game_pressed():
 	print("WorldCreationModal: Start game button pressed")
+	
+	# If we're in race selection mode, finish the race selection
+	if has_meta("race_select_ui"):
+		var race_ui = get_meta("race_select_ui")
+		if is_instance_valid(race_ui):
+			race_ui._finish_race_selection()
+			return
+	
+	# Otherwise, normal start game
 	cleanup_ui()
 	game_node._finish_world_creation(world_data)

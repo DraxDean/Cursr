@@ -6,8 +6,8 @@ const MAIN_MENU_SCENE_PATH = "res://scenes/main/main_menu_scene.tscn"
 const GAME_SCENE_PATH = "res://scenes/main/game_scene.tscn"
 
 # Map dimensions
-const MAP_WIDTH = 80
-const MAP_HEIGHT = 50
+const MAP_WIDTH = 100
+const MAP_HEIGHT = 100
 
 # Node references
 @onready var step_title: Label = $VBoxContainer/StepTitle

@@ -2,8 +2,8 @@
 extends Node
 
 # --- Constants ---
-const MAP_WIDTH = 80
-const MAP_HEIGHT = 50
+const MAP_WIDTH = 100
+const MAP_HEIGHT = 100
 
 # --- Export Variables for Scenes ---
 @export var tree_scene: PackedScene
@@ -162,25 +162,9 @@ func _ready():
 
 func _unhandled_input(event: InputEvent):
 	if is_in_world_creation:
-		# During world creation, handle camera controls directly
-		if event is InputEventMouseButton:
-			if event.button_index == MOUSE_BUTTON_LEFT:
-				if event.pressed:
-					camera_controller.is_left_dragging = true
-					camera_controller.drag_start_mouse_pos = get_viewport().get_mouse_position()
-					camera_controller.drag_start_camera_pos = camera.position
-				else:
-					camera_controller.is_left_dragging = false
-			# Handle zoom
-			elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
-				camera.zoom *= 1.1
-				camera.zoom = camera.zoom.clamp(Vector2(0.3, 0.3), Vector2(3.0, 3.0))
-			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-				camera.zoom /= 1.1
-				camera.zoom = camera.zoom.clamp(Vector2(0.3, 0.3), Vector2(3.0, 3.0))
-		elif event is InputEventMouseMotion and camera_controller.is_left_dragging:
-			var mouse_delta = get_viewport().get_mouse_position() - camera_controller.drag_start_mouse_pos
-			camera.position = camera_controller.drag_start_camera_pos - mouse_delta
+		# During world creation, use camera controller for all input
+		if is_instance_valid(camera_controller):
+			camera_controller.handle_input(event, false)  # Not paused during world creation
 		get_viewport().set_input_as_handled()
 		return
 		
@@ -313,7 +297,8 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	_clear_and_draw_map()
 	map_object_manager.clear_objects()
 	map_object_manager.place_objects(world_data)
-	camera_controller.center_camera()
+	# Don't center camera - preserve current position from world creation
+	# camera_controller.center_camera()
 	print("Game: World creation complete, game ready.")
 
 func _cancel_world_creation():

@@ -93,16 +93,17 @@ func _clamp_camera():
 	var cam_zoom = camera_node.zoom # Use local var for clarity
 	var half_vp = viewport_rect.size / 2.0 / cam_zoom
 
-	camera_limits.position.x = half_vp.x
-	camera_limits.position.y = half_vp.y
-	camera_limits.end.x = map_pixel_width - half_vp.x
-	camera_limits.end.y = map_pixel_height - half_vp.y
+	# Allow negative coordinates for more flexible camera movement
+	camera_limits.position.x = -half_vp.x  # Allow scrolling into negative X
+	camera_limits.position.y = -half_vp.y  # Allow scrolling into negative Y
+	camera_limits.end.x = map_pixel_width + half_vp.x  # Allow scrolling past map edge
+	camera_limits.end.y = map_pixel_height + half_vp.y # Allow scrolling past map edge
 
 	var cam_pos = camera_node.position # Use local var
 	cam_pos.x = clampf(cam_pos.x, camera_limits.position.x, camera_limits.end.x)
 	cam_pos.y = clampf(cam_pos.y, camera_limits.position.y, camera_limits.end.y)
 
-	# Handle map smaller than viewport
+	# Handle map smaller than viewport - keep centered behavior for small maps
 	if map_pixel_width < viewport_rect.size.x / cam_zoom.x: cam_pos.x = map_pixel_width / 2.0
 	if map_pixel_height < viewport_rect.size.y / cam_zoom.y: cam_pos.y = map_pixel_height / 2.0
 
