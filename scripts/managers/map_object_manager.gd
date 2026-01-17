@@ -154,12 +154,27 @@ func place_building(building_data, coords):
 	print("Map Object Manager: Placing building: ", building_data, " at: ", coords);
 	var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
 	
+	# Prepare setup data with texture path
+	var setup_data = building_data.duplicate()
+	if building_data.has("texture") and building_data["texture"] is Texture2D:
+		# Convert texture to path for consistency
+		var texture_path = "res://assets/buildings/human_finshinghut.png"  # Default fallback
+		if building_data.has("id"):
+			match building_data["id"]:
+				"house":
+					texture_path = "res://assets/buildings/human_finshinghut.png"
+				"fishing_hut":
+					texture_path = "res://assets/buildings/human_finshinghut.png"
+				"town_center":
+					texture_path = "res://assets/buildings/human_finshinghut.png"
+		setup_data["texture_path"] = texture_path
+	
 	if building_scene.has_method("setup"):
-		building_scene.setup(building_data)
+		building_scene.setup(setup_data)
 	else:
 		print("ERROR: Building Scene has no setup method!")
 		
-	# Position the building at the correct location
+	# Position the building at the correct location (center of tile)
 	if is_instance_valid(tilemap_layer) and is_instance_valid(map_objects_holder):
 		var world_pos = tilemap_layer.map_to_local(coords)
 		building_scene.position = world_pos

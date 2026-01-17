@@ -130,7 +130,7 @@ func center_camera():
 func reset_drag_state():
 	is_left_dragging = false
 
-func _handle_tile_click(global_pos: Vector2):
+func _handle_tile_click(_global_pos: Vector2):
 	# Convert screen position to world position
 	var world_pos = camera_node.get_global_mouse_position()
 	# Convert world position to tile coordinates (assuming 64x64 tiles)

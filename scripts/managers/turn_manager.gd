@@ -7,7 +7,7 @@ var day_counter_label: Label
 # State
 var current_day: int = 1
 
-signal turn_computed # Optional: Emit when turn logic is done
+# signal turn_computed # Optional: Emit when turn logic is done - currently unused
 
 
 func _ready():

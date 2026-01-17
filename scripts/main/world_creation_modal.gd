@@ -127,7 +127,7 @@ func _create_world_creation_ui():
 
 func cleanup_ui():
 	# Clean up our UI elements when done
-	var ui_layer = game_node.get_node("UI_Layer")
+	var _ui_layer = game_node.get_node("UI_Layer")
 	
 	# Clean up race selection UI if it exists
 	if has_meta("race_select_ui"):
@@ -179,7 +179,7 @@ func _preview_fishing_hut(tile_pos: Vector2):
 	
 	# Position it at the center tile
 	if tilemap_layer:
-		var world_pos = tilemap_layer.map_to_local(Vector2i(tile_pos.x, tile_pos.y))
+		var world_pos = tilemap_layer.map_to_local(Vector2i(int(tile_pos.x), int(tile_pos.y)))
 		preview_sprite.position = world_pos
 		preview_sprite.z_index = 10  # Make sure it's above the tilemap
 		
@@ -191,7 +191,7 @@ func _preview_fishing_hut(tile_pos: Vector2):
 		
 	print("Town center preview placed at: ", tile_pos)
 
-func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D, ui_manager_ref: Node):
+func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D, _ui_manager_ref: Node):
 	# Keep this for compatibility but redirect to direct UI
 	setup_direct_ui(game_ref, tilemap_ref, camera_ref)
 
@@ -299,9 +299,9 @@ func _step_plains():
 func _step_mountain_peaks():
 	print("WorldCreation: Executing mountain peaks step")
 	# Place mountain objects on existing mountain terrain
-	var game_node = get_parent()
-	if game_node and game_node.has_method("get_node"):
-		var map_object_manager = game_node.get_node("MapObjectManager")
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
 		if map_object_manager and map_object_manager.has_method("place_mountains_only"):
 			map_object_manager.place_mountains_only(world_data)
 			print("WorldCreation: Mountain peaks placed")
@@ -312,9 +312,9 @@ func _step_mountain_peaks():
 func _step_ancient_forests():
 	print("WorldCreation: Executing ancient forests step")
 	# Place tree objects on existing forest terrain
-	var game_node = get_parent()
-	if game_node and game_node.has_method("get_node"):
-		var map_object_manager = game_node.get_node("MapObjectManager")
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
 		if map_object_manager and map_object_manager.has_method("place_trees_only"):
 			map_object_manager.place_trees_only(world_data)
 			print("WorldCreation: Ancient forests placed")
@@ -357,7 +357,7 @@ func _show_tile_selection_preview():
 		remove_meta("race_select_ui")
 	
 	# Automatically select center tile
-	var center_tile = Vector2(MAP_WIDTH / 2, MAP_HEIGHT / 2)
+	var center_tile = Vector2(MAP_WIDTH / 2.0, MAP_HEIGHT / 2.0)
 	world_data["starting_tile"] = center_tile
 	print("Auto-selected center tile: ", center_tile)
 	
@@ -369,7 +369,7 @@ func _center_camera_on_map():
 		# Calculate the center of the map in world coordinates
 		var map_center_x = MAP_WIDTH / 2.0
 		var map_center_y = MAP_HEIGHT / 2.0
-		var world_center = tilemap_layer.map_to_local(Vector2i(map_center_x, map_center_y))
+		var world_center = tilemap_layer.map_to_local(Vector2i(int(map_center_x), int(map_center_y)))
 		
 		camera.position = world_center
 		camera.zoom = Vector2(0.6, 0.6)  # Zoom out to see more of the map
@@ -403,16 +403,16 @@ func _on_reroll_pressed():
 		var step_data = generation_steps[current_step]
 		if step_data["action"] == "_step_mountain_peaks":
 			# Clear only mountain objects before rerolling
-			var game_node = get_parent()
-			if game_node and game_node.has_method("get_node"):
-				var map_object_manager = game_node.get_node("MapObjectManager")
+			var parent_game_node = get_parent()
+			if parent_game_node and parent_game_node.has_method("get_node"):
+				var map_object_manager = parent_game_node.get_node("MapObjectManager")
 				if map_object_manager and map_object_manager.has_method("clear_mountains_only"):
 					map_object_manager.clear_mountains_only()
 		elif step_data["action"] == "_step_ancient_forests":
 			# Clear only tree objects before rerolling
-			var game_node = get_parent()
-			if game_node and game_node.has_method("get_node"):
-				var map_object_manager = game_node.get_node("MapObjectManager")
+			var parent_game_node = get_parent()
+			if parent_game_node and parent_game_node.has_method("get_node"):
+				var map_object_manager = parent_game_node.get_node("MapObjectManager")
 				if map_object_manager and map_object_manager.has_method("clear_trees_only"):
 					map_object_manager.clear_trees_only()
 	

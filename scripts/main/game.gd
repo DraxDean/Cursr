@@ -58,25 +58,23 @@ var is_in_world_creation: bool = false
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
 
 
-func _update_building_preview(mouse_pos: Vector2):
+func _update_building_preview(_mouse_pos: Vector2):
 	# Convert screen position to world position
 	var world_pos = camera.get_global_mouse_position()
 	# Convert to tile coordinates
 	var tile_coords = tilemap_layer.local_to_map(world_pos)
-	# Convert back to world position (centers on tile)
-	var centered_world_pos = tilemap_layer.map_to_local(tile_coords)
 	
-	if building_preview_sprite:
-		building_preview_sprite.position = centered_world_pos
-	
-	if building_preview_overlay:
-		building_preview_overlay.position = centered_world_pos
-		# Check if placement is valid and update overlay color
+	if building_preview_sprite and building_preview_sprite.texture:
+		# Position at tile center (sprite centering handled by building script)
+		var tile_center_pos = tilemap_layer.map_to_local(tile_coords)
+		building_preview_sprite.position = tile_center_pos
+		
+		# Check if placement is valid and update sprite tint
 		var can_place = _can_place_building_at_tile(tile_coords)
 		if can_place:
-			building_preview_overlay.modulate = Color.GREEN
+			building_preview_sprite.modulate = Color(0.7, 1.0, 0.7, 0.7)  # Green tint
 		else:
-			building_preview_overlay.modulate = Color.RED
+			building_preview_sprite.modulate = Color(1.0, 0.7, 0.7, 0.7)  # Red tint
 
 func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
 	# Check if tile is within map bounds
@@ -95,7 +93,7 @@ func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
 	# Additional checks could be added here (terrain type, resources, etc.)
 	return true
 
-func _try_place_building(mouse_pos: Vector2):
+func _try_place_building(_mouse_pos: Vector2):
 	# Convert screen position to tile coordinates
 	var world_pos = camera.get_global_mouse_position()
 	var tile_coords = tilemap_layer.local_to_map(world_pos)
@@ -112,23 +110,31 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 	var building_texture_path = _get_building_texture_path(building_type)
 	
 	if ResourceLoader.exists(building_texture_path):
-		var building_texture = load(building_texture_path)
-		var building_sprite = Sprite2D.new()
-		building_sprite.name = "Building_" + building_type + "_" + str(tile_coords.x) + "_" + str(tile_coords.y)
-		building_sprite.texture = building_texture
+		# Create building using proper scene
+		var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
+		building_scene.name = "Building_" + building_type + "_" + str(tile_coords.x) + "_" + str(tile_coords.y)
 		
-		# Add player ownership data
-		building_sprite.set_meta("owner_player", 1)  # Player 1
-		building_sprite.set_meta("building_type", building_type)
-		building_sprite.set_meta("construction_day", turn_manager.get_day())
-		
-		# Position it at the tile location
+		# Position it at tile center (building script will handle sprite centering)
 		var world_pos = tilemap_layer.map_to_local(tile_coords)
-		building_sprite.position = world_pos
-		building_sprite.z_index = 5  # Above terrain but below UI
+		building_scene.position = world_pos
+		building_scene.z_index = 5  # Above terrain but below UI
+		
+		# Setup building with all data including texture
+		var setup_data = {
+			"type": building_type,
+			"texture_path": building_texture_path,
+			"owner_player": 1,  # Player 1
+			"building_type": building_type,
+			"construction_day": turn_manager.get_day()
+		}
+		
+		if building_scene.has_method("setup"):
+			building_scene.setup(setup_data)
+		
+		print("Game: Placing building at tile ", tile_coords, " world pos ", world_pos)
 		
 		# Add to map objects holder
-		map_objects_holder.add_child(building_sprite)
+		map_objects_holder.add_child(building_scene)
 		
 		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
 		
@@ -166,19 +172,17 @@ func _start_building_placement(building_type: String):
 		building_preview_sprite.texture = building_texture
 		building_preview_sprite.modulate = Color(1, 1, 1, 0.7)  # Semi-transparent
 		building_preview_sprite.z_index = 10  # Above everything
+		
 		add_child(building_preview_sprite)
-	
-	# Create overlay sprite using a simple colored rectangle
-	building_preview_overlay = Sprite2D.new()
-	# Create a simple white texture that we can tint
-	var overlay_texture = ImageTexture.new()
-	var overlay_image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	overlay_image.fill(Color(1, 1, 1, 0.3))  # Semi-transparent white
-	overlay_texture.set_image(overlay_image)
-	building_preview_overlay.texture = overlay_texture
-	building_preview_overlay.modulate = Color.GREEN  # Start with green
-	building_preview_overlay.z_index = 11  # Above preview
-	add_child(building_preview_overlay)
+		
+		print("Game: Building texture size: ", building_texture.get_size())
+		print("Game: Tile size: ", str(tilemap_layer.tile_set.tile_size) if tilemap_layer.tile_set else "No tileset")
+		
+		# Calculate scale to fit tile if needed
+		if tilemap_layer.tile_set:
+			var tile_size = tilemap_layer.tile_set.tile_size
+			var texture_size = building_texture.get_size()
+			print("Game: Texture vs Tile size ratio: ", texture_size.x / tile_size.x, ", ", texture_size.y / tile_size.y)
 	
 	print("Game: Started building placement mode for: ", building_type)
 
@@ -190,10 +194,6 @@ func _cancel_building_placement():
 	if building_preview_sprite:
 		building_preview_sprite.queue_free()
 		building_preview_sprite = null
-	
-	if building_preview_overlay:
-		building_preview_overlay.queue_free()
-		building_preview_overlay = null
 	
 	print("Game: Cancelled building placement mode")
 
@@ -405,7 +405,7 @@ func initialize_map():
 		map_object_manager.place_objects(world_data)
 		# Restore buildings if loading from save
 		if not loaded_buildings_data.is_empty():
-			_restore_buildings(loaded_buildings_data)
+			_restore_buildings_with_proper_centering(loaded_buildings_data)
 			loaded_buildings_data = []  # Clear after restoration
 		camera_controller.center_camera()
 		print("Game: Map ready.")
@@ -559,25 +559,30 @@ func _place_town_center_building(tile_coords: Vector2i):
 	elif selected_building == "house":
 		building_texture_path = "res://assets/buildings/human_house.png"
 	
-	# Create the building sprite
+	# Create the building using proper scene
 	if ResourceLoader.exists(building_texture_path):
-		var building_texture = load(building_texture_path)
-		var building_sprite = Sprite2D.new()
-		building_sprite.name = "TownCenter_" + str(tile_coords.x) + "_" + str(tile_coords.y)
-		building_sprite.texture = building_texture
+		var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
+		building_scene.name = "TownCenter_" + str(tile_coords.x) + "_" + str(tile_coords.y)
 		
-		# Add player ownership data
-		building_sprite.set_meta("owner_player", 1)  # Player 1
-		building_sprite.set_meta("building_type", selected_building)
-		building_sprite.set_meta("construction_day", turn_manager.get_day())
-		
-		# Position it at the tile location
+		# Position it at tile center (building script will handle sprite centering)
 		var world_pos = tilemap_layer.map_to_local(tile_coords)
-		building_sprite.position = world_pos
-		building_sprite.z_index = 5  # Above terrain but below UI
+		building_scene.position = world_pos
+		building_scene.z_index = 5  # Above terrain but below UI
+		
+		# Setup building with all data including texture
+		var setup_data = {
+			"type": selected_building,
+			"texture_path": building_texture_path,
+			"owner_player": 1,  # Player 1
+			"building_type": selected_building,
+			"construction_day": turn_manager.get_day()
+		}
+		
+		if building_scene.has_method("setup"):
+			building_scene.setup(setup_data)
 		
 		# Add to map objects holder
-		map_objects_holder.add_child(building_sprite)
+		map_objects_holder.add_child(building_scene)
 		
 		print("Game: Successfully placed ", selected_building, " at world position: ", world_pos)
 		
@@ -615,24 +620,44 @@ func _setup_game_header():
 	# Setup game footer
 	_setup_game_footer()
 
-func _restore_buildings(buildings_data: Array):
+func _restore_buildings_with_proper_centering(buildings_data: Array):
 	print("Game: Restoring ", buildings_data.size(), " buildings from save data")
+	
+	# Clear any existing buildings to avoid duplicates
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+				child.queue_free()
+	
+	# Restore each building using proper building scenes
 	for building_info in buildings_data:
 		if building_info.has("texture_path") and ResourceLoader.exists(building_info["texture_path"]):
-			var building_texture = load(building_info["texture_path"])
-			var building_sprite = Sprite2D.new()
-			building_sprite.name = building_info.get("name", "Building")
-			building_sprite.texture = building_texture
-			building_sprite.position = building_info.get("position", Vector2.ZERO)
-			building_sprite.z_index = building_info.get("z_index", 5)
+			# Create building using proper scene
+			var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
+			building_scene.name = building_info.get("name", "Building")
 			
-			# Restore ownership data
-			building_sprite.set_meta("owner_player", building_info.get("owner_player", 1))
-			building_sprite.set_meta("building_type", building_info.get("building_type", "unknown"))
-			building_sprite.set_meta("construction_day", building_info.get("construction_day", 0))
+			# Extract tile coordinates from saved position
+			var saved_pos = building_info.get("position", Vector2.ZERO)
+			var tile_coords = tilemap_layer.local_to_map(saved_pos)
 			
-			map_objects_holder.add_child(building_sprite)
-			print("Game: Restored building: ", building_sprite.name, " at position: ", building_sprite.position)
+			# Position building at tile center (building script will handle sprite centering)
+			var tile_center_pos = tilemap_layer.map_to_local(tile_coords)
+			building_scene.position = tile_center_pos
+			
+			# Setup building with all data including texture
+			var setup_data = {
+				"type": building_info.get("building_type", "unknown"),
+				"texture_path": building_info["texture_path"],
+				"owner_player": building_info.get("owner_player", 1),
+				"building_type": building_info.get("building_type", "unknown"),
+				"construction_day": building_info.get("construction_day", 0)
+			}
+			
+			if building_scene.has_method("setup"):
+				building_scene.setup(setup_data)
+			
+			building_scene.z_index = building_info.get("z_index", 5)
+			map_objects_holder.add_child(building_scene)
 		else:
 			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
 
@@ -818,10 +843,17 @@ func _execute_save() -> bool:
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
 			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+				var texture_path = ""
+				# Get texture path from the Sprite2D child if it's a building scene
+				if child.has_node("Sprite2D"):
+					var sprite = child.get_node("Sprite2D")
+					if sprite.texture:
+						texture_path = sprite.texture.resource_path
+				
 				var building_info = {
 					"name": child.name,
 					"position": child.position,
-					"texture_path": child.texture.resource_path if child.texture else "",
+					"texture_path": texture_path,
 					"z_index": child.z_index,
 					"owner_player": child.get_meta("owner_player", 1),
 					"building_type": child.get_meta("building_type", "unknown"),
