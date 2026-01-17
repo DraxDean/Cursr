@@ -3,8 +3,10 @@ extends Control
 
 # Scene path constants
 const GAME_SCENE_PATH = "res://scenes/main/game_scene.tscn" # Corrected Path
+const WORLD_CREATION_SCENE_PATH = "res://scenes/main/world_creation_scene.tscn"
 
 # Node References - Use explicit paths assuming standard setup
+@onready var continue_button: Button = $CenterContainer/VBoxContainer/ContinueButton
 @onready var new_game_button: Button = $CenterContainer/VBoxContainer/NewGameButton
 @onready var load_game_button: Button = $CenterContainer/VBoxContainer/LoadGameButton
 @onready var quit_button: Button = $CenterContainer/VBoxContainer/QuitButton
@@ -17,24 +19,43 @@ func _ready():
 		return
 
 	# Connect signals
+	if not is_instance_valid(continue_button): push_error("Node not found: VBoxContainer/ContinueButton"); return
 	if not is_instance_valid(new_game_button): push_error("Node not found: VBoxContainer/NewGameButton"); return
 	if not is_instance_valid(load_game_button): push_error("Node not found: VBoxContainer/LoadGameButton"); return
 	if not is_instance_valid(quit_button): push_error("Node not found: VBoxContainer/QuitButton"); return
 
+	continue_button.pressed.connect(_on_continue_pressed)
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	load_game_button.pressed.connect(_on_load_game_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 
-	# Disable load button if no saves exist using SaveLoadManager
-	load_game_button.disabled = not SaveLoadManager.check_saves_exist()
+	# Enable/disable buttons based on save availability
+	var saves_exist = SaveLoadManager.check_saves_exist()
+	continue_button.disabled = not saves_exist
+	load_game_button.disabled = not saves_exist
+	
+	if continue_button.disabled:
+		continue_button.tooltip_text = "No saved games found."
 	if load_game_button.disabled:
 		load_game_button.tooltip_text = "No saved games found."
 
 
+func _on_continue_pressed():
+	print("Main Menu: Continuing from last save...")
+	var most_recent_save = SaveLoadManager.get_most_recent_save()
+	if most_recent_save.is_empty():
+		push_warning("Continue pressed, but no save file found.")
+		return
+	
+	GameManager.start_mode = "load"
+	GameManager.load_file_path = most_recent_save
+	var error = get_tree().change_scene_to_file(GAME_SCENE_PATH)
+	if error != OK: push_error("Failed to change scene to %s. Error code: %d" % [GAME_SCENE_PATH, error])
+
+
 func _on_new_game_pressed():
-	print("Main Menu: Starting New Game...")
-	GameManager.start_mode = "new"
-	GameManager.load_file_path = ""
+	print("Main Menu: Starting World Creation...")
+	GameManager.start_mode = "world_creation"
 	var error = get_tree().change_scene_to_file(GAME_SCENE_PATH)
 	if error != OK: push_error("Failed to change scene to %s. Error code: %d" % [GAME_SCENE_PATH, error])
 

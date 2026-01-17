@@ -24,6 +24,10 @@ const MAP_HEIGHT = 50
 var world_data: Dictionary = {}
 var current_save_path: String = ""
 
+# World Creation System
+var world_creator: Node
+var is_in_world_creation: bool = false
+
 
 # --- Preload ---
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
@@ -75,6 +79,7 @@ func _ready():
 	var ui_nodes = { # Verify these paths carefully!
 		"open_menu_button": $UI_Layer/MenuButtonContainer/OpenMenuButton,
 		"modal_menu_panel": $UI_Layer/ModalMenuPanel,
+		"world_creation_panel": $UI_Layer/WorldCreationPanel,
 		"load_button": $UI_Layer/ModalMenuPanel/ModalButtonsVBox/LoadButton,
 		"confirmation_panel": $UI_Layer/ConfirmationPanel,
 		"confirmation_label": $UI_Layer/ConfirmationPanel/VBoxContainer/ConfirmationLabel,
@@ -156,6 +161,30 @@ func _ready():
 
 
 func _unhandled_input(event: InputEvent):
+	if is_in_world_creation:
+		# During world creation, handle camera controls directly
+		if event is InputEventMouseButton:
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				if event.pressed:
+					camera_controller.is_left_dragging = true
+					camera_controller.drag_start_mouse_pos = get_viewport().get_mouse_position()
+					camera_controller.drag_start_camera_pos = camera.position
+				else:
+					camera_controller.is_left_dragging = false
+			# Handle zoom
+			elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				camera.zoom *= 1.1
+				camera.zoom = camera.zoom.clamp(Vector2(0.3, 0.3), Vector2(3.0, 3.0))
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				camera.zoom /= 1.1
+				camera.zoom = camera.zoom.clamp(Vector2(0.3, 0.3), Vector2(3.0, 3.0))
+		elif event is InputEventMouseMotion and camera_controller.is_left_dragging:
+			var mouse_delta = get_viewport().get_mouse_position() - camera_controller.drag_start_mouse_pos
+			camera.position = camera_controller.drag_start_camera_pos - mouse_delta
+		get_viewport().set_input_as_handled()
+		return
+		
+	# Normal game input handling
 	if event.is_action_pressed("ui_cancel"):
 		if is_instance_valid(ui_manager): ui_manager.handle_escape()
 		get_viewport().set_input_as_handled(); return
@@ -173,10 +202,25 @@ func _process(delta: float):
 func initialize_map():
 	print("Game: Initializing Map..."); print("Game: Start Mode: %s" % GameManager.start_mode)
 	var success = false; var loaded_day = 1
-	if GameManager.start_mode == "new":
+	
+	if GameManager.start_mode == "world_creation":
+		print("Game: Mode: World Creation")
+		_start_world_creation_mode()
+		return  # Don't proceed with normal map initialization
+	elif GameManager.start_mode == "new":
 		print("Game: Mode: New Game"); current_save_path = ""
 		if generate_world_data(): success = true
 		else: push_error("Game: Failed to generate world data.")
+	elif GameManager.start_mode == "new_with_data":
+		print("Game: Mode: New Game with Generated Data")
+		current_save_path = ""
+		if not GameManager.generated_world_data.is_empty():
+			world_data = GameManager.generated_world_data.duplicate()
+			GameManager.generated_world_data.clear()  # Clear it after use
+			success = true
+		else:
+			push_error("Game: Generated world data is empty, falling back to normal generation")
+			if generate_world_data(): success = true
 	elif GameManager.start_mode == "load":
 		print("Game: Mode: Load Game from Path: ", GameManager.load_file_path)
 		if GameManager.load_file_path.is_empty(): push_error("Game: Load mode selected but no load_file_path provided! Starting new game."); GameManager.start_mode = "new"; initialize_map(); return
@@ -195,6 +239,101 @@ func initialize_map():
 	else: print("Game: Map initialization failed.")
 	print("Game: --- Map Initialization Finished ---")
 
+
+# --- World Creation Functions ---
+
+func _start_world_creation_mode():
+	print("Game: Starting world creation mode")
+	is_in_world_creation = true
+	
+	# Create world creator
+	var WorldCreationModal = preload("res://scripts/main/world_creation_modal.gd")
+	world_creator = WorldCreationModal.new()
+	world_creator.name = "WorldCreationModal"
+	add_child(world_creator)
+	
+	# Hide normal UI elements
+	$UI_Layer/MenuButtonContainer.hide()
+	$UI_Layer/TurnControlsContainer.hide()
+	
+	# Setup world creator with direct UI control
+	world_creator.setup_direct_ui(self, tilemap_layer, camera)
+	
+	print("Game: World creation mode active with direct UI control")
+
+func _setup_world_creation_delayed():
+	# Remove this function - not needed with direct UI approach
+	pass
+
+func _connect_world_creation_buttons():
+	# Remove this function - not needed with direct UI approach  
+	pass
+
+func _debug_print_ui_structure(node: Node, indent: int = 0):
+	# Keep this for debugging if needed
+	var indent_str = "  ".repeat(indent)
+	print("%s%s" % [indent_str, node.name])
+	for child in node.get_children():
+		_debug_print_ui_structure(child, indent + 1)
+
+# Direct button handlers that call the world creator
+func _on_world_creation_continue():
+	print("Game: Continue button pressed!")
+	if world_creator and world_creator.has_method("_on_continue_pressed"):
+		world_creator._on_continue_pressed()
+	else:
+		push_error("Game: World creator or method not found!")
+
+func _on_world_creation_back():
+	print("Game: Back button pressed!")
+	if world_creator and world_creator.has_method("_on_back_pressed"):
+		world_creator._on_back_pressed()
+	else:
+		push_error("Game: World creator or method not found!")
+
+func _finish_world_creation(generated_world_data: Dictionary):
+	print("Game: Finishing world creation")
+	is_in_world_creation = false
+	
+	# Use the generated world data
+	world_data = generated_world_data.duplicate()
+	current_save_path = ""
+	
+	# Close world creation modal
+	ui_manager.close_world_creation_modal()
+	
+	# Clean up world creator
+	if world_creator:
+		world_creator.queue_free()
+		world_creator = null
+	
+	# Proceed with normal game initialization
+	var loaded_day = 1
+	turn_manager.set_day(loaded_day)
+	_clear_and_draw_map()
+	map_object_manager.clear_objects()
+	map_object_manager.place_objects(world_data)
+	camera_controller.center_camera()
+	print("Game: World creation complete, game ready.")
+
+func _cancel_world_creation():
+	print("Game: Cancelling world creation")
+	is_in_world_creation = false
+	
+	# Clean up world creator
+	if world_creator:
+		world_creator.queue_free()
+		world_creator = null
+	
+	# Close world creation modal
+	ui_manager.close_world_creation_modal()
+	
+	# Return to main menu
+	var error = get_tree().change_scene_to_file("res://scenes/main/main_menu_scene.tscn")
+	if error != OK:
+		push_error("Failed to return to main menu. Error code: %d" % error)
+
+# --- Map Generation Functions ---
 
 func generate_world_data() -> bool:
 	print("Game: Generating world data..."); var generator = WorldGenerator.new()

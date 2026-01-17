@@ -1,0 +1,273 @@
+# scripts/main/world_creation_modal.gd
+extends Node
+
+# Constants
+const MAP_WIDTH = 80
+const MAP_HEIGHT = 50
+
+# World generation
+const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
+var generator: WorldGenerator
+var world_data: Dictionary = {}
+var step_states: Array[Dictionary] = []
+var current_step: int = 0
+var rng = RandomNumberGenerator.new()
+
+# References to game elements
+var game_node: Node
+var tilemap_layer: TileMapLayer
+var camera: Camera2D
+var ui_manager: Node
+
+# UI References
+var header_component: Node
+var footer_component: Node
+
+# Generation steps data
+var generation_steps = [
+	{
+		"title": "In the beginning...",
+		"description": "There was nothing but darkness and void.\nPress Continue to begin creation.",
+		"action": "_step_void"
+	},
+	{
+		"title": "Let there be Water",
+		"description": "The vast oceans spread across the empty world,\ncovering everything in endless blue depths.",
+		"action": "_step_water"
+	},
+	{
+		"title": "Let there be Land", 
+		"description": "From the depths rises a great continent of sand,\nbreaking the surface of the endless sea.",
+		"action": "_step_land"
+	},
+	{
+		"title": "Let there be Ice",
+		"description": "At the world's edges, eternal winter takes hold,\nfreezing the northern and southern waters.",
+		"action": "_step_ice"
+	},
+	{
+		"title": "Let there be Mountains",
+		"description": "Great peaks rise from the earth,\ntowering monuments of stone and snow.",
+		"action": "_step_mountains"
+	},
+	{
+		"title": "Let there be Forests",
+		"description": "Vast woodlands spread across the land,\nbringing life and shelter to the world.",
+		"action": "_step_forests"
+	},
+	{
+		"title": "Let there be Plains",
+		"description": "Rolling grasslands complete the world,\nperfect for civilization to take root.",
+		"action": "_step_plains"
+	}
+]
+
+func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D):
+	game_node = game_ref
+	tilemap_layer = tilemap_ref
+	camera = camera_ref
+	
+	print("WorldCreationModal: Setting up direct UI control")
+	
+	# Create our own UI elements directly in the UI_Layer
+	_create_world_creation_ui()
+	
+	# Initialize
+	rng.randomize()
+	generator = WorldGenerator.new()
+	current_step = 0
+	step_states.clear()
+	
+	# Start first step
+	_show_current_step()
+	print("WorldCreationModal: Direct UI setup complete")
+
+func _create_world_creation_ui():
+	# Get the UI layer
+	var ui_layer = game_node.get_node("UI_Layer")
+	
+	# Hide the scene-based WorldCreationPanel that has the full-screen overlay
+	var scene_panel = ui_layer.get_node_or_null("WorldCreationPanel")
+	if scene_panel:
+		scene_panel.visible = false
+	
+	# Create header component
+	var WorldCreationHeader = preload("res://scripts/main/world_creation_header.gd")
+	header_component = WorldCreationHeader.new()
+	ui_layer.add_child(header_component)
+	
+	# Create footer component  
+	var WorldCreationFooter = preload("res://scripts/main/world_creation_footer.gd")
+	footer_component = WorldCreationFooter.new()
+	ui_layer.add_child(footer_component)
+	
+	# Connect footer signals
+	footer_component.back_pressed.connect(_on_back_pressed)
+	footer_component.reset_camera_pressed.connect(_on_reset_camera_pressed)
+	footer_component.reroll_pressed.connect(_on_reroll_pressed)
+	footer_component.continue_pressed.connect(_on_continue_pressed)
+	footer_component.start_game_pressed.connect(_on_start_game_pressed)
+	
+	print("WorldCreationModal: Header/Footer components created and connected")
+
+func cleanup_ui():
+	# Clean up our UI elements when done
+	var ui_layer = game_node.get_node("UI_Layer")
+	
+	if header_component:
+		header_component.queue_free()
+		header_component = null
+	if footer_component:
+		footer_component.queue_free()
+		footer_component = null
+	
+	# Show normal UI elements again
+	game_node.get_node("UI_Layer/MenuButtonContainer").show()
+	game_node.get_node("UI_Layer/TurnControlsContainer").show()
+
+func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D, ui_manager_ref: Node):
+	# Keep this for compatibility but redirect to direct UI
+	setup_direct_ui(game_ref, tilemap_ref, camera_ref)
+
+func _show_current_step():
+	if current_step >= generation_steps.size():
+		print("WorldCreationModal: All steps completed")
+		return
+		
+	print("WorldCreationModal: Showing step %d" % current_step)
+	var step_data = generation_steps[current_step]
+	
+	# Update UI text
+	if header_component:
+		header_component.update_step(step_data["title"], step_data["description"])
+	
+	# Store current state before executing step (for rerolling)
+	if current_step < step_states.size():
+		# We're rerolling, restore previous state first
+		world_data = step_states[current_step].duplicate(true)
+	else:
+		# Store state before new step
+		step_states.append(world_data.duplicate(true))
+	
+	# Show/hide buttons based on step
+	if footer_component:
+		footer_component.reroll_button.visible = current_step > 0
+		footer_component.update_buttons_for_step(current_step, generation_steps.size())
+	
+	# Execute the step action
+	if has_method(step_data["action"]):
+		call(step_data["action"])
+	else:
+		push_error("WorldCreationModal: Step action not found: " + step_data["action"])
+
+func _step_void():
+	world_data.clear()
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_water():
+	world_data.clear()
+	generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_land():
+	if world_data.is_empty():
+		generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
+	generator._generate_continent(MAP_WIDTH, MAP_HEIGHT, world_data)
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_ice():
+	if world_data.is_empty():
+		_step_land()
+	generator._add_ice_caps(MAP_WIDTH, MAP_HEIGHT, world_data)
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_mountains():
+	if world_data.is_empty():
+		_step_ice()
+	generator._place_patches(
+		generator.NUM_MOUNTAIN_PATCHES,
+		generator.MOUNTAIN_PATCH_RADIUS_MIN, 
+		generator.MOUNTAIN_PATCH_RADIUS_MAX,
+		generator.MOUNTAIN_COORDS,
+		MAP_WIDTH, MAP_HEIGHT, world_data
+	)
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_forests():
+	if world_data.is_empty():
+		_step_mountains()
+	generator._place_patches(
+		generator.NUM_FOREST_PATCHES,
+		generator.FOREST_PATCH_RADIUS_MIN,
+		generator.FOREST_PATCH_RADIUS_MAX, 
+		generator.FOREST_COORDS,
+		MAP_WIDTH, MAP_HEIGHT, world_data
+	)
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _step_plains():
+	if world_data.is_empty():
+		_step_forests()
+	generator._place_patches(
+		generator.NUM_DESERT_PATCHES,
+		generator.DESERT_PATCH_RADIUS_MIN,
+		generator.DESERT_PATCH_RADIUS_MAX,
+		generator.GRASS_COORDS, 
+		MAP_WIDTH, MAP_HEIGHT, world_data
+	)
+	_clear_and_draw_map()
+	_center_camera_on_map()
+
+func _center_camera_on_map():
+	if camera and tilemap_layer:
+		# Calculate the center of the map in world coordinates
+		var map_center_x = MAP_WIDTH / 2.0
+		var map_center_y = MAP_HEIGHT / 2.0
+		var world_center = tilemap_layer.map_to_local(Vector2i(map_center_x, map_center_y))
+		
+		camera.position = world_center
+		camera.zoom = Vector2(0.6, 0.6)  # Zoom out to see more of the map
+		print("WorldCreation: Camera centered at: ", world_center)
+
+func _clear_and_draw_map():
+	if not is_instance_valid(tilemap_layer):
+		return
+		
+	tilemap_layer.clear()
+	
+	for coords in world_data:
+		var tile_info = world_data[coords]
+		if typeof(tile_info) == TYPE_DICTIONARY and tile_info.has("source_id") and tile_info.has("atlas_coords"):
+			tilemap_layer.set_cell(coords, tile_info["source_id"], tile_info["atlas_coords"])
+
+func _on_back_pressed():
+	print("WorldCreation: Going back to main menu")
+	cleanup_ui()
+	game_node._cancel_world_creation()
+
+func _on_reset_camera_pressed():
+	print("WorldCreation: Resetting camera view")
+	_center_camera_on_map()
+
+func _on_reroll_pressed():
+	print("WorldCreation: Rerolling step %d" % current_step)
+	_show_current_step()
+
+func _on_continue_pressed():
+	print("WorldCreationModal: Continue button pressed - current step: %d" % current_step)
+	current_step += 1
+	if current_step < step_states.size():
+		step_states.resize(current_step)
+	print("WorldCreationModal: Advanced to step: %d" % current_step)
+	_show_current_step()
+
+func _on_start_game_pressed():
+	print("WorldCreationModal: Start game button pressed")
+	cleanup_ui()
+	game_node._finish_world_creation(world_data)

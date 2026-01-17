@@ -7,10 +7,10 @@ const BORDER_SIZE = 2
 # Tile Atlas Coordinates (Assuming Source ID 0 for all)
 const SOURCE_ID = 0
 const OCEAN_COORDS = Vector2i(0, 2)
-const GRASS_COORDS = Vector2i(0, 5) # Still using 0,6 for Grass
+const DESERT_COORDS = Vector2i(0, 5) # Desert (sand) - was GRASS_COORDS
 const MOUNTAIN_COORDS = Vector2i(0, 3)
 const FOREST_COORDS = Vector2i(0, 4)
-const DESERT_COORDS = Vector2i(0, 6) # Changed from 0,6 to avoid clash with Grass
+const GRASS_COORDS = Vector2i(0, 6) # Grasslands (plains) - was DESERT_COORDS
 const ICE_COORDS = Vector2i(0, 1)
 
 # Biome generation parameters
@@ -89,7 +89,7 @@ func _generate_continent(width: int, height: int, world_data: Dictionary):
 				   y >= BORDER_SIZE and y < height - BORDER_SIZE:
 					world_data[Vector2i(x, y)] = {
 						"source_id": SOURCE_ID,
-						"atlas_coords": GRASS_COORDS
+						"atlas_coords": DESERT_COORDS
 					}
 
 
@@ -138,12 +138,22 @@ func _place_patches(num_patches: int, min_radius: int, max_radius: int, biome_co
 		var center_y = _rng.randi_range(BORDER_SIZE, height - BORDER_SIZE - 1)
 		var potential_center_coords = Vector2i(center_x, center_y)
 
-		if world_data.has(potential_center_coords) and \
-		   world_data[potential_center_coords]["atlas_coords"] == GRASS_COORDS:
-
-			var patch_radius = _rng.randi_range(min_radius, max_radius)
-			_apply_circular_patch(potential_center_coords, patch_radius, biome_coords, width, height, world_data)
-			placed_patches += 1
+		if world_data.has(potential_center_coords):
+			var current_tile = world_data[potential_center_coords]["atlas_coords"]
+			var can_place = false
+			
+			# Determine if we can place this biome at this location
+			if biome_coords == FOREST_COORDS:
+				# Forests can be placed on desert or mountains
+				can_place = (current_tile == DESERT_COORDS or current_tile == MOUNTAIN_COORDS)
+			else:
+				# Other biomes only on desert
+				can_place = (current_tile == DESERT_COORDS)
+			
+			if can_place:
+				var patch_radius = _rng.randi_range(min_radius, max_radius)
+				_apply_circular_patch(potential_center_coords, patch_radius, biome_coords, width, height, world_data)
+				placed_patches += 1
 
 
 # Helper to apply a circular patch of a specific tile
@@ -160,13 +170,20 @@ func _apply_circular_patch(center: Vector2i, radius: int, tile_coords: Vector2i,
 				if current_coords.x >= 0 and current_coords.x < width and \
 				   current_coords.y >= 0 and current_coords.y < height:
 
-					# Check if the target tile is Grass before overwriting
-					if world_data.has(current_coords) and \
-					   world_data[current_coords]["atlas_coords"] == GRASS_COORDS:
-
-						# Removed the randomness check here for simplicity,
-						# place the tile if it's land within the radius.
-						world_data[current_coords] = {
-							"source_id": SOURCE_ID,
-							"atlas_coords": tile_coords
-						}
+					# Check if the target tile is Desert or Mountain before overwriting (allow forests on mountains)
+					if world_data.has(current_coords):
+						var current_tile = world_data[current_coords]["atlas_coords"]
+						if tile_coords == FOREST_COORDS:
+							# Forests can grow on desert or mountains
+							if current_tile == DESERT_COORDS or current_tile == MOUNTAIN_COORDS:
+								world_data[current_coords] = {
+									"source_id": SOURCE_ID,
+									"atlas_coords": tile_coords
+								}
+						else:
+							# Other biomes only on desert
+							if current_tile == DESERT_COORDS:
+								world_data[current_coords] = {
+									"source_id": SOURCE_ID,
+									"atlas_coords": tile_coords
+								}

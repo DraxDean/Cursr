@@ -101,3 +101,26 @@ func check_saves_exist() -> bool:
 			file_name = dir.get_next()
 		dir.list_dir_end()
 	return save_exists
+
+# Gets the most recent save file path based on modification time
+func get_most_recent_save() -> String:
+	var dir = DirAccess.open(SAVE_DIR)
+	if not dir:
+		return ""
+	
+	var most_recent_file = ""
+	var most_recent_time = 0
+	
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".save"):
+			var full_path = SAVE_DIR.path_join(file_name)
+			var file_time = FileAccess.get_modified_time(full_path)
+			if file_time > most_recent_time:
+				most_recent_time = file_time
+				most_recent_file = full_path
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	
+	return most_recent_file

@@ -4,6 +4,7 @@ extends Node
 # Node References (Set via setup)
 var open_menu_button: Button
 var modal_menu_panel: PanelContainer
+var world_creation_panel: Control
 var load_button: Button # In main modal
 var confirmation_panel: PanelContainer
 var confirmation_label: Label
@@ -27,6 +28,7 @@ func setup(ui_nodes: Dictionary):
 	# Expects a dictionary containing references to the UI nodes
 	open_menu_button = ui_nodes.get("open_menu_button")
 	modal_menu_panel = ui_nodes.get("modal_menu_panel")
+	world_creation_panel = ui_nodes.get("world_creation_panel")
 	load_button = ui_nodes.get("load_button") # Main modal load button
 	confirmation_panel = ui_nodes.get("confirmation_panel")
 	confirmation_label = ui_nodes.get("confirmation_label")
@@ -49,6 +51,9 @@ func setup(ui_nodes: Dictionary):
 	# Initial state
 	modal_menu_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	modal_menu_panel.hide()
+	if world_creation_panel:
+		world_creation_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+		world_creation_panel.hide()
 	confirmation_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	confirmation_panel.hide()
 
@@ -102,6 +107,23 @@ func open_main_modal():
 	get_tree().paused = true
 	if is_instance_valid(open_menu_button): open_menu_button.disabled = true
 
+
+func open_world_creation_modal():
+	print("UIManager: Opening world creation modal")
+	if not is_instance_valid(world_creation_panel): 
+		push_error("UIManager: Cannot open world creation modal, panel invalid!")
+		return
+	# Hide other modals and show world creation
+	modal_menu_panel.hide()
+	confirmation_panel.hide()
+	world_creation_panel.show()
+	print("UIManager: World creation modal opened successfully")
+
+func close_world_creation_modal():
+	print("UIManager: Closing world creation modal")
+	if is_instance_valid(world_creation_panel):
+		world_creation_panel.hide()
+		print("UIManager: World creation modal closed")
 
 func close_main_modal():
 	print("UIManager: close_main_modal called.") # DEBUG

@@ -182,6 +182,80 @@ text = "Don't Save"
 layout_mode = 2
 text = "Cancel"
 
+[node name="WorldCreationPanel" type="Control" parent="UI_Layer"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="BackgroundColorRect" type="ColorRect" parent="UI_Layer/WorldCreationPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.8)
+mouse_filter = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI_Layer/WorldCreationPanel"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -200.0
+offset_right = 400.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="StepTitle" type="Label" parent="UI_Layer/WorldCreationPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "In the beginning..."
+horizontal_alignment = 1
+
+[node name="StepDescription" type="Label" parent="UI_Layer/WorldCreationPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "There was nothing but darkness and void..."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="HSeparator" type="HSeparator" parent="UI_Layer/WorldCreationPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="ButtonContainer" type="HBoxContainer" parent="UI_Layer/WorldCreationPanel/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="BackButton" type="Button" parent="UI_Layer/WorldCreationPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "Back to Menu"
+
+[node name="ResetCameraButton" type="Button" parent="UI_Layer/WorldCreationPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "Reset Camera"
+
+[node name="RerollButton" type="Button" parent="UI_Layer/WorldCreationPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "Reroll Step"
+
+[node name="ContinueButton" type="Button" parent="UI_Layer/WorldCreationPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "Continue"
+
+[node name="StartGameButton" type="Button" parent="UI_Layer/WorldCreationPanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "Start Game"
+visible = false
+
 [node name="Camera2D" type="Camera2D" parent="."]
 
 [node name="MapObjects" type="Node2D" parent="."]
