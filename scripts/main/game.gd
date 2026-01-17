@@ -23,6 +23,14 @@ const MAP_HEIGHT = 100
 # UI Components
 var game_header: Control
 
+# Info Modals
+var players_modal: Control
+var resources_modal: Control
+var buildings_modal: Control
+var population_modal: Control
+var army_modal: Control
+var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
+
 # --- Variables ---
 var world_data: Dictionary = {}
 var loaded_buildings_data: Array = []
@@ -322,7 +330,9 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	_place_starting_town_center()
 	
 	# Show game header now that the game has started
-	# Header is already visible by default
+	if game_header:
+		game_header.visible = true
+		print("Game: Game header now visible after world creation")
 	
 	# Don't center camera - preserve current position from world creation
 	# camera_controller.center_camera()
@@ -381,6 +391,11 @@ func _place_town_center_building(tile_coords: Vector2i):
 		building_sprite.name = "TownCenter_" + str(tile_coords.x) + "_" + str(tile_coords.y)
 		building_sprite.texture = building_texture
 		
+		# Add player ownership data
+		building_sprite.set_meta("owner_player", 1)  # Player 1
+		building_sprite.set_meta("building_type", selected_building)
+		building_sprite.set_meta("construction_day", turn_manager.get_day())
+		
 		# Position it at the tile location
 		var world_pos = tilemap_layer.map_to_local(tile_coords)
 		building_sprite.position = world_pos
@@ -418,6 +433,9 @@ func _setup_game_header():
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
+	
+	# Setup info modals
+	_setup_info_modals()
 
 func _restore_buildings(buildings_data: Array):
 	print("Game: Restoring ", buildings_data.size(), " buildings from save data")
@@ -430,10 +448,52 @@ func _restore_buildings(buildings_data: Array):
 			building_sprite.position = building_info.get("position", Vector2.ZERO)
 			building_sprite.z_index = building_info.get("z_index", 5)
 			
+			# Restore ownership data
+			building_sprite.set_meta("owner_player", building_info.get("owner_player", 1))
+			building_sprite.set_meta("building_type", building_info.get("building_type", "unknown"))
+			building_sprite.set_meta("construction_day", building_info.get("construction_day", 0))
+			
 			map_objects_holder.add_child(building_sprite)
 			print("Game: Restored building: ", building_sprite.name, " at position: ", building_sprite.position)
 		else:
 			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
+
+func _setup_info_modals():
+	# Create info modals with different starting positions
+	var PlayersModalScript = preload("res://scripts/ui/players_modal.gd")
+	var ResourcesModalScript = preload("res://scripts/ui/resources_modal.gd")
+	var BuildingsModalScript = preload("res://scripts/ui/buildings_modal.gd")
+	var PopulationModalScript = preload("res://scripts/ui/population_modal.gd")
+	var ArmyModalScript = preload("res://scripts/ui/army_modal.gd")
+	
+	# Calculate positions to prevent overlap
+	var base_pos = Vector2(10, 60)  # Base position under header
+	var modal_offset = Vector2(50, 50)  # Offset for each new modal
+	
+	players_modal = PlayersModalScript.new(self, base_pos)
+	resources_modal = ResourcesModalScript.new(self, base_pos + modal_offset)
+	buildings_modal = BuildingsModalScript.new(self, base_pos + modal_offset * 2)
+	population_modal = PopulationModalScript.new(self, base_pos + modal_offset * 3)
+	army_modal = ArmyModalScript.new(self, base_pos + modal_offset * 4)
+	
+	# Add modals to UI layer
+	ui_layer.add_child(players_modal)
+	ui_layer.add_child(resources_modal)
+	ui_layer.add_child(buildings_modal)
+	ui_layer.add_child(population_modal)
+	ui_layer.add_child(army_modal)
+	
+	# Connect modal close signals (optional)
+	players_modal.modal_closed.connect(_on_modal_closed)
+	resources_modal.modal_closed.connect(_on_modal_closed)
+	buildings_modal.modal_closed.connect(_on_modal_closed)
+	population_modal.modal_closed.connect(_on_modal_closed)
+	army_modal.modal_closed.connect(_on_modal_closed)
+	
+	print("Game: Info modals setup complete")
+
+func _on_modal_closed(modal_type: String):
+	print("Game: Modal closed: ", modal_type)
 
 # Header button handlers
 func _on_header_settings_pressed():
@@ -442,19 +502,24 @@ func _on_header_settings_pressed():
 		ui_manager.open_main_modal()
 
 func _on_header_players_pressed():
-	print("Players modal requested - placeholder")
+	if players_modal:
+		players_modal.toggle()
 
 func _on_header_resources_pressed():
-	print("Resources modal requested - placeholder")
+	if resources_modal:
+		resources_modal.toggle()
 
 func _on_header_buildings_pressed():
-	print("Buildings modal requested - placeholder")
+	if buildings_modal:
+		buildings_modal.toggle()
 
 func _on_header_population_pressed():
-	print("Population modal requested - placeholder")
+	if population_modal:
+		population_modal.toggle()
 
 func _on_header_army_pressed():
-	print("Army modal requested - placeholder")
+	if army_modal:
+		army_modal.toggle()
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")
@@ -523,7 +588,10 @@ func _execute_save() -> bool:
 					"name": child.name,
 					"position": child.position,
 					"texture_path": child.texture.resource_path if child.texture else "",
-					"z_index": child.z_index
+					"z_index": child.z_index,
+					"owner_player": child.get_meta("owner_player", 1),
+					"building_type": child.get_meta("building_type", "unknown"),
+					"construction_day": child.get_meta("construction_day", 0)
 				}
 				buildings_data.append(building_info)
 	
