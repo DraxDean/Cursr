@@ -20,8 +20,12 @@ const MAP_HEIGHT = 100
 @onready var map_object_manager: Node = $MapObjectManager
 @onready var turn_manager: Node = $TurnManager
 
+# UI Components
+var game_header: Control
+
 # --- Variables ---
 var world_data: Dictionary = {}
+var loaded_buildings_data: Array = []
 var current_save_path: String = ""
 
 # World Creation System
@@ -155,6 +159,9 @@ func _ready():
 
 	print("Game: Connecting signals complete.")
 
+	# --- Setup Game Header ---
+	_setup_game_header()
+
 	# --- Initialize Map ---
 	initialize_map()
 	print("game.gd: _ready finished.")
@@ -213,12 +220,20 @@ func initialize_map():
 			if not loaded_state.is_empty():
 				world_data = loaded_state["map_data"]; loaded_day = loaded_state["current_day"]
 				current_save_path = loaded_state["current_save_path"]; success = true
+				# Store buildings data for restoration after map is drawn
+				if loaded_state.has("buildings_data"):
+					loaded_buildings_data = loaded_state["buildings_data"]
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
 	if success:
 		print("Game: Map state ready. Updating managers...")
 		turn_manager.set_day(loaded_day); _clear_and_draw_map(); map_object_manager.clear_objects()
-		map_object_manager.place_objects(world_data); camera_controller.center_camera()
+		map_object_manager.place_objects(world_data)
+		# Restore buildings if loading from save
+		if not loaded_buildings_data.is_empty():
+			_restore_buildings(loaded_buildings_data)
+			loaded_buildings_data = []  # Clear after restoration
+		camera_controller.center_camera()
 		print("Game: Map ready.")
 	else: print("Game: Map initialization failed.")
 	print("Game: --- Map Initialization Finished ---")
@@ -229,6 +244,10 @@ func initialize_map():
 func _start_world_creation_mode():
 	print("Game: Starting world creation mode")
 	is_in_world_creation = true
+	
+	# Hide game header during world creation
+	if game_header:
+		game_header.visible = false
 	
 	# Create world creator
 	var WorldCreationModal = preload("res://scripts/main/world_creation_modal.gd")
@@ -302,6 +321,9 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	# Place the starting town center AFTER map objects are placed
 	_place_starting_town_center()
 	
+	# Show game header now that the game has started
+	# Header is already visible by default
+	
 	# Don't center camera - preserve current position from world creation
 	# camera_controller.center_camera()
 	print("Game: World creation complete, game ready.")
@@ -368,8 +390,71 @@ func _place_town_center_building(tile_coords: Vector2i):
 		map_objects_holder.add_child(building_sprite)
 		
 		print("Game: Successfully placed ", selected_building, " at world position: ", world_pos)
+		
+		# Auto-save after placing town center
+		print("Game: Auto-saving after town center placement...")
+		if _execute_save():
+			print("Game: Auto-save successful!")
+		else:
+			print("Game: Auto-save failed, but continuing game...")
 	else:
 		print("Warning: Could not find building texture: ", building_texture_path)
+
+func _setup_game_header():
+	# Create and setup the game header
+	var GameHeaderScript = preload("res://scripts/managers/game_header.gd")
+	game_header = GameHeaderScript.new()
+	ui_layer.add_child(game_header)
+	
+	# Header is visible by default
+	
+	# Connect header signals to existing UI manager functions
+	game_header.settings_pressed.connect(_on_header_settings_pressed)
+	game_header.players_pressed.connect(_on_header_players_pressed)
+	game_header.resources_pressed.connect(_on_header_resources_pressed)
+	game_header.buildings_pressed.connect(_on_header_buildings_pressed)
+	game_header.population_pressed.connect(_on_header_population_pressed)
+	game_header.army_pressed.connect(_on_header_army_pressed)
+	
+	# No need to update values anymore
+	print("Game: Game header created and connected")
+
+func _restore_buildings(buildings_data: Array):
+	print("Game: Restoring ", buildings_data.size(), " buildings from save data")
+	for building_info in buildings_data:
+		if building_info.has("texture_path") and ResourceLoader.exists(building_info["texture_path"]):
+			var building_texture = load(building_info["texture_path"])
+			var building_sprite = Sprite2D.new()
+			building_sprite.name = building_info.get("name", "Building")
+			building_sprite.texture = building_texture
+			building_sprite.position = building_info.get("position", Vector2.ZERO)
+			building_sprite.z_index = building_info.get("z_index", 5)
+			
+			map_objects_holder.add_child(building_sprite)
+			print("Game: Restored building: ", building_sprite.name, " at position: ", building_sprite.position)
+		else:
+			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
+
+# Header button handlers
+func _on_header_settings_pressed():
+	# Delegate to existing UI manager settings functionality
+	if ui_manager and ui_manager.has_method("open_main_modal"):
+		ui_manager.open_main_modal()
+
+func _on_header_players_pressed():
+	print("Players modal requested - placeholder")
+
+func _on_header_resources_pressed():
+	print("Resources modal requested - placeholder")
+
+func _on_header_buildings_pressed():
+	print("Buildings modal requested - placeholder")
+
+func _on_header_population_pressed():
+	print("Population modal requested - placeholder")
+
+func _on_header_army_pressed():
+	print("Army modal requested - placeholder")
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")
@@ -429,7 +514,25 @@ func _on_save_requested_from_ui(pending_action: String):
 
 
 func _execute_save() -> bool:
-	var game_state = { "map_data": world_data, "current_day": turn_manager.get_day(), "current_save_path": current_save_path }
+	# Collect building data
+	var buildings_data = []
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+				var building_info = {
+					"name": child.name,
+					"position": child.position,
+					"texture_path": child.texture.resource_path if child.texture else "",
+					"z_index": child.z_index
+				}
+				buildings_data.append(building_info)
+	
+	var game_state = { 
+		"map_data": world_data, 
+		"buildings_data": buildings_data,
+		"current_day": turn_manager.get_day(), 
+		"current_save_path": current_save_path 
+	}
 	var saved_path = SaveLoadManager.save_game(game_state, current_save_path)
 	if not saved_path.is_empty():
 		current_save_path = saved_path; return true
@@ -455,5 +558,7 @@ func _on_load_pressed():
 		world_data = loaded_state["map_data"]; current_save_path = loaded_state["current_save_path"]
 		turn_manager.set_day(loaded_state["current_day"]); _clear_and_draw_map(); map_object_manager.clear_objects()
 		map_object_manager.place_objects(world_data); camera_controller.center_camera()
+		# Header is visible by default for loaded games
 		print("Game: Loaded successfully via simple load.")
-	else: print("Game: Failed simple load.")
+	else: 
+		print("Game: Failed simple load.")
