@@ -291,15 +291,85 @@ func _finish_world_creation(generated_world_data: Dictionary):
 		world_creator.queue_free()
 		world_creator = null
 	
-	# Proceed with normal game initialization
+	# Proceed with normal game initialization first
 	var loaded_day = 1
 	turn_manager.set_day(loaded_day)
 	_clear_and_draw_map()
-	map_object_manager.clear_objects()
-	map_object_manager.place_objects(world_data)
+	# Don't clear objects - they were placed during world creation
+	# map_object_manager.clear_objects()
+	# map_object_manager.place_objects(world_data)
+	
+	# Place the starting town center AFTER map objects are placed
+	_place_starting_town_center()
+	
 	# Don't center camera - preserve current position from world creation
 	# camera_controller.center_camera()
 	print("Game: World creation complete, game ready.")
+
+func _place_starting_town_center():
+	# Get starting tile position from world data
+	if not world_data.has("starting_tile"):
+		print("Warning: No starting tile found in world data")
+		return
+		
+	var starting_tile = world_data["starting_tile"]
+	var tile_coords = Vector2i(int(starting_tile.x), int(starting_tile.y))
+	print("Game: Placing town center at tile: ", tile_coords)
+	
+	# Clear any existing terrain features at this tile
+	_clear_tile_features(tile_coords)
+	
+	# Place the town center building
+	_place_town_center_building(tile_coords)
+
+func _clear_tile_features(tile_coords: Vector2i):
+	# Remove any objects (trees, mountains) at this tile
+	if map_object_manager and map_object_manager.has_method("remove_object_at_tile"):
+		map_object_manager.remove_object_at_tile(tile_coords)
+	
+	# Clear any terrain modifiers from world_data
+	var coord_key = tile_coords
+	if world_data.has(coord_key):
+		var tile_data = world_data[coord_key]
+		if typeof(tile_data) == TYPE_DICTIONARY:
+			# Keep the base terrain but remove any modifiers
+			print("Game: Cleared features from tile: ", tile_coords)
+
+func _place_town_center_building(tile_coords: Vector2i):
+	# Get player race and building choice
+	var player_data = world_data.get("player_data", {})
+	var selected_race = player_data.get("race", "human")
+	var selected_building = player_data.get("starting_building", "town_center")
+	
+	print("Game: Placing ", selected_building, " for race ", selected_race, " at ", tile_coords)
+	
+	# Load the town center texture
+	var building_texture_path = "res://assets/buildings/human_towncentre-export.png"
+	if selected_building == "fishing_hut":
+		building_texture_path = "res://assets/buildings/human_finshinghut.png"
+	elif selected_building == "barracks":
+		building_texture_path = "res://assets/buildings/human_barracks.png"
+	elif selected_building == "house":
+		building_texture_path = "res://assets/buildings/human_house.png"
+	
+	# Create the building sprite
+	if ResourceLoader.exists(building_texture_path):
+		var building_texture = load(building_texture_path)
+		var building_sprite = Sprite2D.new()
+		building_sprite.name = "TownCenter_" + str(tile_coords.x) + "_" + str(tile_coords.y)
+		building_sprite.texture = building_texture
+		
+		# Position it at the tile location
+		var world_pos = tilemap_layer.map_to_local(tile_coords)
+		building_sprite.position = world_pos
+		building_sprite.z_index = 5  # Above terrain but below UI
+		
+		# Add to map objects holder
+		map_objects_holder.add_child(building_sprite)
+		
+		print("Game: Successfully placed ", selected_building, " at world position: ", world_pos)
+	else:
+		print("Warning: Could not find building texture: ", building_texture_path)
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")

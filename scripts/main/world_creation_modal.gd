@@ -47,12 +47,12 @@ var generation_steps = [
 	},
 	{
 		"title": "Let there be Mountains",
-		"description": "Great peaks rise from the earth,\ntowering monuments of stone and snow.",
+		"description": "Great peaks rise from the earth,\ntowering monuments of stone and snow.\nPress Continue when satisfied or Reroll to try again.",
 		"action": "_step_mountains"
 	},
 	{
 		"title": "Let there be Forests",
-		"description": "Vast woodlands spread across the land,\nbringing life and shelter to the world.",
+		"description": "Vast woodlands spread across the land,\nbringing life and shelter to the world.\nPress Continue when satisfied or Reroll to try again.",
 		"action": "_step_forests"
 	},
 	{
@@ -252,6 +252,12 @@ func _step_mountains():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
+	# Place mountain objects immediately
+	var game_node = get_parent()
+	if game_node and game_node.has_method("get_node"):
+		var map_object_manager = game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_mountains_only"):
+			map_object_manager.place_mountains_only(world_data)
 	_center_camera_on_map()
 
 func _step_forests():
@@ -265,6 +271,12 @@ func _step_forests():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
+	# Place tree objects immediately
+	var game_node = get_parent()
+	if game_node and game_node.has_method("get_node"):
+		var map_object_manager = game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_trees_only"):
+			map_object_manager.place_trees_only(world_data)
 	_center_camera_on_map()
 
 func _step_plains():

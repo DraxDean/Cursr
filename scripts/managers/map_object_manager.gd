@@ -72,6 +72,48 @@ func place_objects(world_data: Dictionary):
 
 	print("MapObjectManager: Map object placement finished.")
 
+func place_mountains_only(world_data: Dictionary):
+	print("MapObjectManager: Placing mountains only...")
+	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
+	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
+	if mountain_tile_coords == Vector2i.ZERO:
+		push_warning("MapObjectManager: Mountain tile coordinates not set up.")
+		return
+
+	for coords in world_data:
+		var tile_info = world_data[coords]
+		if typeof(tile_info) != TYPE_DICTIONARY or not tile_info.has("atlas_coords"): continue
+		var current_atlas_coords = tile_info["atlas_coords"]
+
+		# Place Mountains only
+		if current_atlas_coords == mountain_tile_coords and mountain_scene:
+			if rng.randf() < mountain_spawn_chance:
+				var y_offset = rng.randi_range(0, 4)
+				_place_single_object(mountain_scene, coords, y_offset)
+
+	print("MapObjectManager: Mountain placement finished.")
+
+func place_trees_only(world_data: Dictionary):
+	print("MapObjectManager: Placing trees only...")
+	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
+	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
+	if forest_tile_coords == Vector2i.ZERO:
+		push_warning("MapObjectManager: Forest tile coordinates not set up.")
+		return
+
+	for coords in world_data:
+		var tile_info = world_data[coords]
+		if typeof(tile_info) != TYPE_DICTIONARY or not tile_info.has("atlas_coords"): continue
+		var current_atlas_coords = tile_info["atlas_coords"]
+
+		# Place Trees only
+		if current_atlas_coords == forest_tile_coords and tree_scene:
+			if rng.randf() < tree_spawn_chance:
+				var y_offset = rng.randi_range(-12, -8)
+				_place_single_object(tree_scene, coords, y_offset)
+
+	print("MapObjectManager: Tree placement finished.")
+
 
 func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: int = 0):
 	if not scene: return
