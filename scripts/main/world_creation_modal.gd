@@ -159,13 +159,13 @@ func _on_tile_selected(tile_pos: Vector2):
 	_preview_fishing_hut(tile_pos)
 
 func _preview_fishing_hut(tile_pos: Vector2):
-	# Load and place the fishing hut sprite as a preview
-	var fishing_hut_texture = preload("res://assets/buildings/human_finshinghut.png")
+	# Load and place the town center sprite as a preview (using town center for starting building)
+	var town_center_texture = preload("res://assets/buildings/human_towncentre-export.png")
 	
 	# Create a sprite node for the preview
 	var preview_sprite = Sprite2D.new()
-	preview_sprite.name = "FishingHutPreview"
-	preview_sprite.texture = fishing_hut_texture
+	preview_sprite.name = "TownCenterPreview"
+	preview_sprite.texture = town_center_texture
 	
 	# Position it at the center tile
 	if tilemap_layer:
@@ -179,7 +179,7 @@ func _preview_fishing_hut(tile_pos: Vector2):
 		# Store reference for cleanup
 		set_meta("preview_sprite", preview_sprite)
 		
-	print("Fishing hut preview placed at: ", tile_pos)
+	print("Town center preview placed at: ", tile_pos)
 
 func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D, ui_manager_ref: Node):
 	# Keep this for compatibility but redirect to direct UI

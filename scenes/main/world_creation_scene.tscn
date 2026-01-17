@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3 uid="uid://bwx8y7h4kak2l"]
 
 [ext_resource type="Script" uid="uid://d1f2g3h4i5j6k" path="res://scripts/main/world_creation.gd" id="1_world_creation"]
-[ext_resource type="Texture2D" uid="uid://cqiaq5vf35qhu" path="res://assets/basetiles.png" id="2_basetiles"]
+[ext_resource type="Texture2D" uid="uid://h208gi60xkav" path="res://assets/hextileset-export.png" id="2_basetiles"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_preview"]
 texture = ExtResource("2_basetiles")

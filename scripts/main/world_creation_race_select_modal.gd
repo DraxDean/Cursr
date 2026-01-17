@@ -10,7 +10,7 @@ var races = {
 	"human": {
 		"name": "Human",
 		"description": "Versatile and adaptable, humans are skilled traders and diplomats. They build balanced settlements with strong economies and diverse capabilities.",
-		"buildings": ["town_hall", "market", "barracks", "farm", "blacksmith"]
+		"buildings": ["town_center", "barracks", "house", "fishing_hut"]
 	},
 	"elf": {
 		"name": "Elf",
@@ -41,7 +41,7 @@ var races = {
 
 # UI Components
 var selected_race: String = "human"
-var selected_building: String = ""
+var selected_building: String = "town_center"  # Auto-select town center
 var race_buttons: Array[Button] = []
 var race_info_container: VBoxContainer
 var building_selected_container: VBoxContainer
@@ -179,6 +179,11 @@ func _update_buildings_grid():
 		button.text = building.replace("_", " ").capitalize()
 		button.custom_minimum_size = Vector2(180, 60)
 		button.pressed.connect(_on_building_selected.bind(building))
+		
+		# Highlight town center as selected by default
+		if building == "town_center":
+			button.modulate = Color(1.2, 1.2, 0.8)  # Highlight selected
+		
 		buildings_grid.add_child(button)
 	
 	_update_selected_building_info()
@@ -196,17 +201,41 @@ func _update_selected_building_info():
 		building_selected_container.add_child(placeholder)
 		return
 	
-	# Building image placeholder
-	var image_bg = ColorRect.new()
-	image_bg.color = Color(0.2, 0.4, 0.2)
-	image_bg.custom_minimum_size = Vector2(200, 100)
-	building_selected_container.add_child(image_bg)
+	# Try to load the actual building image
+	var image_path = "res://assets/buildings/human_" + selected_building.replace("_", "") + ".png"
+	# Handle special cases for file naming
+	if selected_building == "town_center":
+		image_path = "res://assets/buildings/human_towncentre-export.png"
+	elif selected_building == "fishing_hut":
+		image_path = "res://assets/buildings/human_finshinghut.png"
 	
-	var image_label = Label.new()
-	image_label.text = selected_building.replace("_", " ").capitalize()
-	image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	building_selected_container.add_child(image_label)
+	print("Trying to load building image: ", image_path)
+	
+	# Try to load the texture
+	var building_texture = null
+	if ResourceLoader.exists(image_path):
+		building_texture = load(image_path)
+	
+	if building_texture:
+		# Create texture rect for the actual image
+		var image_rect = TextureRect.new()
+		image_rect.texture = building_texture
+		image_rect.custom_minimum_size = Vector2(200, 100)
+		image_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		building_selected_container.add_child(image_rect)
+	else:
+		# Fallback to colored background with text
+		var image_bg = ColorRect.new()
+		image_bg.color = Color(0.2, 0.4, 0.2)
+		image_bg.custom_minimum_size = Vector2(200, 100)
+		building_selected_container.add_child(image_bg)
+		
+		var fallback_label = Label.new()
+		fallback_label.text = "human-" + selected_building + "-img"
+		fallback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		fallback_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		image_bg.add_child(fallback_label)
 	
 	# Building title
 	var title_label = Label.new()
@@ -224,12 +253,23 @@ func _update_selected_building_info():
 
 func _on_race_selected(race_key: String):
 	selected_race = race_key
-	selected_building = ""  # Reset building selection
+	selected_building = "town_center"  # Auto-select town center for any race
 	_update_race_info()
 	_update_buildings_grid()
 
 func _on_building_selected(building: String):
 	selected_building = building
+	
+	# Update button highlighting
+	for child in buildings_grid.get_children():
+		if child is Button:
+			var button = child as Button
+			var button_building = button.text.to_lower().replace(" ", "_")
+			if button_building == building:
+				button.modulate = Color(1.2, 1.2, 0.8)  # Highlight selected
+			else:
+				button.modulate = Color.WHITE  # Normal color
+	
 	_update_selected_building_info()
 
 func _finish_race_selection():
