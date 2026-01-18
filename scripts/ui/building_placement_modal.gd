@@ -29,6 +29,8 @@ func refresh_content():
 		"house": "res://assets/buildings/human_house.png",
 		"barracks": "res://assets/buildings/human_barracks.png",
 		"fishing_hut": "res://assets/buildings/human_finshinghut.png",
+		"lumberjack": "res://assets/buildings/human_lumberjack.png",
+		"mine": "res://assets/buildings/human_mine.png",
 		"town_center": "res://assets/buildings/human_towncentre-export.png"
 	}
 	
@@ -108,6 +110,8 @@ func _get_building_costs(btype: String) -> Dictionary:
 		"house": {"Wood": 10, "Stone": 5},
 		"barracks": {"Wood": 10, "Stone": 5},
 		"fishing_hut": {"Wood": 12, "Stone": 3},
+		"lumberjack": {"Wood": 15, "Stone": 8},
+		"mine": {"Wood": 8, "Stone": 15},
 		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15}
 	}
 	

@@ -190,6 +190,10 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_barracks.png"
 		"fishing_hut":
 			return "res://assets/buildings/human_finshinghut.png"
+		"lumberjack":
+			return "res://assets/buildings/human_lumberjack.png"
+		"mine":
+			return "res://assets/buildings/human_mine.png"
 		"town_center":
 			return "res://assets/buildings/human_towncentre-export.png"
 		_:
@@ -206,7 +210,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "mine", "lumber_mill"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "mine", "lumberjack", "lumber_mill"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -214,7 +218,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "house", "barracks", "farm", "mine"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "house", "barracks", "farm", "mine"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type

@@ -32,6 +32,8 @@ func refresh_content():
 		{"type": "house", "name": "House", "icon": "res://assets/buildings/human_house.png"},
 		{"type": "barracks", "name": "Barracks", "icon": "res://assets/buildings/human_barracks.png"},
 		{"type": "fishing_hut", "name": "Fishing Hut", "icon": "res://assets/buildings/human_finshinghut.png"},
+		{"type": "lumberjack", "name": "Lumberjack", "icon": "res://assets/buildings/human_lumberjack.png"},
+		{"type": "mine", "name": "Mine", "icon": "res://assets/buildings/human_mine.png"},
 		{"type": "town_center", "name": "Town Center", "icon": "res://assets/buildings/human_towncentre-export.png"}
 	]
 	
