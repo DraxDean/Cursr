@@ -175,6 +175,10 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			"worker_occupancy": 0   # Start with no occupancy
 		}
 		
+		# Add farm-specific state if it's a farm
+		if building_type == "farm":
+			setup_data["farm_state"] = "tilled"  # Start in tilled state
+		
 		if building_scene.has_method("setup"):
 			building_scene.setup(setup_data)
 		
@@ -221,6 +225,10 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_stoneworker.png"
 		"town_center":
 			return "res://assets/buildings/human_towncentre-export.png"
+		"farmhouse":
+			return "res://assets/buildings/human_farmhouse.png"
+		"farm":
+			return "res://assets/buildings/human_farm_tilled.png"  # Start with tilled state
 		_:
 			return "res://assets/buildings/human_towncentre-export.png"
 
@@ -235,7 +243,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "stoneworker", "lumberjack", "lumber_mill"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "lumber_mill"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -243,7 +251,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "house", "barracks", "farm"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "house", "barracks", "farm", "farmhouse"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type

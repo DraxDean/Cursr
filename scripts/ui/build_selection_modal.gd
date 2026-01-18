@@ -34,7 +34,9 @@ func refresh_content():
 		{"type": "fishing_hut", "name": "Fishing Hut", "icon": "res://assets/buildings/human_finshinghut.png"},
 		{"type": "lumberjack", "name": "Lumberjack", "icon": "res://assets/buildings/human_lumberjack.png"},
 		{"type": "stoneworker", "name": "Stoneworker", "icon": "res://assets/buildings/human_stoneworker.png"},
-		{"type": "town_center", "name": "Town Center", "icon": "res://assets/buildings/human_towncentre-export.png"}
+		{"type": "town_center", "name": "Town Center", "icon": "res://assets/buildings/human_towncentre-export.png"},
+		{"type": "farmhouse", "name": "Farmhouse", "icon": "res://assets/buildings/human_farmhouse.png"},
+		{"type": "farm", "name": "Farm", "icon": "res://assets/buildings/human_farm_tilled.png"}
 	]
 	
 	for building in buildings:
@@ -115,7 +117,9 @@ func _on_confirm_building():
 			{"type": "house", "name": "House"},
 			{"type": "barracks", "name": "Barracks"},
 			{"type": "fishing_hut", "name": "Fishing Hut"},
-			{"type": "town_center", "name": "Town Center"}
+			{"type": "town_center", "name": "Town Center"},
+			{"type": "farmhouse", "name": "Farmhouse"},
+			{"type": "farm", "name": "Farm"}
 		]
 		
 		for building in buildings:

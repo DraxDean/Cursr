@@ -25,18 +25,11 @@ func refresh_content():
 	add_content_child(info_label)
 	
 	# Building image (if available)
-	var building_icons = {
-		"house": "res://assets/buildings/human_house.png",
-		"barracks": "res://assets/buildings/human_barracks.png",
-		"fishing_hut": "res://assets/buildings/human_finshinghut.png",
-		"lumberjack": "res://assets/buildings/human_lumberjack.png",
-		"stoneworker": "res://assets/buildings/human_stoneworker.png",
-		"town_center": "res://assets/buildings/human_towncentre-export.png"
-	}
+	var icon_path = _get_building_icon(building_type)
 	
-	if building_type in building_icons and ResourceLoader.exists(building_icons[building_type]):
+	if icon_path != "" and ResourceLoader.exists(icon_path):
 		var texture_rect = TextureRect.new()
-		texture_rect.texture = load(building_icons[building_type])
+		texture_rect.texture = load(icon_path)
 		texture_rect.custom_minimum_size = Vector2(64, 64)
 		texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		add_content_child(texture_rect)
@@ -112,10 +105,26 @@ func _get_building_costs(btype: String) -> Dictionary:
 		"fishing_hut": {"Wood": 12, "Stone": 3, "Labor": 60},
 		"lumberjack": {"Wood": 15, "Stone": 8, "Labor": 80},
 		"stoneworker": {"Wood": 8, "Stone": 15, "Labor": 150},
-		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15, "Labor": 300}
+		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15, "Labor": 300},
+		"farmhouse": {"Wood": 15},
+		"farm": {"Wood": 10}
 	}
 	
 	return costs.get(btype, {"Wood": 10, "Labor": 100})
+
+func _get_building_icon(building_type: String) -> String:
+	# Return appropriate icon path for building type
+	var building_icons = {
+		"house": "res://assets/buildings/human_house.png",
+		"barracks": "res://assets/buildings/human_barracks.png",
+		"fishing_hut": "res://assets/buildings/human_finshinghut.png",
+		"lumberjack": "res://assets/buildings/human_lumberjack.png",
+		"stoneworker": "res://assets/buildings/human_stoneworker.png",
+		"town_center": "res://assets/buildings/human_towncentre-export.png",
+		"farmhouse": "res://assets/buildings/human_farmhouse.png",
+		"farm": "res://assets/buildings/human_farm_tilled.png"  # Default farm state
+	}
+	return building_icons.get(building_type, "")
 
 func _get_available_resources(resource: String) -> int:
 	# Placeholder resource amounts (would connect to actual resource system)

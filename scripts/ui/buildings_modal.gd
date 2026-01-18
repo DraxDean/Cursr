@@ -91,6 +91,10 @@ func _get_building_type(building_name: String) -> String:
 		return "barracks"
 	elif building_name.contains("FishingHut"):
 		return "fishing_hut"
+	elif building_name.contains("Farmhouse"):
+		return "farmhouse"
+	elif building_name.contains("Farm"):
+		return "farm"
 	else:
 		return "unknown_building"
 
@@ -104,5 +108,9 @@ func _get_building_icon(building_type: String) -> String:
 			return "⚔️"
 		"fishing_hut":
 			return "🎣"
+		"farmhouse":
+			return "🏘️"
+		"farm":
+			return "🌾"
 		_:
 			return "🏗️"

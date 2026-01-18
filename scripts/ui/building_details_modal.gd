@@ -233,7 +233,7 @@ func _create_actions_section() -> Control:
 		train_button.text = "Train Units"
 		train_button.pressed.connect(_on_train_units_pressed)
 		actions_container.add_child(train_button)
-	elif building_type in ["fishing_hut", "farm", "stoneworker", "lumberjack", "lumber_mill"]:
+	elif building_type in ["fishing_hut", "stoneworker", "lumberjack", "lumber_mill"]:
 		var collect_button = Button.new()
 		collect_button.text = "Collect Resources"
 		collect_button.pressed.connect(_on_collect_resources_pressed)
@@ -347,9 +347,9 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	var connection_rules = {
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
-		"town_center": ["house", "barracks", "fishing_hut", "farm", "stoneworker", "lumber_mill", "lumberjack"],
+		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
 		"fishing_hut": ["town_center"],
-		"farm": ["town_center"],
+		"farmhouse": ["town_center", "house", "farm"],
 		"stoneworker": ["house", "town_center", "mountain"],
 		"lumberjack": ["house", "town_center", "tree"],
 		"lumber_mill": ["town_center", "tree"]
@@ -661,6 +661,7 @@ func _redraw_connections():
 		"barracks": Color.CRIMSON,
 		"fishing_hut": Color.AQUA,
 		"farm": Color.LIME_GREEN,
+		"farmhouse": Color.YELLOW_GREEN,
 		"stoneworker": Color.SILVER,
 		"lumberjack": Color.DARK_GREEN,
 		"lumber_mill": Color.SADDLE_BROWN,
@@ -1002,6 +1003,8 @@ func _get_building_display_name(building_type: String) -> String:
 			return "Barracks"
 		"farm":
 			return "Farm"
+		"farmhouse":
+			return "Farmhouse"
 		"stoneworker":
 			return "Stoneworker"
 		"lumberjack":
@@ -1030,6 +1033,8 @@ func _get_building_production() -> String:
 			var base_food = 3
 			var bonus = max(0, (days_active / 15))
 			return "+" + str(base_food + bonus) + " Food/turn"
+		"farmhouse":
+			return "Manages farm operations (+6 worker capacity)"
 		"stoneworker":
 			var base_stone = 2
 			var bonus = max(0, (days_active / 20))
@@ -1058,6 +1063,8 @@ func _get_building_maintenance() -> String:
 			return "3 Gold/turn"
 		"farm":
 			return "1.5 Gold/turn"
+		"farmhouse":
+			return "0.8 Gold/turn"
 		"stoneworker":
 			return "2 Gold/turn"
 		"lumberjack":
@@ -1099,8 +1106,8 @@ func _get_worker_capacity(building_type: String) -> int:
 			return 10
 		"lumber_mill":
 			return 10
-		"farm":
-			return 10
+		"farmhouse":
+			return 6  # Agricultural workers
 		"fishing_hut":
 			return 5  # Fishing employs 5 labourers
 		_:
@@ -1114,6 +1121,8 @@ func _get_special_effects(building_type: String) -> String:
 			return "Military training, +10% unit combat effectiveness"
 		"fishing_hut":
 			return "Must be near water"
+		"farmhouse":
+			return "Agricultural center, manages nearby farms"
 		"stoneworker":
 			return "Must be near stone deposits"
 		"lumberjack":
