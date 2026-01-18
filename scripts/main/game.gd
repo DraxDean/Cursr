@@ -35,6 +35,7 @@ var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 # Building System
 var is_placing_building: bool = false
 var building_to_place: String = ""
+var building_placement_build_more: bool = false  # Track if in continuous building mode
 var building_preview_sprite: Sprite2D
 var building_preview_overlay: Sprite2D
 var preview_green_texture: Texture2D
@@ -142,7 +143,10 @@ func _try_place_building(_mouse_pos: Vector2):
 	if _can_place_building_at_tile(tile_coords):
 		# Place the actual building
 		_place_building_at_tile(tile_coords, building_to_place)
-		_cancel_building_placement()
+		# Only cancel placement if not in build more mode
+		if not building_placement_build_more:
+			_cancel_building_placement()
+		# If in build more mode, placement continues with same preview
 	else:
 		print("Cannot place building at this location")
 
@@ -648,6 +652,7 @@ func _start_building_placement(building_type: String):
 func _cancel_building_placement():
 	is_placing_building = false
 	building_to_place = ""
+	building_placement_build_more = false  # Reset build more mode
 	
 	# Clean up preview sprites
 	if building_preview_sprite:
@@ -1473,15 +1478,24 @@ func _open_building_placement_modal(building_type: String, building_name: String
 	building_placement_modal = PlacementScript.new(self, building_type, building_name, Vector2(300, 150))
 	ui_layer.add_child(building_placement_modal)
 	
-	# Connect placement signals
-	building_placement_modal.place_building_confirmed.connect(_on_building_placement_confirmed.bind(building_type))
+	# Connect placement signals  
+	building_placement_modal.place_building_confirmed.connect(_on_building_placement_confirmed_with_type.bind(building_type))
 	building_placement_modal.placement_cancelled.connect(_on_building_placement_cancelled)
 	
 	# Show the modal
 	building_placement_modal.toggle()
 
-func _on_building_placement_confirmed(building_type: String):
-	print("Game: Building placement confirmed for: ", building_type)
+func _on_building_placement_confirmed_with_type(build_more: bool, building_type: String):
+	print("Game: Building placement confirmed for: ", building_type, " build_more: ", build_more)
+	# Store the build_more state for use after placement
+	building_placement_build_more = build_more
+	# Start building placement preview mode
+	_start_building_placement(building_type)
+
+func _on_building_placement_confirmed(building_type: String, build_more: bool = false):
+	print("Game: Building placement confirmed for: ", building_type, " build_more: ", build_more)
+	# Store the build_more state for use after placement
+	building_placement_build_more = build_more
 	# Start building placement preview mode
 	_start_building_placement(building_type)
 

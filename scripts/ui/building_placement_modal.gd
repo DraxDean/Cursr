@@ -4,8 +4,9 @@ extends "res://scripts/ui/info_modal.gd"
 var game_ref: Node
 var building_type: String
 var building_name: String
+var build_more_mode: bool = false  # Track if user wants to keep building
 
-signal place_building_confirmed
+signal place_building_confirmed(build_more: bool)
 signal placement_cancelled
 
 func _init(game_reference: Node, btype: String, bname: String, start_position: Vector2 = Vector2.ZERO):
@@ -71,6 +72,22 @@ func refresh_content():
 	# Add separator
 	var separator = HSeparator.new()
 	add_content_child(separator)
+	
+	# Build More checkbox
+	var build_more_container = HBoxContainer.new()
+	add_content_child(build_more_container)
+	
+	var build_more_checkbox = CheckBox.new()
+	build_more_checkbox.text = "Build More"
+	build_more_checkbox.button_pressed = build_more_mode
+	build_more_checkbox.toggled.connect(_on_build_more_toggled)
+	build_more_container.add_child(build_more_checkbox)
+	
+	var build_more_label = Label.new()
+	build_more_label.text = "Keep modal open after building"
+	build_more_label.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+	build_more_label.add_theme_font_size_override("font_size", 10)
+	build_more_container.add_child(build_more_label)
 	
 	# Action buttons
 	var button_container = HBoxContainer.new()
@@ -148,8 +165,14 @@ func _can_afford_building(btype: String) -> bool:
 	return true
 
 func _on_place_confirmed():
-	place_building_confirmed.emit()
-	close_modal()
+	place_building_confirmed.emit(build_more_mode)
+	# Only close modal if not in build more mode
+	if not build_more_mode:
+		close_modal()
+
+func _on_build_more_toggled(pressed: bool):
+	build_more_mode = pressed
+	print("Build more mode: ", build_more_mode)
 
 func _on_placement_cancelled():
 	placement_cancelled.emit()
