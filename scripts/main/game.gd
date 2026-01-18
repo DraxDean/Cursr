@@ -43,11 +43,36 @@ var preview_red_texture: Texture2D
 # Building Modals
 var build_selection_modal: Control
 var building_placement_modal: Control
+var building_details_modal: Control
+
+# Building Selection System
+var selected_building: Node2D = null
+var highlighted_building: Node2D = null
+var building_outline_material: ShaderMaterial
+var building_counter: Dictionary = {}  # Track building counts for unique IDs
 
 # --- Variables ---
 var world_data: Dictionary = {}
 var loaded_buildings_data: Array = []
 var current_save_path: String = ""
+
+# Player Data Structure
+var players_data: Dictionary = {
+	1: {
+		"name": "Player 1",
+		"race": "human",
+		"buildings": [],  # Array of building names owned by this player
+		"resources": {
+			"gold": 100,
+			"food": 50,
+			"wood": 25
+		},
+		"population": {
+			"current": 1,
+			"max": 10
+		}
+	}
+}
 
 # World Creation System
 var world_creator: Node
@@ -85,7 +110,7 @@ func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
 	# Check if there's already a building at this location
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
-			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+			if _is_building_node(child):
 				var building_tile = tilemap_layer.local_to_map(child.position)
 				if building_tile == tile_coords:
 					return false
@@ -110,9 +135,13 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 	var building_texture_path = _get_building_texture_path(building_type)
 	
 	if ResourceLoader.exists(building_texture_path):
+		# Generate unique building name
+		var building_id = _get_next_building_id(building_type)
+		var building_name = building_type + str(building_id)
+		
 		# Create building using proper scene
 		var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
-		building_scene.name = "Building_" + building_type + "_" + str(tile_coords.x) + "_" + str(tile_coords.y)
+		building_scene.name = building_name
 		
 		# Position it at tile center (building script will handle sprite centering)
 		var world_pos = tilemap_layer.map_to_local(tile_coords)
@@ -135,6 +164,12 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		
 		# Add to map objects holder
 		map_objects_holder.add_child(building_scene)
+		
+		# Add building to player's buildings list
+		var owner_player = setup_data.get("owner_player", 1)
+		if players_data.has(owner_player):
+			players_data[owner_player]["buildings"].append(building_name)
+			print("Game: Added building ", building_name, " to player ", owner_player, " buildings list")
 		
 		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
 		
@@ -160,7 +195,139 @@ func _get_building_texture_path(building_type: String) -> String:
 		_:
 			return "res://assets/buildings/human_towncentre-export.png"
 
+func _get_next_building_id(building_type: String) -> int:
+	# Initialize counter for this building type if it doesn't exist
+	if not building_counter.has(building_type):
+		building_counter[building_type] = 0
+	
+	# Increment and return the next ID
+	building_counter[building_type] += 1
+	return building_counter[building_type]
+
+func _is_building_node(node: Node) -> bool:
+	# Check if node is a building by looking for common building types in the name
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "mine", "lumber_mill"]
+	for building_type in building_types:
+		if node.name.begins_with(building_type):
+			return true
+	return false
+
+func _extract_building_type_from_name(building_name: String) -> String:
+	# Extract building type from name (e.g., "house1" -> "house")
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "house", "barracks", "farm", "mine"]  # Order matters - check longer names first
+	for building_type in building_types:
+		if building_name.begins_with(building_type):
+			return building_type
+	return "unknown"
+
+func get_player_buildings(player_id: int) -> Array:
+	# Get list of building names owned by a player
+	if players_data.has(player_id):
+		return players_data[player_id]["buildings"].duplicate()
+	return []
+
+func get_player_building_nodes(player_id: int) -> Array:
+	# Get actual building nodes owned by a player
+	var player_buildings = get_player_buildings(player_id)
+	var building_nodes = []
+	
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if _is_building_node(child) and child.name in player_buildings:
+				building_nodes.append(child)
+	
+	return building_nodes
+
+func remove_building_from_player(building_name: String, player_id: int):
+	# Remove building from player's buildings list (for destruction, etc.)
+	if players_data.has(player_id):
+		var buildings = players_data[player_id]["buildings"]
+		var index = buildings.find(building_name)
+		if index >= 0:
+			buildings.remove_at(index)
+			print("Game: Removed building ", building_name, " from player ", player_id, " buildings list")
+
+func debug_print_all_buildings():
+	# Debug function to print all buildings and their status
+	print("=== BUILDING DEBUG INFO ===")
+	print("Player 1 buildings list: ", players_data.get(1, {}).get("buildings", []))
+	
+	if map_objects_holder:
+		print("All objects in map_objects_holder:")
+		for child in map_objects_holder.get_children():
+			print("  - Name: ", child.name, " | Is Building: ", _is_building_node(child))
+			if _is_building_node(child):
+				var building_type = _extract_building_type_from_name(child.name)
+				print("    Type: ", building_type, " | Position: ", child.position)
+	
+	print("Building counters: ", building_counter)
+	print("===========================")
+
+func migrate_old_building_names():
+	# Migrate buildings with old coordinate-based names to new system
+	print("Game: Checking for buildings with old naming system...")
+	
+	var buildings_to_migrate = []
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			var old_name = child.name
+			# Check if this is an old-style building name
+			if old_name.begins_with("TownCenter_") or old_name.begins_with("Building_"):
+				buildings_to_migrate.append(child)
+	
+	if buildings_to_migrate.size() > 0:
+		print("Game: Found ", buildings_to_migrate.size(), " buildings with old names, migrating...")
+		
+		# Clear player buildings list and rebuild
+		if players_data.has(1):
+			players_data[1]["buildings"].clear()
+		
+		for building in buildings_to_migrate:
+			var old_name = building.name
+			var building_type = "unknown"
+			
+			# Extract type from old naming system
+			if old_name.begins_with("TownCenter_"):
+				building_type = "town_center"
+			elif old_name.contains("House"):
+				building_type = "house"
+			elif old_name.contains("Barracks"):
+				building_type = "barracks"
+			elif old_name.contains("FishingHut"):
+				building_type = "fishing_hut"
+			elif old_name.contains("Building_house"):
+				building_type = "house"
+			elif old_name.contains("Building_barracks"):
+				building_type = "barracks"
+			elif old_name.contains("Building_fishing_hut"):
+				building_type = "fishing_hut"
+			else:
+				print("Warning: Could not determine building type for: ", old_name)
+				continue
+			
+			# Generate new name
+			var building_id = _get_next_building_id(building_type)
+			var new_name = building_type + str(building_id)
+			
+			# Update building name
+			building.name = new_name
+			
+			# Add to player's buildings list
+			if players_data.has(1):
+				players_data[1]["buildings"].append(new_name)
+			
+			print("Game: Migrated building: ", old_name, " -> ", new_name)
+		
+		print("Game: Migration complete, auto-saving...")
+		_execute_save()
+	else:
+		print("Game: No buildings need migration")
+
 func _start_building_placement(building_type: String):
+	# Clear any existing building selection
+	_clear_building_selection()
+	_clear_building_highlight()
+	
 	is_placing_building = true
 	building_to_place = building_type
 	
@@ -197,7 +364,118 @@ func _cancel_building_placement():
 	
 	print("Game: Cancelled building placement mode")
 
+func _update_building_hover(_mouse_pos: Vector2):
+	# Convert screen position to world position
+	var world_pos = camera.get_global_mouse_position()
+	var building = _get_building_at_position(world_pos)
+	
+	# Update highlighting
+	if highlighted_building != building:
+		_clear_building_highlight()
+		if building:
+			_highlight_building(building)
+		highlighted_building = building
+
+func _try_select_building(_mouse_pos: Vector2):
+	# Convert screen position to world position
+	var world_pos = camera.get_global_mouse_position()
+	var building = _get_building_at_position(world_pos)
+	
+	if building:
+		_select_building(building)
+	else:
+		_clear_building_selection()
+
+func _get_building_at_position(world_pos: Vector2) -> Node2D:
+	if not map_objects_holder:
+		return null
+	
+	# Check all buildings to see if mouse is over them
+	for child in map_objects_holder.get_children():
+		if _is_building_node(child):
+			# Get building sprite bounds
+			var sprite_node = null
+			if child.has_node("Sprite2D"):
+				sprite_node = child.get_node("Sprite2D")
+			
+			if sprite_node and sprite_node.texture:
+				var building_pos = child.position
+				var sprite_offset = sprite_node.position
+				var texture_size = sprite_node.texture.get_size()
+				
+				# Calculate actual sprite bounds
+				var sprite_world_pos = building_pos + sprite_offset
+				var half_size = texture_size / 2.0
+				var bounds = Rect2(sprite_world_pos - half_size, texture_size)
+				
+				if bounds.has_point(world_pos):
+					return child
+	
+	return null
+
+func _highlight_building(building: Node2D):
+	if building and building.has_node("Sprite2D"):
+		var sprite = building.get_node("Sprite2D")
+		sprite.modulate = Color(1.2, 1.2, 1.0, 1.0)  # Slight yellow tint
+
+func _clear_building_highlight():
+	if highlighted_building and highlighted_building.has_node("Sprite2D"):
+		var sprite = highlighted_building.get_node("Sprite2D")
+		sprite.modulate = Color.WHITE
+
+func _select_building(building: Node2D):
+	_clear_building_selection()
+	selected_building = building
+	
+	# Add selection indicator (stronger highlight)
+	if building.has_node("Sprite2D"):
+		var sprite = building.get_node("Sprite2D")
+		sprite.modulate = Color(1.0, 1.5, 1.0, 1.0)  # Green tint for selection
+	
+	# Open building details modal
+	_open_building_details_modal(building)
+
+func _clear_building_selection():
+	if selected_building and selected_building.has_node("Sprite2D"):
+		var sprite = selected_building.get_node("Sprite2D")
+		sprite.modulate = Color.WHITE
+	selected_building = null
+
+func _open_building_details_modal(building: Node2D):
+	# Close existing modal if open
+	if building_details_modal:
+		building_details_modal.queue_free()
+	
+	# Create new building details modal properly
+	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
+	building_details_modal = BuildingDetailsModalScript.new()
+	
+	print("Game: Created building details modal: ", building_details_modal)
+	
+	# Add to UI layer first so it can get proper positioning
+	ui_layer.add_child(building_details_modal)
+	
+	print("Game: Added modal to UI layer, calling setup...")
+	
+	# Then setup the building details
+	building_details_modal.setup_building_details(building)
+	
+	# Connect close signal
+	building_details_modal.close_requested.connect(_on_building_details_closed)
+	
+	print("Game: Building details modal setup complete")
+
+func _on_building_details_closed():
+	_clear_building_selection()
+	building_details_modal = null
+
 func _unhandled_input(event: InputEvent):
+	# Debug key for building info
+	if event.is_action_pressed("ui_accept") and Input.is_action_pressed("ui_cancel"):
+		debug_print_all_buildings()
+		get_viewport().set_input_as_handled()
+		return
+	
 	# Handle building placement mode first
 	if is_placing_building:
 		if event is InputEventMouseMotion:
@@ -220,6 +498,13 @@ func _unhandled_input(event: InputEvent):
 	if event.is_action_pressed("ui_cancel"):
 		if is_instance_valid(ui_manager): ui_manager.handle_escape()
 		get_viewport().set_input_as_handled(); return
+	
+	# Handle building selection
+	if event is InputEventMouseMotion:
+		_update_building_hover(event.position)
+	elif event is InputEventMouseButton:
+		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_try_select_building(event.position)
 
 	if is_instance_valid(camera_controller):
 		camera_controller.handle_input(event, get_tree().paused)
@@ -397,6 +682,10 @@ func initialize_map():
 				# Store buildings data for restoration after map is drawn
 				if loaded_state.has("buildings_data"):
 					loaded_buildings_data = loaded_state["buildings_data"]
+				# Restore player data if available
+				if loaded_state.has("players_data"):
+					players_data = loaded_state["players_data"]
+					print("Game: Restored player data for ", players_data.size(), " players")
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
 	if success:
@@ -407,6 +696,10 @@ func initialize_map():
 		if not loaded_buildings_data.is_empty():
 			_restore_buildings_with_proper_centering(loaded_buildings_data)
 			loaded_buildings_data = []  # Clear after restoration
+		
+		# Migrate any old building names to new system
+		migrate_old_building_names()
+		
 		camera_controller.center_camera()
 		print("Game: Map ready.")
 	else: print("Game: Map initialization failed.")
@@ -499,6 +792,9 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	# Place the starting town center AFTER map objects are placed
 	_place_starting_town_center()
 	
+	# Migrate any buildings with old naming (in case they were created during world creation)
+	migrate_old_building_names()
+	
 	# Show game header now that the game has started
 	if game_header:
 		game_header.visible = true
@@ -546,23 +842,27 @@ func _place_town_center_building(tile_coords: Vector2i):
 	# Get player race and building choice
 	var player_data = world_data.get("player_data", {})
 	var selected_race = player_data.get("race", "human")
-	var selected_building = player_data.get("starting_building", "town_center")
+	var starting_building = player_data.get("starting_building", "town_center")
 	
-	print("Game: Placing ", selected_building, " for race ", selected_race, " at ", tile_coords)
+	print("Game: Placing ", starting_building, " for race ", selected_race, " at ", tile_coords)
 	
 	# Load the town center texture
 	var building_texture_path = "res://assets/buildings/human_towncentre-export.png"
-	if selected_building == "fishing_hut":
+	if starting_building == "fishing_hut":
 		building_texture_path = "res://assets/buildings/human_finshinghut.png"
-	elif selected_building == "barracks":
+	elif starting_building == "barracks":
 		building_texture_path = "res://assets/buildings/human_barracks.png"
-	elif selected_building == "house":
+	elif starting_building == "house":
 		building_texture_path = "res://assets/buildings/human_house.png"
 	
 	# Create the building using proper scene
 	if ResourceLoader.exists(building_texture_path):
+		# Generate unique building name (town centers are special)
+		var building_id = _get_next_building_id("town_center")
+		var building_name = "town_center" + str(building_id)
+		
 		var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
-		building_scene.name = "TownCenter_" + str(tile_coords.x) + "_" + str(tile_coords.y)
+		building_scene.name = building_name
 		
 		# Position it at tile center (building script will handle sprite centering)
 		var world_pos = tilemap_layer.map_to_local(tile_coords)
@@ -571,10 +871,10 @@ func _place_town_center_building(tile_coords: Vector2i):
 		
 		# Setup building with all data including texture
 		var setup_data = {
-			"type": selected_building,
+			"type": starting_building,
 			"texture_path": building_texture_path,
 			"owner_player": 1,  # Player 1
-			"building_type": selected_building,
+			"building_type": starting_building,
 			"construction_day": turn_manager.get_day()
 		}
 		
@@ -584,7 +884,13 @@ func _place_town_center_building(tile_coords: Vector2i):
 		# Add to map objects holder
 		map_objects_holder.add_child(building_scene)
 		
-		print("Game: Successfully placed ", selected_building, " at world position: ", world_pos)
+		# Add building to player's buildings list
+		var owner_player = setup_data.get("owner_player", 1)
+		if players_data.has(owner_player):
+			players_data[owner_player]["buildings"].append(building_name)
+			print("Game: Added town center ", building_name, " to player ", owner_player, " buildings list")
+		
+		print("Game: Successfully placed ", starting_building, " at world position: ", world_pos)
 		
 		# Auto-save after placing town center
 		print("Game: Auto-saving after town center placement...")
@@ -626,15 +932,31 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 	# Clear any existing buildings to avoid duplicates
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
-			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+			if _is_building_node(child):
 				child.queue_free()
+	
+	# Reset building counters and rebuild them from saved data
+	building_counter.clear()
+	
+	# Clear and rebuild player building lists
+	for player_id in players_data:
+		players_data[player_id]["buildings"].clear()
 	
 	# Restore each building using proper building scenes
 	for building_info in buildings_data:
 		if building_info.has("texture_path") and ResourceLoader.exists(building_info["texture_path"]):
+			# Extract building type from saved building type or derive from name
+			var building_type = building_info.get("building_type", "unknown")
+			if building_type == "unknown":
+				building_type = _extract_building_type_from_name(building_info.get("name", ""))
+			
+			# Generate proper building name and update counter
+			var building_id = _get_next_building_id(building_type)
+			var building_name = building_type + str(building_id)
+			
 			# Create building using proper scene
 			var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
-			building_scene.name = building_info.get("name", "Building")
+			building_scene.name = building_name
 			
 			# Extract tile coordinates from saved position
 			var saved_pos = building_info.get("position", Vector2.ZERO)
@@ -646,10 +968,10 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			
 			# Setup building with all data including texture
 			var setup_data = {
-				"type": building_info.get("building_type", "unknown"),
+				"type": building_type,
 				"texture_path": building_info["texture_path"],
 				"owner_player": building_info.get("owner_player", 1),
-				"building_type": building_info.get("building_type", "unknown"),
+				"building_type": building_type,
 				"construction_day": building_info.get("construction_day", 0)
 			}
 			
@@ -658,6 +980,12 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
+			
+			# Add building to player's buildings list
+			var owner_player = setup_data.get("owner_player", 1)
+			if players_data.has(owner_player):
+				players_data[owner_player]["buildings"].append(building_name)
+				print("Game: Restored building ", building_name, " to player ", owner_player, " buildings list")
 		else:
 			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
 
@@ -842,7 +1170,7 @@ func _execute_save() -> bool:
 	var buildings_data = []
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
-			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
+			if _is_building_node(child):
 				var texture_path = ""
 				# Get texture path from the Sprite2D child if it's a building scene
 				if child.has_node("Sprite2D"):
@@ -864,6 +1192,7 @@ func _execute_save() -> bool:
 	var game_state = { 
 		"map_data": world_data, 
 		"buildings_data": buildings_data,
+		"players_data": players_data,
 		"current_day": turn_manager.get_day(), 
 		"current_save_path": current_save_path 
 	}
