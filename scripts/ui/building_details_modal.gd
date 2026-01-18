@@ -114,9 +114,9 @@ func _setup_modal():
 	main_container.add_theme_constant_override("margin_top", 10)
 	main_container.add_theme_constant_override("margin_bottom", 10)
 	
-	# Building image section
-	var image_section = _create_image_section()
-	content_container.add_child(image_section)
+	# Building image and capacity section
+	var image_capacity_section = _create_image_capacity_section()
+	content_container.add_child(image_capacity_section)
 	
 	# Building info section
 	var info_section = _create_info_section()
@@ -149,23 +149,37 @@ func _gui_input(event):
 		if is_dragging:
 			position += event.relative
 
-func _create_image_section() -> Control:
+func _create_image_capacity_section() -> Control:
 	var section = VBoxContainer.new()
 	
 	var section_title = Label.new()
-	section_title.text = "Building Image"
+	section_title.text = "Building Overview"
 	section_title.add_theme_font_size_override("font_size", 16)
 	section.add_child(section_title)
 	
-	var image_container = CenterContainer.new()
-	image_container.custom_minimum_size = Vector2(0, 100)
-	section.add_child(image_container)
+	# Horizontal container for image and capacity info
+	var main_container = HBoxContainer.new()
+	main_container.add_theme_constant_override("separation", 15)
+	section.add_child(main_container)
+	
+	# Left side - Building image (left-aligned)
+	var image_container = VBoxContainer.new()
+	image_container.custom_minimum_size = Vector2(80, 0)
+	main_container.add_child(image_container)
 	
 	var building_image = TextureRect.new()
 	building_image.name = "BuildingImage"  # Explicit name for find_child
 	building_image.custom_minimum_size = Vector2(64, 64)
-	building_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	building_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+	building_image.size_flags_horizontal = Control.SIZE_SHRINK_CENTER  # Left-align
 	image_container.add_child(building_image)
+	
+	# Right side - Capacity information
+	var capacity_container = VBoxContainer.new()
+	capacity_container.name = "CapacityContainer"  # For easy access
+	capacity_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	capacity_container.add_theme_constant_override("separation", 5)
+	main_container.add_child(capacity_container)
 	
 	return section
 
@@ -789,25 +803,43 @@ func _populate_building_info():
 	var info_container = null
 	var stats_container = null
 	var connections_container = null
+	var capacity_container = null
 	
 	for section in content_vbox.get_children():
 		if not section:
 			continue
-			
+		
 		for child in section.get_children():
 			if not child:
 				continue
-				
+			
 			if child.name == "InfoContainer":
 				info_container = child
 			elif child.name == "StatsContainer":
 				stats_container = child
 			elif child.name == "ConnectionsContainer":
 				connections_container = child
+			elif child.name == "CapacityContainer":
+				capacity_container = child
+			elif child is HBoxContainer:
+				# Look for image and capacity container in the new layout
+				for hbox_child in child.get_children():
+					if hbox_child is VBoxContainer:
+						# Check if this VBox contains the image
+						for vbox_child in hbox_child.get_children():
+							if vbox_child and vbox_child.name == "BuildingImage":
+								building_image = vbox_child
+								break
+					elif hbox_child is VBoxContainer and hbox_child.name == "CapacityContainer":
+						capacity_container = hbox_child
 			elif child is CenterContainer:
 				for grandchild in child.get_children():
 					if grandchild and grandchild.name == "BuildingImage":
 						building_image = grandchild
+	
+	# Backup search for CapacityContainer
+	if not capacity_container:
+		capacity_container = find_child("CapacityContainer", true, false)
 	
 	if building_data.has("texture") and building_image:
 		building_image.texture = building_data["texture"]
@@ -857,19 +889,34 @@ func _populate_building_info():
 		if production != "None":
 			_add_info_row(stats_container, "Production:", production)
 		
-		# Maintenance costs
-		var maintenance = _get_building_maintenance()
-		_add_info_row(stats_container, "Maintenance:", maintenance)
-		
-		# Population impact
-		var population_effect = _get_population_effect(building_type)
-		if population_effect != "None":
-			_add_info_row(stats_container, "Population:", population_effect)
+		# Population impact (skip for town center)
+		if building_type != "town_center":
+			var population_effect = _get_population_effect(building_type)
+			if population_effect != "None":
+				_add_info_row(stats_container, "Population:", population_effect)
 		
 		# Special effects
 		var special_effects = _get_special_effects(building_type)
 		if special_effects != "None":
 			_add_info_row(stats_container, "Special:", special_effects)
+	
+	# Populate capacity section (next to image)
+	if capacity_container:
+		# Clear existing capacity info
+		for child in capacity_container.get_children():
+			child.queue_free()
+		
+		var building_type = building_data.get("building_type", "unknown")
+		
+		# Living capacity controls
+		var living_capacity = _get_living_capacity(building_type)
+		if living_capacity > 0:
+			_create_capacity_control(capacity_container, "Living Capacity:", living_capacity, "living")
+		
+		# Worker capacity controls
+		var worker_capacity = _get_worker_capacity(building_type)
+		if worker_capacity > 0:
+			_create_capacity_control(capacity_container, "Worker Capacity:", worker_capacity, "worker")
 	
 	# Populate connections section
 	if connections_container:
@@ -1016,6 +1063,34 @@ func _get_population_effect(building_type: String) -> String:
 		_:
 			return "None"
 
+func _get_living_capacity(building_type: String) -> int:
+	match building_type:
+		"house":
+			return 7  # Family of up to 7
+		"town_center":
+			return 20  # 20 people living
+		"barracks":
+			return 5  # 5 soldiers per barracks
+		_:
+			return 0
+
+func _get_worker_capacity(building_type: String) -> int:
+	match building_type:
+		"town_center":
+			return 10  # 10 people working
+		"stoneworker":
+			return 10  # Most work stations employ up to 10
+		"lumberjack":
+			return 10
+		"lumber_mill":
+			return 10
+		"farm":
+			return 10
+		"fishing_hut":
+			return 5  # Fishing employs 5 labourers
+		_:
+			return 0
+
 func _get_special_effects(building_type: String) -> String:
 	match building_type:
 		"town_center":
@@ -1062,3 +1137,81 @@ func _on_collect_resources_pressed():
 	var building_type = building_data.get("building_type", "unknown")
 	print("Collect resources from: ", building_name, " (", building_type, ")")
 	# TODO: Implement manual resource collection with bonus
+
+func _find_node_recursive(node: Node, target_name: String) -> Node:
+	# Recursive helper to find a node by name
+	if node.name == target_name:
+		return node
+	
+	for child in node.get_children():
+		var result = _find_node_recursive(child, target_name)
+		if result:
+			return result
+	
+	return null
+
+func _create_capacity_control(parent: Container, label_text: String, max_capacity: int, capacity_type: String):
+	# Create horizontal container for the capacity control
+	var control_row = HBoxContainer.new()
+	control_row.add_theme_constant_override("separation", 10)
+	parent.add_child(control_row)
+	
+	# Label
+	var label = Label.new()
+	label.text = label_text
+	label.custom_minimum_size.x = 120
+	control_row.add_child(label)
+	
+	# Minus button
+	var minus_btn = Button.new()
+	minus_btn.text = "-"
+	minus_btn.custom_minimum_size = Vector2(30, 30)
+	control_row.add_child(minus_btn)
+	
+	# Current/Max display
+	var capacity_label = Label.new()
+	capacity_label.text = "0/" + str(max_capacity)
+	capacity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	capacity_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	control_row.add_child(capacity_label)
+	
+	# Plus button
+	var plus_btn = Button.new()
+	plus_btn.text = "+"
+	plus_btn.custom_minimum_size = Vector2(30, 30)
+	control_row.add_child(plus_btn)
+	
+	# Store current value in the label's metadata
+	capacity_label.set_meta("current_value", 0)
+	capacity_label.set_meta("max_value", max_capacity)
+	capacity_label.set_meta("capacity_type", capacity_type)
+	
+	# Connect button signals
+	plus_btn.pressed.connect(_on_capacity_plus_pressed.bind(capacity_label))
+	minus_btn.pressed.connect(_on_capacity_minus_pressed.bind(capacity_label))
+
+func _on_capacity_plus_pressed(capacity_label: Label):
+	var current_value = capacity_label.get_meta("current_value", 0)
+	var max_value = capacity_label.get_meta("max_value", 0)
+	
+	if current_value < max_value:
+		current_value += 1
+		capacity_label.set_meta("current_value", current_value)
+		capacity_label.text = str(current_value) + "/" + str(max_value)
+		
+		# TODO: Update actual building capacity data
+		var capacity_type = capacity_label.get_meta("capacity_type", "")
+		print("Increased ", capacity_type, " capacity to ", current_value, "/", max_value)
+
+func _on_capacity_minus_pressed(capacity_label: Label):
+	var current_value = capacity_label.get_meta("current_value", 0)
+	var max_value = capacity_label.get_meta("max_value", 0)
+	
+	if current_value > 0:
+		current_value -= 1
+		capacity_label.set_meta("current_value", current_value)
+		capacity_label.text = str(current_value) + "/" + str(max_value)
+		
+		# TODO: Update actual building capacity data
+		var capacity_type = capacity_label.get_meta("capacity_type", "")
+		print("Decreased ", capacity_type, " capacity to ", current_value, "/", max_value)

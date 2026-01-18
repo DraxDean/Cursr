@@ -317,7 +317,6 @@ func register_mountain(mountain_node: Node2D) -> String:
 	mountain_node.name = mountain_id
 	mountain_node.set_meta("environment_id", mountain_id)
 	
-	print("Game: Registered mountain with ID: ", mountain_id, " at tile ", tile_coords)
 	return mountain_id
 
 func register_tree(tree_node: Node2D) -> String:
@@ -344,7 +343,6 @@ func register_tree(tree_node: Node2D) -> String:
 	tree_node.name = tree_id
 	tree_node.set_meta("environment_id", tree_id)
 	
-	print("Game: Registered tree with ID: ", tree_id, " at tile ", tile_coords)
 	return tree_id
 
 func get_environment_objects(object_type: String) -> Dictionary:
