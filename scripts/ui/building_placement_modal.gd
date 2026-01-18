@@ -30,7 +30,7 @@ func refresh_content():
 		"barracks": "res://assets/buildings/human_barracks.png",
 		"fishing_hut": "res://assets/buildings/human_finshinghut.png",
 		"lumberjack": "res://assets/buildings/human_lumberjack.png",
-		"mine": "res://assets/buildings/human_mine.png",
+		"stoneworker": "res://assets/buildings/human_stoneworker.png",
 		"town_center": "res://assets/buildings/human_towncentre-export.png"
 	}
 	
@@ -105,17 +105,17 @@ func refresh_content():
 	button_container.add_child(cancel_button)
 
 func _get_building_costs(btype: String) -> Dictionary:
-	# Define building costs
+	# Define building costs (Labor = days of work)
 	var costs = {
-		"house": {"Wood": 10, "Stone": 5},
-		"barracks": {"Wood": 10, "Stone": 5},
-		"fishing_hut": {"Wood": 12, "Stone": 3},
-		"lumberjack": {"Wood": 15, "Stone": 8},
-		"mine": {"Wood": 8, "Stone": 15},
-		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15}
+		"house": {"Wood": 10, "Stone": 5, "Labor": 100},
+		"barracks": {"Wood": 10, "Stone": 5, "Labor": 120},
+		"fishing_hut": {"Wood": 12, "Stone": 3, "Labor": 60},
+		"lumberjack": {"Wood": 15, "Stone": 8, "Labor": 80},
+		"stoneworker": {"Wood": 8, "Stone": 15, "Labor": 150},
+		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15, "Labor": 300}
 	}
 	
-	return costs.get(btype, {"Wood": 10})
+	return costs.get(btype, {"Wood": 10, "Labor": 100})
 
 func _get_available_resources(resource: String) -> int:
 	# Placeholder resource amounts (would connect to actual resource system)
@@ -123,7 +123,8 @@ func _get_available_resources(resource: String) -> int:
 		"Wood": 15,
 		"Stone": 15, 
 		"Gold": 7,
-		"Food": 20
+		"Food": 20,
+		"Labor": 200  # Available labor days
 	}
 	
 	return resources.get(resource, 0)

@@ -219,7 +219,7 @@ func _create_actions_section() -> Control:
 		train_button.text = "Train Units"
 		train_button.pressed.connect(_on_train_units_pressed)
 		actions_container.add_child(train_button)
-	elif building_type in ["fishing_hut", "farm", "mine", "lumber_mill"]:
+	elif building_type in ["fishing_hut", "farm", "stoneworker", "lumber_mill"]:
 		var collect_button = Button.new()
 		collect_button.text = "Collect Resources"
 		collect_button.pressed.connect(_on_collect_resources_pressed)
@@ -327,14 +327,16 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	var connections = []
 	var building_type = building.get_meta("building_type", "unknown")
 	
+	print("Finding connections for building type: ", building_type)
+	
 	# Define connection rules for different building types
 	var connection_rules = {
-		"house": ["town_center", "barracks"],
+		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
-		"town_center": ["house", "barracks", "fishing_hut", "farm", "mine", "lumber_mill"],
+		"town_center": ["house", "barracks", "fishing_hut", "farm", "stoneworker", "lumber_mill"],
 		"fishing_hut": ["town_center"],
 		"farm": ["town_center"],
-		"mine": ["town_center"],
+		"stoneworker": ["house", "town_center", "mountain"],
 		"lumber_mill": ["town_center", "tree"]
 	}
 	
@@ -382,12 +384,78 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 					})
 					print("Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away")
 	
+	# Also search for mountains if they're in allowed connections
+	if "mountain" in allowed_connections:
+		print("Looking for mountain connections for ", building_type)
+		
+		# Use the new environment system to get mountains
+		if game_node.has_method("get_environment_objects"):
+			var mountains = game_node.get_environment_objects("mountains")
+			print("Found ", mountains.size(), " mountains in environment system")
+			
+			for mountain_id in mountains:
+				var mountain_data = mountains[mountain_id]
+				var mountain_tile_coords = mountain_data["tile_coords"]
+				var tile_distance = abs(building_tile_coords.x - mountain_tile_coords.x) + abs(building_tile_coords.y - mountain_tile_coords.y)
+				
+				print("Found mountain ", mountain_id, " at distance ", tile_distance)
+				if tile_distance <= connection_range_tiles:
+					connections.append({
+						"name": mountain_id,
+						"type": "mountain",
+						"distance": tile_distance,
+						"object_type": "mountain"
+					})
+					print("Added mountain connection: ", mountain_id, " at ", tile_distance, " tiles away")
+		else:
+			print("Environment system not available, falling back to old method")
+			# Fallback to old method
+			var map_objects_holder = game_node.get_node_or_null("MapObjects")
+			if map_objects_holder:
+				print("Found MapObjects holder with ", map_objects_holder.get_child_count(), " children")
+				for child in map_objects_holder.get_children():
+					print("Checking child: ", child.name, " type: ", child.get_class())
+					if child.name.begins_with("Mountain") or child.name.begins_with("mountain_"):
+						var mountain_tile_coords = tilemap_layer.local_to_map(child.position)
+						var tile_distance = abs(building_tile_coords.x - mountain_tile_coords.x) + abs(building_tile_coords.y - mountain_tile_coords.y)
+						
+						print("Found mountain ", child.name, " at distance ", tile_distance)
+						if tile_distance <= connection_range_tiles:
+							connections.append({
+								"name": child.name,
+								"type": "mountain",
+								"distance": tile_distance,
+								"object_type": "mountain"
+							})
+							print("Added mountain connection: ", child.name, " at ", tile_distance, " tiles away")
+			else:
+				print("MapObjects holder not found!")
+	
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
+	# For stoneworkers, limit mountain connections to 5 nearest
+	if building_type == "stoneworker":
+		var mountain_connections = []
+		var other_connections = []
+		
+		for connection in connections:
+			if connection.type == "mountain":
+				mountain_connections.append(connection)
+			else:
+				other_connections.append(connection)
+		
+		# Keep only the 5 nearest mountains
+		if mountain_connections.size() > 5:
+			mountain_connections = mountain_connections.slice(0, 5)
+		
+		# Combine back together
+		connections = other_connections + mountain_connections
+		connections.sort_custom(func(a, b): return a.distance < b.distance)
+	
 	return connections
 
-func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, tilemap: TileMapLayer) -> Array:
+func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMapLayer) -> Array:
 	# Simple A* implementation for tile-based pathfinding
 	var open_set = []
 	var closed_set = {}
@@ -512,30 +580,29 @@ func _redraw_connections():
 		"barracks": Color.CRIMSON,
 		"fishing_hut": Color.AQUA,
 		"farm": Color.LIME_GREEN,
-		"mine": Color.SILVER,
-		"lumber_mill": Color.SADDLE_BROWN
+		"stoneworker": Color.SILVER,
+		"lumber_mill": Color.SADDLE_BROWN,
+		"mountain": Color.GRAY
 	}
 	
 	for connection in connections:
-		# Find the target building
-		var buildings_layer = building_node.get_parent()
-		if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
-			var target_building = buildings_layer.get_node(NodePath(connection.name))
-			var target_tile_coords = tilemap.local_to_map(target_building.position)
-			
-			# Find path using A*
-			var path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
-			
-			if path.size() > 1:  # Only draw if path exists and has multiple points
-				var color = connection_colors.get(connection.type, Color.WHITE)
-				_draw_path_on_tilemap(path, color, tilemap)
-	
-	for connection in connections:
-		# Find the target building
-		var buildings_layer = building_node.get_parent()
-		if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
-			var target_building = buildings_layer.get_node(NodePath(connection.name))
-			var target_tile_coords = tilemap.local_to_map(target_building.position)
+		var target_node = null
+		
+		# Find the target object (building or mountain)
+		if connection.object_type == "building":
+			var buildings_layer = building_node.get_parent()
+			if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
+				target_node = buildings_layer.get_node(NodePath(connection.name))
+		elif connection.object_type == "mountain":
+			var map_objects_holder = game_node.get_node_or_null("MapObjects")
+			if map_objects_holder:
+				for child in map_objects_holder.get_children():
+					if child.name == connection.name:
+						target_node = child
+						break
+		
+		if target_node:
+			var target_tile_coords = tilemap.local_to_map(target_node.position)
 			
 			# Find path using A*
 			var path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
@@ -783,8 +850,8 @@ func _get_building_display_name(building_type: String) -> String:
 			return "Barracks"
 		"farm":
 			return "Farm"
-		"mine":
-			return "Mine"
+		"stoneworker":
+			return "Stoneworker"
 		"lumber_mill":
 			return "Lumber Mill"
 		_:
@@ -809,7 +876,7 @@ func _get_building_production() -> String:
 			var base_food = 3
 			var bonus = max(0, (days_active / 15))
 			return "+" + str(base_food + bonus) + " Food/turn"
-		"mine":
+		"stoneworker":
 			var base_stone = 2
 			var bonus = max(0, (days_active / 20))
 			return "+" + str(base_stone + bonus) + " Stone/turn"
@@ -833,7 +900,7 @@ func _get_building_maintenance() -> String:
 			return "3 Gold/turn"
 		"farm":
 			return "1.5 Gold/turn"
-		"mine":
+		"stoneworker":
 			return "2 Gold/turn"
 		"lumber_mill":
 			return "1.5 Gold/turn"
@@ -859,7 +926,7 @@ func _get_special_effects(building_type: String) -> String:
 			return "Military training, +10% unit combat effectiveness"
 		"fishing_hut":
 			return "Must be near water"
-		"mine":
+		"stoneworker":
 			return "Must be near stone deposits"
 		"lumber_mill":
 			return "Must be near forest"

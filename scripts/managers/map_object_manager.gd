@@ -4,6 +4,7 @@ extends Node
 # References (set via setup)
 var map_objects_holder: Node2D
 var tilemap_layer: TileMapLayer
+var game_node: Node  # Reference to main game node
 var tree_scene: PackedScene
 var mountain_scene: PackedScene
 
@@ -23,9 +24,10 @@ func _ready():
 	print("MapObjectManager ready.")
 
 
-func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i):
+func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i, _game_node: Node = null):
 	map_objects_holder = _holder
 	tilemap_layer = _tilemap
+	game_node = _game_node
 	tree_scene = _tree_scn
 	mountain_scene = _mountain_scn
 	forest_tile_coords = _forest_coords
@@ -148,6 +150,20 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 	var world_pos = tilemap_layer.map_to_local(tile_coords)
 	instance.position = world_pos + Vector2(0, y_offset)
 	map_objects_holder.add_child(instance)
+	
+	# Register with game's environment system if game node is available
+	if game_node and game_node.has_method("register_mountain") and game_node.has_method("register_tree"):
+		if scene == mountain_scene:
+			game_node.register_mountain(instance)
+		elif scene == tree_scene:
+			game_node.register_tree(instance)
+	
+	# Register with game's environment system if game node is available
+	if game_node and game_node.has_method("register_mountain") and game_node.has_method("register_tree"):
+		if scene == mountain_scene:
+			game_node.register_mountain(instance)
+		elif scene == tree_scene:
+			game_node.register_tree(instance)
 
 
 func place_building(building_data, coords):

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cbt5mpdudr74r"
-path="res://.godot/imported/human_mine.png-5805380fb6f9af2dfb35b34405a54cf6.ctex"
+uid="uid://ckavr0qylo8yy"
+path="res://.godot/imported/human_stoneworker.png-07c824a0afe920216411b2a5eecbfc57.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/buildings/human_mine.png"
-dest_files=["res://.godot/imported/human_mine.png-5805380fb6f9af2dfb35b34405a54cf6.ctex"]
+source_file="res://assets/buildings/human_stoneworker.png"
+dest_files=["res://.godot/imported/human_stoneworker.png-07c824a0afe920216411b2a5eecbfc57.ctex"]
 
 [params]
 

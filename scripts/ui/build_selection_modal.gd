@@ -33,7 +33,7 @@ func refresh_content():
 		{"type": "barracks", "name": "Barracks", "icon": "res://assets/buildings/human_barracks.png"},
 		{"type": "fishing_hut", "name": "Fishing Hut", "icon": "res://assets/buildings/human_finshinghut.png"},
 		{"type": "lumberjack", "name": "Lumberjack", "icon": "res://assets/buildings/human_lumberjack.png"},
-		{"type": "mine", "name": "Mine", "icon": "res://assets/buildings/human_mine.png"},
+		{"type": "stoneworker", "name": "Stoneworker", "icon": "res://assets/buildings/human_stoneworker.png"},
 		{"type": "town_center", "name": "Town Center", "icon": "res://assets/buildings/human_towncentre-export.png"}
 	]
 	

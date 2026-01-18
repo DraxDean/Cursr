@@ -54,6 +54,7 @@ var building_counter: Dictionary = {}  # Track building counts for unique IDs
 # --- Variables ---
 var world_data: Dictionary = {}
 var loaded_buildings_data: Array = []
+var loaded_environment_objects_data: Array = []
 var current_save_path: String = ""
 
 # Player Data Structure
@@ -70,6 +71,18 @@ var players_data: Dictionary = {
 		"population": {
 			"current": 1,
 			"max": 10
+		}
+	},
+	"environment": {
+		"name": "Environment",
+		"type": "environment",
+		"objects": {
+			"mountains": {},  # Dictionary of mountain_id: {name, position, tile_coords}
+			"trees": {}       # Dictionary of tree_id: {name, position, tile_coords}
+		},
+		"counts": {
+			"mountains": 0,
+			"trees": 0
 		}
 	}
 }
@@ -168,7 +181,10 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		# Add building to player's buildings list
 		var owner_player = setup_data.get("owner_player", 1)
 		if players_data.has(owner_player):
-			players_data[owner_player]["buildings"].append(building_name)
+			var player_data = players_data[owner_player]
+			if not player_data.has("buildings"):
+				player_data["buildings"] = []
+			player_data["buildings"].append(building_name)
 			print("Game: Added building ", building_name, " to player ", owner_player, " buildings list")
 		
 		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
@@ -192,8 +208,8 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_finshinghut.png"
 		"lumberjack":
 			return "res://assets/buildings/human_lumberjack.png"
-		"mine":
-			return "res://assets/buildings/human_mine.png"
+		"stoneworker":
+			return "res://assets/buildings/human_stoneworker.png"
 		"town_center":
 			return "res://assets/buildings/human_towncentre-export.png"
 		_:
@@ -210,7 +226,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "mine", "lumberjack", "lumber_mill"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "stoneworker", "lumberjack", "lumber_mill"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -218,7 +234,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "house", "barracks", "farm", "mine"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "house", "barracks", "farm"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type
@@ -227,7 +243,13 @@ func _extract_building_type_from_name(building_name: String) -> String:
 func get_player_buildings(player_id: int) -> Array:
 	# Get list of building names owned by a player
 	if players_data.has(player_id):
-		return players_data[player_id]["buildings"].duplicate()
+		var player_data = players_data[player_id]
+		if player_data.has("buildings") and player_data["buildings"] is Array:
+			return player_data["buildings"].duplicate()
+		else:
+			# Initialize buildings array if missing
+			player_data["buildings"] = []
+			return []
 	return []
 
 func get_player_building_nodes(player_id: int) -> Array:
@@ -245,7 +267,10 @@ func get_player_building_nodes(player_id: int) -> Array:
 func remove_building_from_player(building_name: String, player_id: int):
 	# Remove building from player's buildings list (for destruction, etc.)
 	if players_data.has(player_id):
-		var buildings = players_data[player_id]["buildings"]
+		var player_data = players_data[player_id]
+		if not player_data.has("buildings"):
+			return  # No buildings to remove
+		var buildings = player_data["buildings"]
 		var index = buildings.find(building_name)
 		if index >= 0:
 			buildings.remove_at(index)
@@ -266,6 +291,141 @@ func debug_print_all_buildings():
 	
 	print("Building counters: ", building_counter)
 	print("===========================")
+
+# Environment Object Management Functions
+func register_mountain(mountain_node: Node2D) -> String:
+	# Generate unique ID for mountain
+	var mountain_id = "mountain_" + str(players_data["environment"]["counts"]["mountains"] + 1)
+	
+	# Get tile coordinates
+	var tile_coords = Vector2i(0, 0)
+	if tilemap_layer:
+		tile_coords = tilemap_layer.local_to_map(mountain_node.position)
+	
+	# Store mountain data
+	players_data["environment"]["objects"]["mountains"][mountain_id] = {
+		"name": mountain_node.name,
+		"position": mountain_node.position,
+		"tile_coords": tile_coords,
+		"node_path": mountain_node.get_path()
+	}
+	
+	# Update count
+	players_data["environment"]["counts"]["mountains"] += 1
+	
+	# Update the node name to include the unique ID
+	mountain_node.name = mountain_id
+	mountain_node.set_meta("environment_id", mountain_id)
+	
+	print("Game: Registered mountain with ID: ", mountain_id, " at tile ", tile_coords)
+	return mountain_id
+
+func register_tree(tree_node: Node2D) -> String:
+	# Generate unique ID for tree
+	var tree_id = "tree_" + str(players_data["environment"]["counts"]["trees"] + 1)
+	
+	# Get tile coordinates
+	var tile_coords = Vector2i(0, 0)
+	if tilemap_layer:
+		tile_coords = tilemap_layer.local_to_map(tree_node.position)
+	
+	# Store tree data
+	players_data["environment"]["objects"]["trees"][tree_id] = {
+		"name": tree_node.name,
+		"position": tree_node.position,
+		"tile_coords": tile_coords,
+		"node_path": tree_node.get_path()
+	}
+	
+	# Update count
+	players_data["environment"]["counts"]["trees"] += 1
+	
+	# Update the node name to include the unique ID
+	tree_node.name = tree_id
+	tree_node.set_meta("environment_id", tree_id)
+	
+	print("Game: Registered tree with ID: ", tree_id, " at tile ", tile_coords)
+	return tree_id
+
+func get_environment_objects(object_type: String) -> Dictionary:
+	# Get all environment objects of a specific type (mountains, trees, etc.)
+	if players_data.has("environment") and players_data["environment"]["objects"].has(object_type):
+		return players_data["environment"]["objects"][object_type]
+	return {}
+
+func get_nearest_environment_objects(position: Vector2, object_type: String, max_count: int = -1) -> Array:
+	# Get environment objects sorted by distance from a position
+	var objects = get_environment_objects(object_type)
+	var object_list = []
+	
+	for obj_id in objects:
+		var obj_data = objects[obj_id]
+		var distance = position.distance_to(obj_data["position"])
+		object_list.append({
+			"id": obj_id,
+			"data": obj_data,
+			"distance": distance
+		})
+	
+	# Sort by distance
+	object_list.sort_custom(func(a, b): return a.distance < b.distance)
+	
+	# Limit results if max_count is specified
+	if max_count > 0 and object_list.size() > max_count:
+		object_list = object_list.slice(0, max_count)
+	
+	return object_list
+
+func debug_print_environment_objects():
+	# Debug function to print environment object counts and data
+	print("=== ENVIRONMENT DEBUG INFO ===")
+	if players_data.has("environment"):
+		var env_data = players_data["environment"]
+		print("Mountain count: ", env_data["counts"]["mountains"])
+		print("Tree count: ", env_data["counts"]["trees"])
+		print("Mountains: ", env_data["objects"]["mountains"].keys())
+		print("Trees: ", env_data["objects"]["trees"].keys())
+	else:
+		print("No environment data found!")
+	print("===============================")
+
+func _migrate_players_data_structure():
+	# Migrate old save files to include the environment player structure
+	print("Game: Migrating players_data structure...")
+	
+	# Check if environment player exists
+	if not players_data.has("environment"):
+		print("Game: Adding missing environment player to save data")
+		players_data["environment"] = {
+			"name": "Environment",
+			"type": "environment",
+			"objects": {
+				"mountains": {},
+				"trees": {}
+			},
+			"counts": {
+				"mountains": 0,
+				"trees": 0
+			}
+		}
+	
+	# Validate existing players have required structures
+	for player_id in players_data:
+		var player_data = players_data[player_id]
+		if str(player_id) != "environment":
+			# Ensure regular players have all required fields
+			if not player_data.has("buildings"):
+				player_data["buildings"] = []
+			if not player_data.has("resources"):
+				player_data["resources"] = {"gold": 100, "food": 50, "wood": 25}
+			if not player_data.has("population"):
+				player_data["population"] = {"current": 1, "max": 10}
+			if not player_data.has("name"):
+				player_data["name"] = "Player " + str(player_id)
+			if not player_data.has("race"):
+				player_data["race"] = "human"
+	
+	print("Game: Players data migration complete")
 
 func migrate_old_building_names():
 	# Migrate buildings with old coordinate-based names to new system
@@ -579,7 +739,7 @@ func _ready():
 
 	print("Game: Setting up MapObjectManager...")
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3) # Corrected coords
-	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords)
+	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self)
 
 	print("Game: Setting up TurnManager...")
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
@@ -694,9 +854,14 @@ func initialize_map():
 				# Store buildings data for restoration after map is drawn
 				if loaded_state.has("buildings_data"):
 					loaded_buildings_data = loaded_state["buildings_data"]
+				# Store environment objects data for restoration
+				if loaded_state.has("environment_objects_data"):
+					loaded_environment_objects_data = loaded_state["environment_objects_data"]
 				# Restore player data if available
 				if loaded_state.has("players_data"):
 					players_data = loaded_state["players_data"]
+					# Migrate old save files to include environment player
+					_migrate_players_data_structure()
 					print("Game: Restored player data for ", players_data.size(), " players")
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
@@ -708,6 +873,11 @@ func initialize_map():
 		if not loaded_buildings_data.is_empty():
 			_restore_buildings_with_proper_centering(loaded_buildings_data)
 			loaded_buildings_data = []  # Clear after restoration
+		
+		# Restore environment objects if loading from save
+		if not loaded_environment_objects_data.is_empty():
+			_restore_environment_objects(loaded_environment_objects_data)
+			loaded_environment_objects_data = []  # Clear after restoration
 		
 		# Migrate any old building names to new system
 		migrate_old_building_names()
@@ -952,7 +1122,8 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 	
 	# Clear and rebuild player building lists
 	for player_id in players_data:
-		players_data[player_id]["buildings"].clear()
+		if str(player_id) != "environment":
+			players_data[player_id]["buildings"].clear()
 	
 	# Restore each building using proper building scenes
 	for building_info in buildings_data:
@@ -1000,6 +1171,43 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 				print("Game: Restored building ", building_name, " to player ", owner_player, " buildings list")
 		else:
 			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
+
+func _restore_environment_objects(environment_objects_data: Array):
+	# Restore environment objects (mountains and trees) with their unique IDs
+	print("Game: Restoring ", environment_objects_data.size(), " environment objects...")
+	
+	if not tilemap_layer or not map_objects_holder:
+		print("Warning: Cannot restore environment objects - missing tilemap or objects holder")
+		return
+	
+	for obj_info in environment_objects_data:
+		var obj_name = obj_info.get("name", "")
+		var obj_position = obj_info.get("position", Vector2.ZERO)
+		var environment_id = obj_info.get("environment_id", obj_name)
+		var object_type = obj_info.get("object_type", "unknown")
+		
+		# Find the corresponding scene node that was placed during map generation
+		var existing_node = null
+		for child in map_objects_holder.get_children():
+			# Check if position matches (within small tolerance)
+			if child.position.distance_to(obj_position) < 5.0:
+				existing_node = child
+				break
+		
+		if existing_node:
+			# Update the node with saved data
+			existing_node.name = environment_id
+			existing_node.set_meta("environment_id", environment_id)
+			
+			# Re-register with environment system to restore proper tracking
+			if object_type == "mountain":
+				register_mountain(existing_node)
+			elif object_type == "tree":
+				register_tree(existing_node)
+			
+			print("Game: Restored environment object ", environment_id, " at ", obj_position)
+		else:
+			print("Warning: Could not find existing node to restore environment object: ", environment_id)
 
 func _setup_game_footer():
 	# Create and setup the game footer
@@ -1200,10 +1408,25 @@ func _execute_save() -> bool:
 					"construction_day": child.get_meta("construction_day", 0)
 				}
 				buildings_data.append(building_info)
+
+	# Collect environment objects data
+	var environment_objects_data = []
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			# Check if it's an environment object (mountain or tree)
+			if child.name.begins_with("mountain_") or child.name.begins_with("tree_"):
+				var env_obj_info = {
+					"name": child.name,
+					"position": child.position,
+					"environment_id": child.get_meta("environment_id", child.name),
+					"object_type": "mountain" if child.name.begins_with("mountain_") else "tree"
+				}
+				environment_objects_data.append(env_obj_info)
 	
 	var game_state = { 
 		"map_data": world_data, 
 		"buildings_data": buildings_data,
+		"environment_objects_data": environment_objects_data,
 		"players_data": players_data,
 		"current_day": turn_manager.get_day(), 
 		"current_save_path": current_save_path 
