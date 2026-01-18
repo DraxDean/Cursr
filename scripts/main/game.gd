@@ -384,7 +384,10 @@ func _try_select_building(_mouse_pos: Vector2):
 	if building:
 		_select_building(building)
 	else:
-		_clear_building_selection()
+		# Only clear selection if building details modal is not open
+		# This prevents losing connection lines when clicking empty tiles
+		if not building_details_modal or not is_instance_valid(building_details_modal):
+			_clear_building_selection()
 
 func _get_building_at_position(world_pos: Vector2) -> Node2D:
 	if not map_objects_holder:
@@ -439,6 +442,11 @@ func _clear_building_selection():
 	if selected_building and selected_building.has_node("Sprite2D"):
 		var sprite = selected_building.get_node("Sprite2D")
 		sprite.modulate = Color.WHITE
+	
+	# Clear connection lines if building details modal exists
+	if building_details_modal and building_details_modal.has_method("clear_all_connections"):
+		building_details_modal.clear_all_connections()
+	
 	selected_building = null
 
 func _open_building_details_modal(building: Node2D):

@@ -106,7 +106,7 @@ func _get_building_costs(btype: String) -> Dictionary:
 	# Define building costs
 	var costs = {
 		"house": {"Wood": 10, "Stone": 5},
-		"barracks": {"Wood": 15, "Stone": 20, "Gold": 10},
+		"barracks": {"Wood": 10, "Stone": 5},
 		"fishing_hut": {"Wood": 12, "Stone": 3},
 		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15}
 	}

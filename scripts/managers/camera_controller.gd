@@ -17,6 +17,7 @@ var map_pixel_height: int = 0
 var world_creation_mode: bool = false
 var tile_selection_mode: bool = false
 signal tile_clicked(tile_pos: Vector2)
+signal camera_moved()  # Emitted when camera position or zoom changes
 
 # State
 var is_left_dragging: bool = false
@@ -58,6 +59,7 @@ func handle_input(event: InputEvent, is_paused: bool):
 		var mouse_delta = get_viewport().get_mouse_position() - drag_start_mouse_pos
 		camera_node.position = drag_start_camera_pos - mouse_delta
 		_clamp_camera()
+		camera_moved.emit()  # Notify listeners of camera movement
 		get_viewport().set_input_as_handled(); return # Consume event if dragging
 
 	# --- Zoom Handling (Gestures and Wheel) ---
@@ -78,6 +80,7 @@ func handle_input(event: InputEvent, is_paused: bool):
 		target_zoom.x = clampf(target_zoom.x, min_zoom, max_zoom); target_zoom.y = clampf(target_zoom.y, min_zoom, max_zoom)
 		camera_node.zoom = target_zoom
 		_clamp_camera()
+		camera_moved.emit()  # Notify listeners of camera zoom change
 		get_viewport().set_input_as_handled()
 
 
@@ -94,6 +97,7 @@ func process_movement(delta: float, is_paused: bool):
 		move_direction = move_direction.normalized()
 		camera_node.position += move_direction * scroll_speed * delta
 		_clamp_camera()
+		camera_moved.emit()  # Notify listeners of keyboard camera movement
 
 
 func _clamp_camera():

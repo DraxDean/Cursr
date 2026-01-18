@@ -8,11 +8,34 @@ var is_dragging: bool = false
 var drag_offset: Vector2
 var title_label: Label
 var connection_lines: Array = []  # Store Line2D nodes for visual connections
+var is_showing_connections: bool = false
+var camera_controller: Node
+var connection_paths: Array = []  # Store path data for redrawing
 
 func _ready():
 	print("Building Details Modal: _ready() called")
 	_setup_modal()
 	print("Building Details Modal: _setup_modal() completed")
+	
+	# Connect visibility changes to clear lines when hidden
+	visibility_changed.connect(_on_visibility_changed)
+
+func _process(_delta):
+	# Only check for redraw needs, don't update every frame
+	if visible and building_node and is_showing_connections:
+		# Check if we need to redraw connections (if lines were lost)
+		if connection_lines.size() == 0 and connection_paths.size() > 0:
+			_redraw_connections()
+
+func _on_visibility_changed():
+	if not visible:
+		is_showing_connections = false
+		_clear_connection_lines()
+	else:
+		# If modal becomes visible again and we have a building, redraw connections
+		if building_node:
+			is_showing_connections = true
+			_redraw_connections()
 
 func _setup_modal():
 	# Make sure modal is visible and on top
@@ -237,6 +260,22 @@ func setup_building_details(building: Node2D):
 	building_node = building
 	building_data = _extract_building_data(building)
 	
+	# Get camera controller reference for position tracking
+	var game_node = building_node.get_parent().get_parent()
+	camera_controller = game_node.get_node_or_null("CameraController")
+	
+	# Connect to camera movement signals if available
+	if camera_controller and camera_controller.has_signal("camera_moved"):
+		# Disconnect any previous connections first
+		if camera_controller.is_connected("camera_moved", _on_camera_moved):
+			camera_controller.disconnect("camera_moved", _on_camera_moved)
+		camera_controller.connect("camera_moved", _on_camera_moved)
+	elif camera_controller and camera_controller.has_signal("position_changed"):
+		# Try alternative signal name
+		if camera_controller.is_connected("position_changed", _on_camera_moved):
+			camera_controller.disconnect("position_changed", _on_camera_moved)
+		camera_controller.connect("position_changed", _on_camera_moved)
+	
 	# Update title with building ID
 	var building_id = building_data.get("name", "Unknown")
 	title_label.text = "Building Details: " + building_id
@@ -415,11 +454,47 @@ func _reconstruct_path(came_from: Dictionary, current: Vector2i) -> Array:
 		path.push_front(current)
 	return path
 
+func _on_camera_moved():
+	# Redraw connection lines when camera moves
+	if is_showing_connections and building_node:
+		_update_line_positions()
+
+func _update_line_positions():
+	# Update all connection lines based on current camera position and zoom
+	if not camera_controller or not building_node:
+		return
+		
+	var game_node = building_node.get_parent().get_parent()
+	var tilemap = game_node.get_node_or_null("TileMapLayer")
+	if not tilemap:
+		return
+	
+	# Update each line with current camera transform
+	for i in range(connection_lines.size()):
+		if i < connection_paths.size() and is_instance_valid(connection_lines[i]):
+			var line = connection_lines[i]
+			var path_data = connection_paths[i]
+			
+			# Clear existing points
+			line.clear_points()
+			
+			# Recalculate world positions based on current camera
+			for tile_coord in path_data.path:
+				var world_pos = tilemap.map_to_local(tile_coord)
+				line.add_point(world_pos)
+
 func _draw_connection_lines():
 	# Clear existing connection lines first
 	_clear_connection_lines()
 	
 	if not building_node:
+		return
+		
+	is_showing_connections = true
+	_redraw_connections()
+
+func _redraw_connections():
+	if not building_node or not is_showing_connections:
 		return
 		
 	var game_node = building_node.get_parent().get_parent()
@@ -454,6 +529,20 @@ func _draw_connection_lines():
 			if path.size() > 1:  # Only draw if path exists and has multiple points
 				var color = connection_colors.get(connection.type, Color.WHITE)
 				_draw_path_on_tilemap(path, color, tilemap)
+	
+	for connection in connections:
+		# Find the target building
+		var buildings_layer = building_node.get_parent()
+		if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
+			var target_building = buildings_layer.get_node(NodePath(connection.name))
+			var target_tile_coords = tilemap.local_to_map(target_building.position)
+			
+			# Find path using A*
+			var path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
+			
+			if path.size() > 1:  # Only draw if path exists and has multiple points
+				var color = connection_colors.get(connection.type, Color.WHITE)
+				_draw_path_on_tilemap(path, color, tilemap)
 
 func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
 	# Create a Line2D node to draw the connection path
@@ -471,12 +560,16 @@ func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
 		var world_pos = tilemap.map_to_local(tile_coord)
 		line.add_point(world_pos)
 	
-	# Add line to the game scene so it's visible
-	var game_node = building_node.get_parent().get_parent()
-	game_node.add_child(line)
+	# Add line to the tilemap layer so it moves with the world
+	tilemap.add_child(line)
 	
-	# Store reference to the line so we can remove it later
+	# Store both the line reference and the path data for updates
 	connection_lines.append(line)
+	connection_paths.append({
+		"path": path,
+		"color": color,
+		"line": line
+	})
 	
 	print("Drew connection line with ", path.size(), " points in ", color)
 
@@ -487,7 +580,14 @@ func _clear_connection_lines():
 			line.queue_free()
 	
 	connection_lines.clear()
-	print("Cleared ", connection_lines.size(), " connection lines")
+	connection_paths.clear()
+	is_showing_connections = false
+	print("Cleared connection lines")
+
+func clear_all_connections():
+	# Public function to clear connections from outside
+	is_showing_connections = false
+	_clear_connection_lines()
 
 func _populate_building_info():
 	# The main VBoxContainer should be the second child (first is Panel background)
