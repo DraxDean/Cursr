@@ -219,7 +219,7 @@ func _create_actions_section() -> Control:
 		train_button.text = "Train Units"
 		train_button.pressed.connect(_on_train_units_pressed)
 		actions_container.add_child(train_button)
-	elif building_type in ["fishing_hut", "farm", "stoneworker", "lumber_mill"]:
+	elif building_type in ["fishing_hut", "farm", "stoneworker", "lumberjack", "lumber_mill"]:
 		var collect_button = Button.new()
 		collect_button.text = "Collect Resources"
 		collect_button.pressed.connect(_on_collect_resources_pressed)
@@ -333,10 +333,11 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	var connection_rules = {
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
-		"town_center": ["house", "barracks", "fishing_hut", "farm", "stoneworker", "lumber_mill"],
+		"town_center": ["house", "barracks", "fishing_hut", "farm", "stoneworker", "lumber_mill", "lumberjack"],
 		"fishing_hut": ["town_center"],
 		"farm": ["town_center"],
 		"stoneworker": ["house", "town_center", "mountain"],
+		"lumberjack": ["house", "town_center", "tree"],
 		"lumber_mill": ["town_center", "tree"]
 	}
 	
@@ -431,10 +432,58 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			else:
 				print("MapObjects holder not found!")
 	
+	# Also search for trees if they're in allowed connections
+	if "tree" in allowed_connections:
+		print("Looking for tree connections for ", building_type)
+		
+		# Use the new environment system to get trees
+		if game_node.has_method("get_environment_objects"):
+			var trees = game_node.get_environment_objects("trees")
+			print("Found ", trees.size(), " trees in environment system")
+			
+			for tree_id in trees:
+				var tree_data = trees[tree_id]
+				var tree_tile_coords = tree_data["tile_coords"]
+				var tile_distance = abs(building_tile_coords.x - tree_tile_coords.x) + abs(building_tile_coords.y - tree_tile_coords.y)
+				
+				print("Found tree ", tree_id, " at distance ", tile_distance)
+				if tile_distance <= connection_range_tiles:
+					connections.append({
+						"name": tree_id,
+						"type": "tree",
+						"distance": tile_distance,
+						"object_type": "tree"
+					})
+					print("Added tree connection: ", tree_id, " at ", tile_distance, " tiles away")
+		else:
+			print("Environment system not available, falling back to old method")
+			# Fallback to old method
+			var map_objects_holder = game_node.get_node_or_null("MapObjects")
+			if map_objects_holder:
+				print("Found MapObjects holder with ", map_objects_holder.get_child_count(), " children")
+				for child in map_objects_holder.get_children():
+					print("Checking child: ", child.name, " type: ", child.get_class())
+					if child.name.begins_with("Tree") or child.name.begins_with("tree_"):
+						var tree_tile_coords = tilemap_layer.local_to_map(child.position)
+						var tile_distance = abs(building_tile_coords.x - tree_tile_coords.x) + abs(building_tile_coords.y - tree_tile_coords.y)
+						
+						print("Found tree ", child.name, " at distance ", tile_distance)
+						if tile_distance <= connection_range_tiles:
+							connections.append({
+								"name": child.name,
+								"type": "tree",
+								"distance": tile_distance,
+								"object_type": "tree"
+							})
+							print("Added tree connection: ", child.name, " at ", tile_distance, " tiles away")
+			else:
+				print("MapObjects holder not found!")
+	
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
-	# For stoneworkers, limit mountain connections to 5 nearest
+	# For stoneworkers, limit mountain connections to 3 nearest
+	# For lumberjacks, limit tree connections to 3 nearest
 	if building_type == "stoneworker":
 		var mountain_connections = []
 		var other_connections = []
@@ -445,12 +494,30 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			else:
 				other_connections.append(connection)
 		
-		# Keep only the 5 nearest mountains
-		if mountain_connections.size() > 5:
-			mountain_connections = mountain_connections.slice(0, 5)
+		# Keep only the 3 nearest mountains
+		if mountain_connections.size() > 3:
+			mountain_connections = mountain_connections.slice(0, 3)
 		
 		# Combine back together
 		connections = other_connections + mountain_connections
+		connections.sort_custom(func(a, b): return a.distance < b.distance)
+	
+	elif building_type == "lumberjack":
+		var tree_connections = []
+		var other_connections = []
+		
+		for connection in connections:
+			if connection.type == "tree":
+				tree_connections.append(connection)
+			else:
+				other_connections.append(connection)
+		
+		# Keep only the 3 nearest trees
+		if tree_connections.size() > 3:
+			tree_connections = tree_connections.slice(0, 3)
+		
+		# Combine back together
+		connections = other_connections + tree_connections
 		connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
 	return connections
@@ -581,25 +648,48 @@ func _redraw_connections():
 		"fishing_hut": Color.AQUA,
 		"farm": Color.LIME_GREEN,
 		"stoneworker": Color.SILVER,
+		"lumberjack": Color.DARK_GREEN,
 		"lumber_mill": Color.SADDLE_BROWN,
-		"mountain": Color.GRAY
+		"mountain": Color.GRAY,
+		"tree": Color.GREEN
 	}
 	
 	for connection in connections:
 		var target_node = null
 		
-		# Find the target object (building or mountain)
+		# Find the target object (building, mountain, or tree)
 		if connection.object_type == "building":
 			var buildings_layer = building_node.get_parent()
 			if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
 				target_node = buildings_layer.get_node(NodePath(connection.name))
 		elif connection.object_type == "mountain":
-			var map_objects_holder = game_node.get_node_or_null("MapObjects")
-			if map_objects_holder:
-				for child in map_objects_holder.get_children():
-					if child.name == connection.name:
-						target_node = child
-						break
+			# For environment objects, try to find by position since names might not match exactly
+			if game_node.has_method("get_environment_objects"):
+				var mountains = game_node.get_environment_objects("mountains")
+				if mountains.has(connection.name):
+					var mountain_data = mountains[connection.name]
+					var mountain_pos = tilemap.map_to_local(mountain_data["tile_coords"])
+					# Find the actual node by position
+					var map_objects_holder = game_node.get_node_or_null("MapObjects")
+					if map_objects_holder:
+						for child in map_objects_holder.get_children():
+							if child.position.distance_to(mountain_pos) < 32:  # Within one tile
+								target_node = child
+								break
+		elif connection.object_type == "tree":
+			# For environment objects, try to find by position since names might not match exactly
+			if game_node.has_method("get_environment_objects"):
+				var trees = game_node.get_environment_objects("trees")
+				if trees.has(connection.name):
+					var tree_data = trees[connection.name]
+					var tree_pos = tilemap.map_to_local(tree_data["tile_coords"])
+					# Find the actual node by position
+					var map_objects_holder = game_node.get_node_or_null("MapObjects")
+					if map_objects_holder:
+						for child in map_objects_holder.get_children():
+							if child.position.distance_to(tree_pos) < 32:  # Within one tile
+								target_node = child
+								break
 		
 		if target_node:
 			var target_tile_coords = tilemap.local_to_map(target_node.position)
@@ -852,6 +942,8 @@ func _get_building_display_name(building_type: String) -> String:
 			return "Farm"
 		"stoneworker":
 			return "Stoneworker"
+		"lumberjack":
+			return "Lumberjack"
 		"lumber_mill":
 			return "Lumber Mill"
 		_:
@@ -880,6 +972,10 @@ func _get_building_production() -> String:
 			var base_stone = 2
 			var bonus = max(0, (days_active / 20))
 			return "+" + str(base_stone + bonus) + " Stone/turn"
+		"lumberjack":
+			var base_wood = 2
+			var bonus = max(0, (days_active / 15))
+			return "+" + str(base_wood + bonus) + " Wood/turn"
 		"lumber_mill":
 			var base_wood = 2
 			var bonus = max(0, (days_active / 12))
@@ -902,6 +998,8 @@ func _get_building_maintenance() -> String:
 			return "1.5 Gold/turn"
 		"stoneworker":
 			return "2 Gold/turn"
+		"lumberjack":
+			return "1.5 Gold/turn"
 		"lumber_mill":
 			return "1.5 Gold/turn"
 		_:
@@ -928,6 +1026,8 @@ func _get_special_effects(building_type: String) -> String:
 			return "Must be near water"
 		"stoneworker":
 			return "Must be near stone deposits"
+		"lumberjack":
+			return "Must be near forests"
 		"lumber_mill":
 			return "Must be near forest"
 		_:
