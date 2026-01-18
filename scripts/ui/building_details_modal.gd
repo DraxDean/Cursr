@@ -1,6 +1,7 @@
 extends Control
 
 signal close_requested
+signal demolish_confirmed(building_data: Dictionary)
 
 var building_node: Node2D
 var building_data: Dictionary
@@ -11,6 +12,7 @@ var connection_lines: Array = []  # Store Line2D nodes for visual connections
 var is_showing_connections: bool = false
 var camera_controller: Node
 var connection_paths: Array = []  # Store path data for redrawing
+var demolish_warning_modal: ConfirmationDialog
 
 func _ready():
 	print("Building Details Modal: _ready() called")
@@ -1146,10 +1148,39 @@ func _on_upgrade_pressed():
 
 func _on_demolish_pressed():
 	var building_name = building_data.get("name", "Unknown")
-	var coords = building_data.get("tile_coords", Vector2i(0, 0))
-	print("Demolish building: ", building_name, " at coordinates (", coords.x, ", ", coords.y, ")")
-	# TODO: Implement demolish confirmation dialog and functionality
-	# Should return some resources and remove building from game
+	_show_demolish_warning(building_name)
+
+func _show_demolish_warning(building_name: String):
+	# Create warning modal
+	demolish_warning_modal = ConfirmationDialog.new()
+	demolish_warning_modal.title = "Confirm Demolish"
+	demolish_warning_modal.dialog_text = "Delete " + building_name + "?"
+	
+	# Connect signals
+	demolish_warning_modal.confirmed.connect(_on_demolish_confirmed)
+	demolish_warning_modal.canceled.connect(_on_demolish_cancelled)
+	
+	# Add to scene and show
+	get_tree().current_scene.add_child(demolish_warning_modal)
+	demolish_warning_modal.popup_centered()
+
+func _on_demolish_confirmed():
+	# Clean up warning modal
+	if demolish_warning_modal:
+		demolish_warning_modal.queue_free()
+		demolish_warning_modal = null
+	
+	# Emit signal to game to handle building deletion
+	demolish_confirmed.emit(building_data)
+	
+	# Close the details modal
+	_on_close_pressed()
+
+func _on_demolish_cancelled():
+	# Just clean up warning modal and return to details
+	if demolish_warning_modal:
+		demolish_warning_modal.queue_free()
+		demolish_warning_modal = null
 
 func _on_train_units_pressed():
 	var building_name = building_data.get("name", "Unknown")

@@ -763,11 +763,55 @@ func _open_building_details_modal(building: Node2D):
 	# Connect close signal
 	building_details_modal.close_requested.connect(_on_building_details_closed)
 	
+	# Connect demolish signal
+	building_details_modal.demolish_confirmed.connect(_on_building_demolish_confirmed)
+	
 	print("Game: Building details modal setup complete")
 
 func _on_building_details_closed():
 	_clear_building_selection()
 	building_details_modal = null
+
+func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
+	print("Game: Demolishing building: ", building_data_to_delete)
+	
+	# Find the building node to delete
+	var building_name = building_data_to_delete.get("name", "")
+	if building_name == "":
+		print("Error: No building name provided for demolish")
+		return
+	
+	# Find building in the map objects holder
+	if not map_objects_holder:
+		print("Error: MapObjects holder not found")
+		return
+	
+	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
+	if not building_node:
+		print("Error: Building node not found: ", building_name)
+		return
+	
+	# Update population counts before deletion
+	var building_type = building_data_to_delete.get("building_type", "")
+	var living_occupancy = building_data_to_delete.get("living_occupancy", 0)
+	var worker_occupancy = building_data_to_delete.get("worker_occupancy", 0)
+	
+	# Reduce occupancy to 0 before deletion to update population counts
+	if living_occupancy > 0:
+		update_building_occupancy(building_node, "living", 0)
+	if worker_occupancy > 0:
+		update_building_occupancy(building_node, "working", 0)
+	
+	# Remove building from game
+	building_node.queue_free()
+	
+	# TODO: Return some resources to player based on building type
+	# Could return 50% of building cost or similar
+	
+	print("Game: Building demolished successfully: ", building_name)
+	
+	# Clear selection and close modal (modal should already be closed by demolish handler)
+	_clear_building_selection()
 
 func _unhandled_input(event: InputEvent):
 	# Debug key for building info
