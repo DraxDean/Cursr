@@ -15,14 +15,21 @@ func refresh_content():
 	pop_label.add_theme_color_override("font_color", Color.WHITE)
 	add_content_child(pop_label)
 	
-	# Population stats (placeholder values calculated from buildings)
-	var building_count = 0
-	if game_ref and game_ref.map_objects_holder:
-		for child in game_ref.map_objects_holder.get_children():
-			if child.name.begins_with("TownCenter_") or child.name.contains("Building_"):
-				building_count += 1
+	# Get actual player population data
+	var population = 0
+	var housed = 0
+	var unhoused = 0
+	var working = 0
+	var unemployed = 0
 	
-	var population = building_count * 10  # 10 people per building as placeholder
+	if game_ref and game_ref.has_method("get_player_population_data"):
+		var pop_data = game_ref.get_player_population_data(1)  # Player 1
+		if not pop_data.is_empty():
+			population = pop_data.get("total", 30)
+			housed = pop_data.get("housed", 0)
+			unhoused = pop_data.get("unhoused", 30)
+			working = pop_data.get("working", 0)
+			unemployed = pop_data.get("unemployed", 30)
 	
 	var total_container = HBoxContainer.new()
 	add_content_child(total_container)
@@ -37,17 +44,17 @@ func refresh_content():
 	total_pop.add_theme_color_override("font_color", Color.CYAN)
 	total_container.add_child(total_pop)
 	
-	# Population breakdown
+	# Population breakdown with actual data
 	var breakdown_label = Label.new()
-	breakdown_label.text = "Population Breakdown:"
+	breakdown_label.text = "Population Status:"
 	breakdown_label.add_theme_color_override("font_color", Color.LIGHT_BLUE)
 	add_content_child(breakdown_label)
 	
 	var categories = [
-		{"name": "Workers", "count": int(population * 0.6), "color": Color.GREEN},
-		{"name": "Military", "count": int(population * 0.2), "color": Color.RED},
-		{"name": "Children", "count": int(population * 0.15), "color": Color.YELLOW},
-		{"name": "Elders", "count": int(population * 0.05), "color": Color.GRAY}
+		{"name": "Housed", "count": housed, "color": Color.GREEN},
+		{"name": "Unhoused", "count": unhoused, "color": Color.ORANGE},
+		{"name": "Working", "count": working, "color": Color.BLUE},
+		{"name": "Unemployed", "count": unemployed, "color": Color.GRAY}
 	]
 	
 	for category in categories:

@@ -895,6 +895,19 @@ func _populate_building_info():
 			if population_effect != "None":
 				_add_info_row(stats_container, "Population:", population_effect)
 		
+		# Show player population stats
+		var game_node = _get_game_node()
+		if game_node:
+			var owner_player = building_data.get("owner_player", 1)
+			var pop_data = game_node.get_player_population_data(owner_player)
+			if not pop_data.is_empty():
+				var total_pop = str(pop_data.get("total", 30))
+				var unhoused_pop = str(pop_data.get("unhoused", 30))
+				var unemployed_pop = str(pop_data.get("unemployed", 30))
+				_add_info_row(stats_container, "Total Population:", total_pop)
+				_add_info_row(stats_container, "Unhoused:", unhoused_pop)
+				_add_info_row(stats_container, "Unemployed:", unemployed_pop)
+		
 		# Special effects
 		var special_effects = _get_special_effects(building_type)
 		if special_effects != "None":
@@ -968,11 +981,13 @@ func _add_info_row(container: Control, label_text: String, value_text: String):
 	label.text = label_text
 	label.custom_minimum_size.x = 120
 	label.size_flags_horizontal = Control.SIZE_SHRINK_END
+	label.add_theme_color_override("font_color", Color.WHITE)
 	row.add_child(label)
 	
 	var value = Label.new()
 	value.text = value_text
 	value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value.add_theme_color_override("font_color", Color.WHITE)
 	row.add_child(value)
 
 func _get_building_display_name(building_type: String) -> String:
@@ -1168,9 +1183,15 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 	minus_btn.custom_minimum_size = Vector2(30, 30)
 	control_row.add_child(minus_btn)
 	
-	# Current/Max display
+	# Current/Max display - get actual occupancy from building node
 	var capacity_label = Label.new()
-	capacity_label.text = "0/" + str(max_capacity)
+	var current_occupancy = 0
+	if building_node:
+		current_occupancy = building_node.get_meta(capacity_type + "_occupancy", 0)
+	else:
+		# Fallback to building_data if building_node not available
+		current_occupancy = building_data.get(capacity_type + "_occupancy", 0)
+	capacity_label.text = str(current_occupancy) + "/" + str(max_capacity)
 	capacity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	capacity_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	control_row.add_child(capacity_label)
@@ -1182,7 +1203,7 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 	control_row.add_child(plus_btn)
 	
 	# Store current value in the label's metadata
-	capacity_label.set_meta("current_value", 0)
+	capacity_label.set_meta("current_value", current_occupancy)
 	capacity_label.set_meta("max_value", max_capacity)
 	capacity_label.set_meta("capacity_type", capacity_type)
 	
@@ -1193,25 +1214,62 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 func _on_capacity_plus_pressed(capacity_label: Label):
 	var current_value = capacity_label.get_meta("current_value", 0)
 	var max_value = capacity_label.get_meta("max_value", 0)
+	var capacity_type = capacity_label.get_meta("capacity_type", "")
 	
 	if current_value < max_value:
-		current_value += 1
-		capacity_label.set_meta("current_value", current_value)
-		capacity_label.text = str(current_value) + "/" + str(max_value)
-		
-		# TODO: Update actual building capacity data
-		var capacity_type = capacity_label.get_meta("capacity_type", "")
-		print("Increased ", capacity_type, " capacity to ", current_value, "/", max_value)
+		# Try to update building occupancy through game validation
+		var game_node = _get_game_node()
+		if game_node and game_node.has_method("update_building_occupancy"):
+			if game_node.update_building_occupancy(building_node, capacity_type, current_value + 1):
+				# Success - update UI
+				current_value += 1
+				capacity_label.set_meta("current_value", current_value)
+				capacity_label.text = str(current_value) + "/" + str(max_value)
+				
+				# Update building data
+				building_data[capacity_type + "_occupancy"] = current_value
+				
+				# Refresh population modal if it's open
+				_refresh_population_modal()
+				
+				print("Increased ", capacity_type, " occupancy to ", current_value, "/", max_value)
+			else:
+				print("Cannot increase capacity - not enough available population")
+
 
 func _on_capacity_minus_pressed(capacity_label: Label):
 	var current_value = capacity_label.get_meta("current_value", 0)
 	var max_value = capacity_label.get_meta("max_value", 0)
+	var capacity_type = capacity_label.get_meta("capacity_type", "")
 	
 	if current_value > 0:
-		current_value -= 1
-		capacity_label.set_meta("current_value", current_value)
-		capacity_label.text = str(current_value) + "/" + str(max_value)
-		
-		# TODO: Update actual building capacity data
-		var capacity_type = capacity_label.get_meta("capacity_type", "")
-		print("Decreased ", capacity_type, " capacity to ", current_value, "/", max_value)
+		# Update building occupancy through game validation
+		var game_node = _get_game_node()
+		if game_node and game_node.has_method("update_building_occupancy"):
+			if game_node.update_building_occupancy(building_node, capacity_type, current_value - 1):
+				# Success - update UI
+				current_value -= 1
+				capacity_label.set_meta("current_value", current_value)
+				capacity_label.text = str(current_value) + "/" + str(max_value)
+				
+				# Update building data
+				building_data[capacity_type + "_occupancy"] = current_value
+				
+				# Refresh population modal if it's open
+				_refresh_population_modal()
+				
+				print("Decreased ", capacity_type, " occupancy to ", current_value, "/", max_value)
+
+func _get_game_node() -> Node:
+	# Get reference to the main game node
+	if building_node:
+		return building_node.get_parent().get_parent()
+	return null
+
+func _refresh_population_modal():
+	# Refresh the population modal if it's currently open
+	var game_node = _get_game_node()
+	if game_node and game_node.has_method("get") and game_node.population_modal:
+		if is_instance_valid(game_node.population_modal) and game_node.population_modal.visible:
+			if game_node.population_modal.has_method("refresh_content"):
+				game_node.population_modal.refresh_content()

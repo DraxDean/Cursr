@@ -69,8 +69,11 @@ var players_data: Dictionary = {
 			"wood": 25
 		},
 		"population": {
-			"current": 1,
-			"max": 10
+			"total": 30,  # Base starting population
+			"housed": 0,  # Number of people currently housed
+			"working": 0,  # Number of people currently working
+			"unhoused": 30,  # total - housed
+			"unemployed": 30  # total - working
 		}
 	},
 	"environment": {
@@ -161,17 +164,23 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		building_scene.position = world_pos
 		building_scene.z_index = 5  # Above terrain but below UI
 		
-		# Setup building with all data including texture
+		# Setup building with all data including texture and initial occupancy
 		var setup_data = {
 			"type": building_type,
 			"texture_path": building_texture_path,
 			"owner_player": 1,  # Player 1
 			"building_type": building_type,
-			"construction_day": turn_manager.get_day()
+			"construction_day": turn_manager.get_day(),
+			"living_occupancy": 0,  # Start with no occupancy
+			"worker_occupancy": 0   # Start with no occupancy
 		}
 		
 		if building_scene.has_method("setup"):
 			building_scene.setup(setup_data)
+		
+		# Set initial occupancy metadata on the building node
+		building_scene.set_meta("living_occupancy", 0)
+		building_scene.set_meta("worker_occupancy", 0)
 		
 		print("Game: Placing building at tile ", tile_coords, " world pos ", world_pos)
 		
@@ -351,6 +360,78 @@ func get_environment_objects(object_type: String) -> Dictionary:
 		return players_data["environment"]["objects"][object_type]
 	return {}
 
+func get_player_population_data(player_id: int) -> Dictionary:
+	# Get population data for a specific player
+	if players_data.has(player_id):
+		var player_data = players_data[player_id]
+		var pop_data = player_data.get("population", {})
+		return pop_data
+	return {}
+
+func update_building_occupancy(building_node: Node2D, capacity_type: String, new_value: int) -> bool:
+	# Update building occupancy and validate against available population
+	if not building_node:
+		return false
+	
+	var owner_player = building_node.get_meta("owner_player", 1)
+	var current_occupancy = building_node.get_meta(capacity_type + "_occupancy", 0)
+	var difference = new_value - current_occupancy
+	
+	# Check if we have enough available population for increases
+	if difference > 0:
+		var pop_data = get_player_population_data(owner_player)
+		var available = 0
+		if capacity_type == "living":
+			available = pop_data.get("unhoused", 0)
+		elif capacity_type == "worker":
+			available = pop_data.get("unemployed", 0)
+		
+		if available < difference:
+			print("Not enough ", capacity_type, " population available. Need ", difference, ", have ", available)
+			return false
+	
+	# Update building occupancy
+	building_node.set_meta(capacity_type + "_occupancy", new_value)
+	
+	# Recalculate global population
+	update_player_population(owner_player)
+	
+	return true
+
+func update_player_population(player_id: int):
+	# Recalculate housed/unhoused and working/unemployed populations
+	if not players_data.has(player_id):
+		return
+	
+	var player_data = players_data[player_id]
+	var pop_data = player_data.get("population", {})
+	
+	# Calculate housed and working population from actual building data
+	var total_housed = 0
+	var total_working = 0
+	
+	# Get all buildings for this player and sum their occupancy
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
+				# Get building occupancy from metadata
+				var building_living_occupancy = child.get_meta("living_occupancy", 0)
+				var building_worker_occupancy = child.get_meta("worker_occupancy", 0)
+				total_housed += building_living_occupancy
+				total_working += building_worker_occupancy
+	
+	# Update population data
+	pop_data["housed"] = total_housed
+	pop_data["working"] = total_working
+	pop_data["unhoused"] = pop_data.get("total", 30) - total_housed
+	pop_data["unemployed"] = pop_data.get("total", 30) - total_working
+	
+	player_data["population"] = pop_data
+	
+	# Ensure values don't go negative
+	pop_data["unhoused"] = max(0, pop_data["unhoused"])
+	pop_data["unemployed"] = max(0, pop_data["unemployed"])
+
 func get_nearest_environment_objects(position: Vector2, object_type: String, max_count: int = -1) -> Array:
 	# Get environment objects sorted by distance from a position
 	var objects = get_environment_objects(object_type)
@@ -407,6 +488,35 @@ func _migrate_players_data_structure():
 			}
 		}
 	
+	# Migrate player population data to new structure
+	for player_id in players_data.keys():
+		if typeof(player_id) == TYPE_INT:  # Only process actual players, not environment
+			var player_data = players_data[player_id]
+			var pop_data = player_data.get("population", {})
+			
+			# Migrate old population structure to new comprehensive structure
+			if pop_data.has("current") and pop_data.has("max"):
+				# Old structure, convert to new
+				var old_current = pop_data.get("current", 1)
+				pop_data = {
+					"total": 30,  # Start with base 30 population
+					"housed": 0,  # Will be calculated from buildings
+					"working": 0,  # Will be calculated from buildings
+					"unhoused": 30,  # total - housed
+					"unemployed": 30  # total - working
+				}
+				print("Game: Migrated player ", player_id, " population to new structure")
+			elif not pop_data.has("total"):
+				# New structure but missing fields
+				pop_data["total"] = pop_data.get("total", 30)
+				pop_data["housed"] = pop_data.get("housed", 0)
+				pop_data["working"] = pop_data.get("working", 0)
+				pop_data["unhoused"] = pop_data["total"] - pop_data["housed"]
+				pop_data["unemployed"] = pop_data["total"] - pop_data["working"]
+				print("Game: Updated player ", player_id, " population structure")
+			
+			player_data["population"] = pop_data
+	
 	# Validate existing players have required structures
 	for player_id in players_data:
 		var player_data = players_data[player_id]
@@ -416,12 +526,24 @@ func _migrate_players_data_structure():
 				player_data["buildings"] = []
 			if not player_data.has("resources"):
 				player_data["resources"] = {"gold": 100, "food": 50, "wood": 25}
+			# Don't reset population if it already exists in new format
 			if not player_data.has("population"):
-				player_data["population"] = {"current": 1, "max": 10}
+				player_data["population"] = {
+					"total": 30,
+					"housed": 0,
+					"working": 0,
+					"unhoused": 30,
+					"unemployed": 30
+				}
 			if not player_data.has("name"):
 				player_data["name"] = "Player " + str(player_id)
 			if not player_data.has("race"):
 				player_data["race"] = "human"
+	
+	# Update all players' population calculations after migration
+	for player_id in players_data.keys():
+		if typeof(player_id) == TYPE_INT:
+			update_player_population(player_id)
 	
 	print("Game: Players data migration complete")
 
@@ -829,7 +951,10 @@ func initialize_map():
 		return  # Don't proceed with normal map initialization
 	elif GameManager.start_mode == "new":
 		print("Game: Mode: New Game"); current_save_path = ""
-		if generate_world_data(): success = true
+		if generate_world_data(): 
+			success = true
+			# Initialize population data for new games
+			_migrate_players_data_structure()
 		else: push_error("Game: Failed to generate world data.")
 	elif GameManager.start_mode == "new_with_data":
 		print("Game: Mode: New Game with Generated Data")
@@ -838,9 +963,14 @@ func initialize_map():
 			world_data = GameManager.generated_world_data.duplicate()
 			GameManager.generated_world_data.clear()  # Clear it after use
 			success = true
+			# Initialize population data for new games
+			_migrate_players_data_structure()
 		else:
 			push_error("Game: Generated world data is empty, falling back to normal generation")
-			if generate_world_data(): success = true
+			if generate_world_data(): 
+				success = true
+				# Initialize population data for new games
+				_migrate_players_data_structure()
 	elif GameManager.start_mode == "load":
 		print("Game: Mode: Load Game from Path: ", GameManager.load_file_path)
 		if GameManager.load_file_path.is_empty(): push_error("Game: Load mode selected but no load_file_path provided! Starting new game."); GameManager.start_mode = "new"; initialize_map(); return
@@ -1147,17 +1277,23 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			var tile_center_pos = tilemap_layer.map_to_local(tile_coords)
 			building_scene.position = tile_center_pos
 			
-			# Setup building with all data including texture
+			# Setup building with all data including texture and occupancy
 			var setup_data = {
 				"type": building_type,
 				"texture_path": building_info["texture_path"],
 				"owner_player": building_info.get("owner_player", 1),
 				"building_type": building_type,
-				"construction_day": building_info.get("construction_day", 0)
+				"construction_day": building_info.get("construction_day", 0),
+				"living_occupancy": building_info.get("living_occupancy", 0),
+				"worker_occupancy": building_info.get("worker_occupancy", 0)
 			}
 			
 			if building_scene.has_method("setup"):
 				building_scene.setup(setup_data)
+			
+			# Set occupancy metadata on the building node
+			building_scene.set_meta("living_occupancy", building_info.get("living_occupancy", 0))
+			building_scene.set_meta("worker_occupancy", building_info.get("worker_occupancy", 0))
 			
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
@@ -1403,7 +1539,9 @@ func _execute_save() -> bool:
 					"z_index": child.z_index,
 					"owner_player": child.get_meta("owner_player", 1),
 					"building_type": child.get_meta("building_type", "unknown"),
-					"construction_day": child.get_meta("construction_day", 0)
+					"construction_day": child.get_meta("construction_day", 0),
+					"living_occupancy": child.get_meta("living_occupancy", 0),
+					"worker_occupancy": child.get_meta("worker_occupancy", 0)
 				}
 				buildings_data.append(building_info)
 

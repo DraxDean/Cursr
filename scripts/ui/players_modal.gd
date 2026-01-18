@@ -105,12 +105,23 @@ func refresh_content():
 			wood_label.add_theme_color_override("font_color", Color.SADDLE_BROWN)
 			player_info.add_child(wood_label)
 			
-			# Population
+			# Population with new structure
 			var population = player_data.get("population", {})
 			var pop_label = Label.new()
-			pop_label.text = "Population: " + str(population.get("current", 0)) + "/" + str(population.get("max", 0))
+			var total_pop = population.get("total", 30)
+			var housed = population.get("housed", 0)
+			var unhoused = population.get("unhoused", 30)
+			pop_label.text = "👥 Population: " + str(total_pop) + " (Housed: " + str(housed) + ", Unhoused: " + str(unhoused) + ")"
 			pop_label.add_theme_color_override("font_color", Color.LIGHT_BLUE)
 			player_info.add_child(pop_label)
+			
+			# Employment status
+			var working = population.get("working", 0)
+			var unemployed = population.get("unemployed", 30)
+			var employment_label = Label.new()
+			employment_label.text = "💼 Employment: Working " + str(working) + ", Unemployed " + str(unemployed)
+			employment_label.add_theme_color_override("font_color", Color.LIGHT_GREEN)
+			player_info.add_child(employment_label)
 			
 			# Buildings count
 			var buildings = player_data.get("buildings", [])
