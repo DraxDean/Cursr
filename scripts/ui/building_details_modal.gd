@@ -6,6 +6,8 @@ var building_node: Node2D
 var building_data: Dictionary
 var is_dragging: bool = false
 var drag_offset: Vector2
+var title_label: Label
+var connection_lines: Array = []  # Store Line2D nodes for visual connections
 
 func _ready():
 	print("Building Details Modal: _ready() called")
@@ -56,7 +58,7 @@ func _setup_modal():
 	main_container.add_child(header_container)
 	
 	# Title label (draggable area)
-	var title_label = Label.new()
+	title_label = Label.new()
 	title_label.text = "Building Details"
 	title_label.add_theme_font_size_override("font_size", 16)
 	title_label.add_theme_color_override("font_color", Color.WHITE)
@@ -100,6 +102,10 @@ func _setup_modal():
 	# Building stats section
 	var stats_section = _create_stats_section()
 	content_container.add_child(stats_section)
+	
+	# Building connections section
+	var connections_section = _create_connections_section()
+	content_container.add_child(connections_section)
 	
 	# Actions section
 	var actions_section = _create_actions_section()
@@ -212,9 +218,31 @@ func _create_actions_section() -> Control:
 	
 	return section
 
+func _create_connections_section() -> Control:
+	var section = VBoxContainer.new()
+	
+	var section_title = Label.new()
+	section_title.text = "Connections"
+	section_title.add_theme_font_size_override("font_size", 16)
+	section.add_child(section_title)
+	
+	var connections_container = VBoxContainer.new()
+	connections_container.name = "ConnectionsContainer"
+	connections_container.add_theme_constant_override("separation", 5)
+	section.add_child(connections_container)
+	
+	return section
+
 func setup_building_details(building: Node2D):
 	building_node = building
 	building_data = _extract_building_data(building)
+	
+	# Update title with building ID
+	var building_id = building_data.get("name", "Unknown")
+	title_label.text = "Building Details: " + building_id
+	
+	# Draw connection lines on the map
+	_draw_connection_lines()
 	
 	_populate_building_info()
 
@@ -239,6 +267,9 @@ func _extract_building_data(building: Node2D) -> Dictionary:
 	if building.get_parent() and building.get_parent().get_parent():
 		var game_node = building.get_parent().get_parent()
 		
+		# Get connections to other buildings/objects
+		data["connections"] = _find_building_connections(building, game_node)
+		
 		# Get current turn/day information
 		if game_node.has_method("get_node"):
 			var turn_manager = game_node.get_node("TurnManager")
@@ -252,6 +283,211 @@ func _extract_building_data(building: Node2D) -> Dictionary:
 			data["tile_coords"] = tilemap_layer.local_to_map(building.position)
 	
 	return data
+
+func _find_building_connections(building: Node2D, game_node: Node) -> Array:
+	var connections = []
+	var building_type = building.get_meta("building_type", "unknown")
+	
+	# Define connection rules for different building types
+	var connection_rules = {
+		"house": ["town_center", "barracks"],
+		"barracks": ["town_center", "house"],
+		"town_center": ["house", "barracks", "fishing_hut", "farm", "mine", "lumber_mill"],
+		"fishing_hut": ["town_center"],
+		"farm": ["town_center"],
+		"mine": ["town_center"],
+		"lumber_mill": ["town_center", "tree"]
+	}
+	
+	# Get connection range (max 50 tiles)
+	var connection_range_tiles = 50
+	
+	# Find connected building types for this building
+	var allowed_connections = connection_rules.get(building_type, [])
+	
+	if allowed_connections.is_empty():
+		return connections
+	
+	# Get the tilemap to convert positions to tile coordinates
+	var tilemap_layer = game_node.get_node_or_null("TileMapLayer")
+	if not tilemap_layer:
+		return connections
+		
+	var building_tile_coords = tilemap_layer.local_to_map(building.position)
+	
+	# Get buildings from game's player data instead of searching the scene tree
+	if game_node.has_method("get_player_buildings"):
+		var all_buildings = game_node.get_player_buildings(1)  # Assuming player 1
+		print("Checking connections for ", building.name, " at tile ", building_tile_coords, " - found ", all_buildings.size(), " total buildings")
+		
+		for building_name in all_buildings:
+			if building_name == building.name:
+				continue  # Skip self
+			
+			# Find the actual building node by name
+			var buildings_layer = building.get_parent()
+			if buildings_layer and buildings_layer.has_node(NodePath(building_name)):
+				var other_building = buildings_layer.get_node(NodePath(building_name))
+				var other_type = other_building.get_meta("building_type", "unknown")
+				var other_tile_coords = tilemap_layer.local_to_map(other_building.position)
+				
+				# Calculate tile distance (Manhattan distance)
+				var tile_distance = abs(building_tile_coords.x - other_tile_coords.x) + abs(building_tile_coords.y - other_tile_coords.y)
+				
+				if other_type in allowed_connections and tile_distance <= connection_range_tiles:
+					connections.append({
+						"name": other_building.name,
+						"type": other_type,
+						"distance": tile_distance,
+						"object_type": "building"
+					})
+					print("Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away")
+	
+	# Sort connections by distance
+	connections.sort_custom(func(a, b): return a.distance < b.distance)
+	
+	return connections
+
+func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, tilemap: TileMapLayer) -> Array:
+	# Simple A* implementation for tile-based pathfinding
+	var open_set = []
+	var closed_set = {}
+	var came_from = {}
+	var g_score = {}
+	var f_score = {}
+	
+	# Initialize starting tile
+	open_set.append(start_tile)
+	g_score[start_tile] = 0
+	f_score[start_tile] = _heuristic(start_tile, end_tile)
+	
+	while open_set.size() > 0:
+		# Find tile with lowest f_score
+		var current = open_set[0]
+		var current_index = 0
+		for i in range(open_set.size()):
+			if f_score.get(open_set[i], INF) < f_score.get(current, INF):
+				current = open_set[i]
+				current_index = i
+		
+		# Remove current from open set
+		open_set.remove_at(current_index)
+		closed_set[current] = true
+		
+		# Check if we reached the goal
+		if current == end_tile:
+			return _reconstruct_path(came_from, current)
+		
+		# Check all neighbors (4-directional)
+		var neighbors = [
+			Vector2i(current.x + 1, current.y),
+			Vector2i(current.x - 1, current.y),
+			Vector2i(current.x, current.y + 1),
+			Vector2i(current.x, current.y - 1)
+		]
+		
+		for neighbor in neighbors:
+			if closed_set.has(neighbor):
+				continue
+			
+			# Simple walkability check - assume empty tiles are walkable
+			var tentative_g_score = g_score.get(current, INF) + 1
+			
+			if not open_set.has(neighbor):
+				open_set.append(neighbor)
+			elif tentative_g_score >= g_score.get(neighbor, INF):
+				continue
+			
+			came_from[neighbor] = current
+			g_score[neighbor] = tentative_g_score
+			f_score[neighbor] = g_score[neighbor] + _heuristic(neighbor, end_tile)
+	
+	return []  # No path found
+
+func _heuristic(a: Vector2i, b: Vector2i) -> int:
+	# Manhattan distance heuristic
+	return abs(a.x - b.x) + abs(a.y - b.y)
+
+func _reconstruct_path(came_from: Dictionary, current: Vector2i) -> Array:
+	var path = [current]
+	while came_from.has(current):
+		current = came_from[current]
+		path.push_front(current)
+	return path
+
+func _draw_connection_lines():
+	# Clear existing connection lines first
+	_clear_connection_lines()
+	
+	if not building_node:
+		return
+		
+	var game_node = building_node.get_parent().get_parent()
+	var tilemap = game_node.get_node_or_null("TileMapLayer")
+	if not tilemap:
+		return
+		
+	var connections = building_data.get("connections", [])
+	var building_tile_coords = tilemap.local_to_map(building_node.position)
+	
+	# Colors for different connection types (more visible colors)
+	var connection_colors = {
+		"house": Color.DEEP_SKY_BLUE,
+		"town_center": Color.ORANGE,
+		"barracks": Color.CRIMSON,
+		"fishing_hut": Color.AQUA,
+		"farm": Color.LIME_GREEN,
+		"mine": Color.SILVER,
+		"lumber_mill": Color.SADDLE_BROWN
+	}
+	
+	for connection in connections:
+		# Find the target building
+		var buildings_layer = building_node.get_parent()
+		if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
+			var target_building = buildings_layer.get_node(NodePath(connection.name))
+			var target_tile_coords = tilemap.local_to_map(target_building.position)
+			
+			# Find path using A*
+			var path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
+			
+			if path.size() > 1:  # Only draw if path exists and has multiple points
+				var color = connection_colors.get(connection.type, Color.WHITE)
+				_draw_path_on_tilemap(path, color, tilemap)
+
+func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
+	# Create a Line2D node to draw the connection path
+	var line = Line2D.new()
+	line.width = 4.0
+	line.default_color = color
+	line.z_index = 100  # Draw above everything else
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	
+	# Convert tile coordinates to world positions (tile centers)
+	for tile_coord in path:
+		# Calculate world position of tile center
+		var world_pos = tilemap.map_to_local(tile_coord)
+		line.add_point(world_pos)
+	
+	# Add line to the game scene so it's visible
+	var game_node = building_node.get_parent().get_parent()
+	game_node.add_child(line)
+	
+	# Store reference to the line so we can remove it later
+	connection_lines.append(line)
+	
+	print("Drew connection line with ", path.size(), " points in ", color)
+
+func _clear_connection_lines():
+	# Remove all Line2D nodes from the scene
+	for line in connection_lines:
+		if is_instance_valid(line):
+			line.queue_free()
+	
+	connection_lines.clear()
+	print("Cleared ", connection_lines.size(), " connection lines")
 
 func _populate_building_info():
 	# The main VBoxContainer should be the second child (first is Panel background)
@@ -295,6 +531,7 @@ func _populate_building_info():
 	var building_image = null
 	var info_container = null
 	var stats_container = null
+	var connections_container = null
 	
 	for section in content_vbox.get_children():
 		if not section:
@@ -308,6 +545,8 @@ func _populate_building_info():
 				info_container = child
 			elif child.name == "StatsContainer":
 				stats_container = child
+			elif child.name == "ConnectionsContainer":
+				connections_container = child
 			elif child is CenterContainer:
 				for grandchild in child.get_children():
 					if grandchild and grandchild.name == "BuildingImage":
@@ -374,6 +613,40 @@ func _populate_building_info():
 		var special_effects = _get_special_effects(building_type)
 		if special_effects != "None":
 			_add_info_row(stats_container, "Special:", special_effects)
+	
+	# Populate connections section
+	if connections_container:
+		# Clear existing connections
+		for child in connections_container.get_children():
+			child.queue_free()
+		
+		var connections = building_data.get("connections", [])
+		if connections.is_empty():
+			var no_connections_label = Label.new()
+			no_connections_label.text = "No connections in range"
+			no_connections_label.add_theme_color_override("font_color", Color.GRAY)
+			connections_container.add_child(no_connections_label)
+		else:
+			for connection in connections:
+				var connection_row = HBoxContainer.new()
+				connections_container.add_child(connection_row)
+				
+				# Connection type icon/indicator
+				var type_label = Label.new()
+				var type_text = connection.type.capitalize()
+				if connection.object_type == "building":
+					type_text = "🏠 " + type_text
+				elif connection.object_type == "map_object":
+					type_text = "🌳 " + type_text
+				type_label.text = type_text
+				type_label.custom_minimum_size.x = 100
+				connection_row.add_child(type_label)
+				
+				# Connection name and distance
+				var details_label = Label.new()
+				details_label.text = connection.name + " (" + str(connection.distance) + " tiles)"
+				details_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				connection_row.add_child(details_label)
 
 func _debug_print_tree(node: Node, indent: int):
 	var indent_str = ""
@@ -494,6 +767,7 @@ func _get_special_effects(building_type: String) -> String:
 			return "None"
 
 func _on_close_pressed():
+	_clear_connection_lines()
 	close_requested.emit()
 	queue_free()
 
