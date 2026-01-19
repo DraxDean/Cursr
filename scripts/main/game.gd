@@ -1003,6 +1003,9 @@ func _ready():
 func _process(delta: float):
 	if is_instance_valid(camera_controller):
 		camera_controller.process_movement(delta, get_tree().paused)
+	
+	# Update unit movements
+	_update_unit_movements(delta)
 
 
 # --- Map Initialization ---
@@ -1143,7 +1146,15 @@ func _create_initial_units():
 				"player_id": 1,
 				"position": unit_positions[i],
 				"living_quarters": null,  # Can be building name or null
-				"job": null  # Can be job type or null
+				"job": null,  # Can be job type or null
+				# Movement properties
+				"current_path": [],
+				"path_index": 0,
+				"movement_state": "idle",  # idle, moving, working
+				"movement_target": null,
+				"movement_cycle_step": 0,  # 0=at_home, 1=to_work, 2=to_resource, 3=back_to_work, 4=back_home
+				"work_timer": 0.0,
+				"movement_speed": 25.0  # pixels per second (slowed down 2x)
 			}
 			_spawn_unit(unit_data)
 	else:
@@ -1229,7 +1240,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			var job = unit.get("job", null)
 			
 			if living_quarters != null and job != null:
-				# Unit is fully assigned - create or update sprite
+				# Unit is fully assigned - create sprite and start movement cycle
 				var unit_id = unit["unique_id"]
 				var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 				
@@ -1247,8 +1258,417 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 					
 					map_objects_holder.add_child(unit_sprite)
 					print("Created sprite for fully assigned unit: ", unit_id)
+				
+				# Initialize unit at home and start movement cycle
+				unit["movement_cycle_step"] = 0  # Start at home
+				unit["movement_state"] = "idle"
+				_start_unit_movement_cycle(unit)
 	
 	print("Auto-assigned ", units_assigned, " units to ", capacity_type, " capacity at ", building_id)
+
+func _update_unit_movements(delta: float):
+	"""Update all unit movements each frame"""
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		
+		var player_data = players_data[player_id]
+		if not player_data.has("units"):
+			continue
+		
+		for unit in player_data["units"]:
+			# Only process units that have both assignments and are visible
+			if unit.get("living_quarters", null) == null or unit.get("job", null) == null:
+				continue
+			
+			var unit_sprite = map_objects_holder.get_node_or_null(unit["unique_id"])
+			if not unit_sprite:
+				continue
+			
+			_process_unit_movement(unit, unit_sprite, delta)
+
+func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
+	"""Process movement for a single unit"""
+	var movement_state = unit.get("movement_state", "idle")
+	
+	match movement_state:
+		"idle":
+			# Check if it's time to start moving
+			unit["work_timer"] += delta
+			if unit["work_timer"] >= 2.0:  # Stay idle for 2 seconds
+				unit["work_timer"] = 0.0
+				_start_unit_movement_cycle(unit)
+		
+		"moving":
+			# Follow current path
+			var current_path = unit.get("current_path", [])
+			if current_path.is_empty():
+				# No path - switch to idle
+				unit["movement_state"] = "idle"
+				return
+			
+			var path_index = unit.get("path_index", 0)
+			if path_index >= current_path.size():
+				# Reached end of path
+				unit["movement_state"] = "idle"
+				unit["current_path"] = []
+				unit["path_index"] = 0
+				_on_unit_reached_destination(unit)
+				return
+			
+			# Move towards next waypoint
+			var target_pos = current_path[path_index]
+			var current_pos = sprite.position
+			var direction = (target_pos - current_pos).normalized()
+			var movement_speed = unit.get("movement_speed", 50.0)
+			var move_distance = movement_speed * delta
+			
+			if current_pos.distance_to(target_pos) <= move_distance:
+				# Reached this waypoint
+				sprite.position = target_pos
+				unit["path_index"] = path_index + 1
+			else:
+				# Keep moving towards waypoint
+				sprite.position = current_pos + direction * move_distance
+			
+			# Update unit position data
+			unit["position"] = sprite.position
+
+func _start_unit_movement_cycle(unit: Dictionary):
+	"""Start or continue the unit's movement cycle"""
+	var cycle_step = unit.get("movement_cycle_step", 0)
+	var living_quarters = unit.get("living_quarters", null)
+	var job = unit.get("job", null)
+	
+	if living_quarters == null or job == null:
+		return  # Can't move without both assignments
+	
+	print("Starting movement cycle for unit ", unit["unique_id"], " step: ", cycle_step)
+	
+	match cycle_step:
+		0:  # At home - go to work
+			_move_unit_to_building(unit, job, 1)
+		1:  # At work - find resource connection and go there
+			_move_unit_to_resource(unit, 2)
+		2:  # At resource - go back to work
+			_move_unit_to_building(unit, job, 3)
+		3:  # Back at work - go home
+			_move_unit_to_building(unit, living_quarters, 4)
+		4:  # Back home - cycle complete, start over
+			unit["movement_cycle_step"] = 0
+			_start_unit_movement_cycle(unit)
+
+func _on_unit_reached_destination(unit: Dictionary):
+	"""Called when unit reaches its movement target"""
+	var cycle_step = unit.get("movement_cycle_step", 0)
+	print("Unit ", unit["unique_id"], " reached destination, cycle step: ", cycle_step)
+	
+	# Advance to next step in cycle
+	unit["movement_cycle_step"] = cycle_step + 1
+	if unit["movement_cycle_step"] > 4:
+		unit["movement_cycle_step"] = 0
+	
+	# Start next movement after a brief pause
+	unit["work_timer"] = 0.0
+	unit["movement_state"] = "idle"
+
+func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: int):
+	"""Move unit to a specific building"""
+	if building_name == null:
+		return
+	
+	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
+	if not building_node:
+		print("Building not found: ", building_name)
+		return
+	
+	var unit_pos = unit["position"]
+	var target_pos = building_node.position
+	
+	# Get actual path using existing pathfinding system
+	var path = _get_path_between_positions(unit_pos, target_pos)
+	if path.is_empty():
+		# Fallback to direct path if pathfinding fails
+		path = [target_pos]
+	
+	unit["current_path"] = path
+	unit["path_index"] = 0
+	unit["movement_state"] = "moving"
+	unit["movement_target"] = building_name
+	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
+	
+	print("Unit ", unit["unique_id"], " moving to building: ", building_name, " with ", path.size(), " waypoints")
+
+func _move_unit_to_resource(unit: Dictionary, next_step: int):
+	"""Move unit to a resource connected to their workplace"""
+	var job_building = unit.get("job", null)
+	if job_building == null:
+		return
+	
+	var building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
+	if not building_node:
+		return
+	
+	# Get building connections to find connected resources
+	var connections = _find_building_connections_for_unit(building_node)
+	var resource_connection = null
+	
+	# Find the first resource connection (mountain, tree, etc.)
+	for connection in connections:
+		if connection["object_type"] == "map_object":
+			resource_connection = connection
+			break
+	
+	if resource_connection == null:
+		# No resource connection - just stay at work
+		unit["movement_cycle_step"] = next_step
+		unit["movement_state"] = "idle"
+		return
+	
+	# Get resource position
+	var resource_pos = _get_resource_position_by_connection(resource_connection)
+	if resource_pos == null:
+		# Resource not found - skip to next step
+		unit["movement_cycle_step"] = next_step
+		unit["movement_state"] = "idle"
+		return
+	
+	# Get path from building to resource using existing pathfinding
+	var unit_pos = unit["position"]
+	var path = _get_path_between_positions(unit_pos, resource_pos)
+	if path.is_empty():
+		# Fallback to direct path
+		path = [resource_pos]
+	
+	unit["current_path"] = path
+	unit["path_index"] = 0
+	unit["movement_state"] = "moving"
+	unit["movement_target"] = resource_connection["type"]
+	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
+	
+	print("Unit ", unit["unique_id"], " moving to resource: ", resource_connection["type"], " with ", path.size(), " waypoints")
+
+func _find_nearest_resource(from_position: Vector2, resource_type: String) -> Vector2:
+	"""Find the nearest resource of the specified type"""
+	var nearest_pos = null
+	var nearest_distance = INF
+	
+	match resource_type:
+		"mountain":
+			var mountains = get_environment_objects("mountains")
+			for mountain_id in mountains:
+				var mountain_data = mountains[mountain_id]
+				var mountain_pos = tilemap_layer.map_to_local(mountain_data["tile_coords"])
+				var distance = from_position.distance_to(mountain_pos)
+				if distance < nearest_distance:
+					nearest_distance = distance
+					nearest_pos = mountain_pos
+		
+		"tree":
+			var trees = get_environment_objects("trees")
+			for tree_id in trees:
+				var tree_data = trees[tree_id]
+				var tree_pos = tilemap_layer.map_to_local(tree_data["tile_coords"])
+				var distance = from_position.distance_to(tree_pos)
+				if distance < nearest_distance:
+					nearest_distance = distance
+					nearest_pos = tree_pos
+		
+		"farm":
+			# Find farm buildings
+			for child in map_objects_holder.get_children():
+				if _is_building_node(child):
+					var building_type = child.get_meta("building_type", "unknown")
+					if building_type == "farm":
+						var distance = from_position.distance_to(child.position)
+						if distance < nearest_distance:
+							nearest_distance = distance
+							nearest_pos = child.position
+	
+	return nearest_pos
+
+func _find_building_connections_for_unit(building: Node2D) -> Array:
+	"""Get building connections using the same system as building details modal"""
+	var connections = []
+	var building_type = building.get_meta("building_type", "unknown")
+	
+	# Define connection rules for different building types
+	var connection_rules = {
+		"house": ["town_center", "barracks", "stoneworker"],
+		"barracks": ["town_center", "house"],
+		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
+		"fishing_hut": ["town_center"],
+		"farmhouse": ["town_center", "house", "farm"],
+		"stoneworker": ["house", "town_center", "mountain"],
+		"lumberjack": ["house", "town_center", "tree"],
+		"lumber_mill": ["town_center", "tree"]
+	}
+	
+	var allowed_connections = connection_rules.get(building_type, [])
+	if allowed_connections.is_empty():
+		return connections
+	
+	var building_tile_coords = tilemap_layer.local_to_map(building.position)
+	var connection_range_tiles = 50
+	
+	# Check for resource connections (mountains, trees)
+	if "mountain" in allowed_connections:
+		var mountains = get_environment_objects("mountains")
+		for mountain_id in mountains:
+			var mountain_data = mountains[mountain_id]
+			var mountain_tile_coords = mountain_data["tile_coords"]
+			var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
+			
+			if tile_distance <= connection_range_tiles:
+				connections.append({
+					"name": mountain_id,
+					"type": "mountain",
+					"distance": tile_distance,
+					"object_type": "map_object",
+					"tile_coords": mountain_tile_coords
+				})
+	
+	if "tree" in allowed_connections:
+		var trees = get_environment_objects("trees")
+		for tree_id in trees:
+			var tree_data = trees[tree_id]
+			var tree_tile_coords = tree_data["tile_coords"]
+			var tile_distance = _hex_distance(building_tile_coords, tree_tile_coords)
+			
+			if tile_distance <= connection_range_tiles:
+				connections.append({
+					"name": tree_id,
+					"type": "tree",
+					"distance": tile_distance,
+					"object_type": "map_object",
+					"tile_coords": tree_tile_coords
+				})
+	
+	return connections
+
+func _get_resource_position_by_connection(connection: Dictionary) -> Vector2:
+	"""Get world position of a resource from connection data"""
+	if connection.has("tile_coords"):
+		return tilemap_layer.map_to_local(connection["tile_coords"])
+	return Vector2.ZERO
+
+func _get_path_between_positions(start_pos: Vector2, end_pos: Vector2) -> Array:
+	"""Get pathfinding route between two world positions using existing hex pathfinding"""
+	if not tilemap_layer:
+		return [end_pos]  # Fallback to direct path
+	
+	var start_tile = tilemap_layer.local_to_map(start_pos)
+	var end_tile = tilemap_layer.local_to_map(end_pos)
+	
+	# Use existing A* pathfinding from building details modal
+	var tile_path = _astar_pathfind_simple(start_tile, end_tile)
+	if tile_path.is_empty():
+		return [end_pos]  # Fallback if pathfinding fails
+	
+	# Convert tile path to world positions
+	var world_path = []
+	for tile_coord in tile_path:
+		world_path.append(tilemap_layer.map_to_local(tile_coord))
+	
+	return world_path
+
+func _astar_pathfind_simple(start_tile: Vector2i, end_tile: Vector2i) -> Array:
+	"""Simple A* pathfinding implementation for units"""
+	var open_set = []
+	var closed_set = {}
+	var came_from = {}
+	var g_score = {}
+	var f_score = {}
+	
+	# Initialize starting tile
+	open_set.append(start_tile)
+	g_score[start_tile] = 0
+	f_score[start_tile] = _hex_distance(start_tile, end_tile)
+	
+	while open_set.size() > 0:
+		# Find tile with lowest f_score
+		var current = open_set[0]
+		var current_index = 0
+		for i in range(open_set.size()):
+			if f_score.get(open_set[i], INF) < f_score.get(current, INF):
+				current = open_set[i]
+				current_index = i
+		
+		# Remove current from open set
+		open_set.remove_at(current_index)
+		closed_set[current] = true
+		
+		# Check if we reached the goal
+		if current == end_tile:
+			return _reconstruct_path_simple(came_from, current)
+		
+		# Check all neighbors (6-directional for hex grid)
+		var neighbors = _get_hex_neighbors_simple(current)
+		
+		for neighbor in neighbors:
+			if closed_set.has(neighbor):
+				continue
+			
+			# Simple walkability check - assume empty tiles are walkable
+			var tentative_g_score = g_score.get(current, INF) + 1
+			
+			if not open_set.has(neighbor):
+				open_set.append(neighbor)
+			elif tentative_g_score >= g_score.get(neighbor, INF):
+				continue
+			
+			came_from[neighbor] = current
+			g_score[neighbor] = tentative_g_score
+			f_score[neighbor] = g_score[neighbor] + _hex_distance(neighbor, end_tile)
+	
+	return []  # No path found
+
+func _reconstruct_path_simple(came_from: Dictionary, current: Vector2i) -> Array:
+	"""Reconstruct path from A* came_from data"""
+	var path = [current]
+	while came_from.has(current):
+		current = came_from[current]
+		path.push_front(current)
+	return path
+
+func _get_hex_neighbors_simple(tile: Vector2i) -> Array:
+	"""Get 6 neighbors for hexagonal grid"""
+	var neighbors = []
+	
+	# For odd-row offset (pointy-top hexagons)
+	if tile.y % 2 == 0:  # Even row
+		neighbors = [
+			Vector2i(tile.x - 1, tile.y - 1),  # NW
+			Vector2i(tile.x, tile.y - 1),      # NE  
+			Vector2i(tile.x + 1, tile.y),      # E
+			Vector2i(tile.x, tile.y + 1),      # SE
+			Vector2i(tile.x - 1, tile.y + 1),  # SW
+			Vector2i(tile.x - 1, tile.y)       # W
+		]
+	else:  # Odd row
+		neighbors = [
+			Vector2i(tile.x, tile.y - 1),      # NW
+			Vector2i(tile.x + 1, tile.y - 1),  # NE
+			Vector2i(tile.x + 1, tile.y),      # E
+			Vector2i(tile.x + 1, tile.y + 1),  # SE
+			Vector2i(tile.x, tile.y + 1),      # SW
+			Vector2i(tile.x - 1, tile.y)       # W
+		]
+	
+	return neighbors
+
+func _hex_distance(a: Vector2i, b: Vector2i) -> int:
+	"""Calculate hexagonal distance between two tile coordinates"""
+	# Convert offset coordinates to axial coordinates
+	var ax = a.x - (a.y - (a.y & 1)) / 2.0
+	var az = a.y
+	var ay = -ax - az
+	
+	var bx = b.x - (b.y - (b.y & 1)) / 2.0
+	var bz = b.y
+	var by = -bx - bz
+	
+	return int((abs(ax - bx) + abs(ay - by) + abs(az - bz)) / 2.0)
 
 func _start_world_creation_mode():
 	print("Game: Starting world creation mode")
