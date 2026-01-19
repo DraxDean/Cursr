@@ -55,6 +55,7 @@ var building_counter: Dictionary = {}  # Track building counts for unique IDs
 # --- Variables ---
 var world_data: Dictionary = {}
 var loaded_buildings_data: Array = []
+var loaded_units_data: Array = []
 var loaded_environment_objects_data: Array = []
 var current_save_path: String = ""
 
@@ -64,6 +65,7 @@ var players_data: Dictionary = {
 		"name": "Player 1",
 		"race": "human",
 		"buildings": [],  # Array of building names owned by this player
+		"units": [],  # Array of unit data owned by this player
 		"resources": {
 			"gold": 100,
 			"food": 50,
@@ -1052,6 +1054,10 @@ func initialize_map():
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
 	if success:
 		print("Game: Map state ready. Updating managers...")
+		# Reset environment data for new games (not loaded games)
+		if GameManager.start_mode == "new" or loaded_environment_objects_data.is_empty():
+			_reset_environment_data()
+		
 		turn_manager.set_day(loaded_day); _clear_and_draw_map(); map_object_manager.clear_objects()
 		map_object_manager.place_objects(world_data)
 		# Restore buildings if loading from save
@@ -1063,9 +1069,14 @@ func initialize_map():
 		if not loaded_environment_objects_data.is_empty():
 			_restore_environment_objects(loaded_environment_objects_data)
 			loaded_environment_objects_data = []  # Clear after restoration
+		else:
+			print("Game: No environment objects to restore (new game or empty save)")
 		
 		# Migrate any old building names to new system
 		migrate_old_building_names()
+		
+		# Create initial units (cosmetic)
+		_create_initial_units()
 		
 		camera_controller.center_camera()
 		print("Game: Map ready.")
@@ -1074,6 +1085,86 @@ func initialize_map():
 
 
 # --- World Creation Functions ---
+
+func _reset_environment_data():
+	# Reset environment object tracking for new games
+	print("Game: Resetting environment data for new game")
+	players_data["environment"] = {
+		"name": "Environment",
+		"type": "environment",
+		"objects": {
+			"mountains": {},
+			"trees": {}
+		},
+		"counts": {
+			"mountains": 0,
+			"trees": 0
+		}
+	}
+	# Also clear any lingering loaded data
+	loaded_environment_objects_data = []
+
+func _create_initial_units():
+	print("Game: Creating initial units...")
+	
+	# Only create units if we don't have any loaded units
+	if loaded_units_data.is_empty():
+		# Create a couple of human peasant sprites near the center
+		# Use map constants or calculate from tilemap used size
+		var center_tile = Vector2i(50, 50)  # Default center for 100x100 map
+		if tilemap_layer and tilemap_layer.get_used_rect().size != Vector2i.ZERO:
+			var used_rect = tilemap_layer.get_used_rect()
+			center_tile = Vector2i(used_rect.position.x + used_rect.size.x / 2, used_rect.position.y + used_rect.size.y / 2)
+		
+		var center_world_pos = tilemap_layer.map_to_local(center_tile)
+		
+		# Create 2-3 units around the center
+		var unit_positions = [
+			Vector2(center_world_pos.x + 50, center_world_pos.y),
+			Vector2(center_world_pos.x - 50, center_world_pos.y + 30),
+			Vector2(center_world_pos.x, center_world_pos.y - 40)
+		]
+		
+		for i in range(unit_positions.size()):
+			var unit_data = {
+				"type": "peasant",
+				"race": "human",
+				"player_id": 1,
+				"position": unit_positions[i],
+				"name": "peasant" + str(i + 1)
+			}
+			_spawn_unit(unit_data)
+	else:
+		# Restore units from save data
+		for unit_data in loaded_units_data:
+			_spawn_unit(unit_data)
+		loaded_units_data = []  # Clear after restoration
+	
+func _spawn_unit(unit_data: Dictionary):
+	# Create unit sprite
+	var unit_sprite = Sprite2D.new()
+	unit_sprite.name = unit_data["name"]
+	unit_sprite.position = unit_data["position"]
+	unit_sprite.z_index = 6  # Above buildings but below UI
+	
+	# Load appropriate texture based on race and type
+	var texture_path = "res://assets/units/human_peasant_side.png"  # Default for now
+	if ResourceLoader.exists(texture_path):
+		unit_sprite.texture = load(texture_path)
+	else:
+		print("Warning: Unit texture not found: ", texture_path)
+	
+	# Add to map objects holder
+	map_objects_holder.add_child(unit_sprite)
+	
+	# Store unit in player data
+	var player_id = unit_data.get("player_id", 1)
+	if players_data.has(player_id) and not players_data[player_id].has("units"):
+		players_data[player_id]["units"] = []
+	if players_data.has(player_id):
+		players_data[player_id]["units"].append(unit_data)
+	
+	print("Game: Spawned unit: ", unit_data["name"], " at ", unit_data["position"])
 
 func _start_world_creation_mode():
 	print("Game: Starting world creation mode")

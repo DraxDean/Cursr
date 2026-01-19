@@ -389,8 +389,8 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 				var other_type = other_building.get_meta("building_type", "unknown")
 				var other_tile_coords = tilemap_layer.local_to_map(other_building.position)
 				
-				# Calculate tile distance (Manhattan distance)
-				var tile_distance = abs(building_tile_coords.x - other_tile_coords.x) + abs(building_tile_coords.y - other_tile_coords.y)
+				# Calculate tile distance (Hexagonal distance)
+				var tile_distance = _hex_distance(building_tile_coords, other_tile_coords)
 				
 				if other_type in allowed_connections and tile_distance <= connection_range_tiles:
 					connections.append({
@@ -413,7 +413,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			for mountain_id in mountains:
 				var mountain_data = mountains[mountain_id]
 				var mountain_tile_coords = mountain_data["tile_coords"]
-				var tile_distance = abs(building_tile_coords.x - mountain_tile_coords.x) + abs(building_tile_coords.y - mountain_tile_coords.y)
+				var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
 				
 				print("Found mountain ", mountain_id, " at distance ", tile_distance)
 				if tile_distance <= connection_range_tiles:
@@ -434,7 +434,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 					print("Checking child: ", child.name, " type: ", child.get_class())
 					if child.name.begins_with("Mountain") or child.name.begins_with("mountain_"):
 						var mountain_tile_coords = tilemap_layer.local_to_map(child.position)
-						var tile_distance = abs(building_tile_coords.x - mountain_tile_coords.x) + abs(building_tile_coords.y - mountain_tile_coords.y)
+						var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
 						
 						print("Found mountain ", child.name, " at distance ", tile_distance)
 						if tile_distance <= connection_range_tiles:
@@ -568,13 +568,8 @@ func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMap
 		if current == end_tile:
 			return _reconstruct_path(came_from, current)
 		
-		# Check all neighbors (4-directional)
-		var neighbors = [
-			Vector2i(current.x + 1, current.y),
-			Vector2i(current.x - 1, current.y),
-			Vector2i(current.x, current.y + 1),
-			Vector2i(current.x, current.y - 1)
-		]
+		# Check all neighbors (6-directional for hex grid)
+		var neighbors = _get_hex_neighbors(current)
 		
 		for neighbor in neighbors:
 			if closed_set.has(neighbor):
@@ -595,8 +590,48 @@ func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMap
 	return []  # No path found
 
 func _heuristic(a: Vector2i, b: Vector2i) -> int:
-	# Manhattan distance heuristic
-	return abs(a.x - b.x) + abs(a.y - b.y)
+	# Hexagonal distance heuristic
+	return _hex_distance(a, b)
+
+func _get_hex_neighbors(tile: Vector2i) -> Array:
+	# Get 6 neighbors for hexagonal grid
+	# Godot uses offset coordinates for hex tiles
+	var neighbors = []
+	
+	# For odd-row offset (pointy-top hexagons)
+	if tile.y % 2 == 0:  # Even row
+		neighbors = [
+			Vector2i(tile.x - 1, tile.y - 1),  # NW
+			Vector2i(tile.x, tile.y - 1),      # NE  
+			Vector2i(tile.x + 1, tile.y),      # E
+			Vector2i(tile.x, tile.y + 1),      # SE
+			Vector2i(tile.x - 1, tile.y + 1),  # SW
+			Vector2i(tile.x - 1, tile.y)       # W
+		]
+	else:  # Odd row
+		neighbors = [
+			Vector2i(tile.x, tile.y - 1),      # NW
+			Vector2i(tile.x + 1, tile.y - 1),  # NE
+			Vector2i(tile.x + 1, tile.y),      # E
+			Vector2i(tile.x + 1, tile.y + 1),  # SE
+			Vector2i(tile.x, tile.y + 1),      # SW
+			Vector2i(tile.x - 1, tile.y)       # W
+		]
+	
+	return neighbors
+
+func _hex_distance(a: Vector2i, b: Vector2i) -> int:
+	# Convert offset coordinates to axial coordinates for distance calculation
+	var ax = a.x - (a.y - (a.y & 1)) / 2
+	var ay = a.y
+	var az = -ax - ay
+	
+	var bx = b.x - (b.y - (b.y & 1)) / 2  
+	var by = b.y
+	var bz = -bx - by
+	
+	# Hexagonal distance in axial coordinates
+	return (abs(ax - bx) + abs(ay - by) + abs(az - bz)) / 2
 
 func _reconstruct_path(came_from: Dictionary, current: Vector2i) -> Array:
 	var path = [current]
