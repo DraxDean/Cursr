@@ -30,6 +30,7 @@ var resources_modal: Control
 var buildings_modal: Control
 var population_modal: Control
 var army_modal: Control
+var units_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Building System
@@ -51,6 +52,7 @@ var selected_building: Node2D = null
 var highlighted_building: Node2D = null
 var building_outline_material: ShaderMaterial
 var building_counter: Dictionary = {}  # Track building counts for unique IDs
+var unit_counter: int = 0  # Track unit counts for unique IDs
 
 # --- Variables ---
 var world_data: Dictionary = {}
@@ -407,6 +409,10 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	# Update building occupancy
 	building_node.set_meta(capacity_type + "_occupancy", new_value)
 	
+	# Auto-assign units to this building if capacity increased
+	if difference > 0:
+		_auto_assign_units_to_building(building_node, capacity_type, difference)
+	
 	# Recalculate global population
 	update_player_population(owner_player)
 	
@@ -511,7 +517,7 @@ func _migrate_players_data_structure():
 			# Migrate old population structure to new comprehensive structure
 			if pop_data.has("current") and pop_data.has("max"):
 				# Old structure, convert to new
-				var old_current = pop_data.get("current", 1)
+				var _old_current = pop_data.get("current", 1)
 				pop_data = {
 					"total": 30,  # Start with base 30 population
 					"housed": 0,  # Will be calculated from buildings
@@ -799,7 +805,7 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 		return
 	
 	# Update population counts before deletion
-	var building_type = building_data_to_delete.get("building_type", "")
+	var _building_type = building_data_to_delete.get("building_type", "")
 	var living_occupancy = building_data_to_delete.get("living_occupancy", 0)
 	var worker_occupancy = building_data_to_delete.get("worker_occupancy", 0)
 	
@@ -1103,6 +1109,8 @@ func _reset_environment_data():
 	}
 	# Also clear any lingering loaded data
 	loaded_environment_objects_data = []
+	# Reset unit counter for fresh IDs
+	unit_counter = 0
 
 func _create_initial_units():
 	print("Game: Creating initial units...")
@@ -1126,12 +1134,16 @@ func _create_initial_units():
 		]
 		
 		for i in range(unit_positions.size()):
+			var unit_id = _get_next_unit_id()
 			var unit_data = {
+				"unique_id": unit_id,
+				"name": unit_id,  # Use unique_id as name for now
 				"type": "peasant",
 				"race": "human",
 				"player_id": 1,
 				"position": unit_positions[i],
-				"name": "peasant" + str(i + 1)
+				"living_quarters": null,  # Can be building name or null
+				"job": null  # Can be job type or null
 			}
 			_spawn_unit(unit_data)
 	else:
@@ -1141,21 +1153,29 @@ func _create_initial_units():
 		loaded_units_data = []  # Clear after restoration
 	
 func _spawn_unit(unit_data: Dictionary):
-	# Create unit sprite
-	var unit_sprite = Sprite2D.new()
-	unit_sprite.name = unit_data["name"]
-	unit_sprite.position = unit_data["position"]
-	unit_sprite.z_index = 6  # Above buildings but below UI
+	# Only create sprite if both living_quarters and job are assigned
+	var living_quarters = unit_data.get("living_quarters", null)
+	var job = unit_data.get("job", null)
 	
-	# Load appropriate texture based on race and type
-	var texture_path = "res://assets/units/human_peasant_side.png"  # Default for now
-	if ResourceLoader.exists(texture_path):
-		unit_sprite.texture = load(texture_path)
+	if living_quarters != null and job != null:
+		# Create unit sprite
+		var unit_sprite = Sprite2D.new()
+		unit_sprite.name = unit_data["unique_id"]  # Use unique_id for node name
+		unit_sprite.position = unit_data["position"]
+		unit_sprite.z_index = 6  # Above buildings but below UI
+		
+		# Load appropriate texture based on race and type
+		var texture_path = "res://assets/units/human_peasant_side.png"  # Default for now
+		if ResourceLoader.exists(texture_path):
+			unit_sprite.texture = load(texture_path)
+		else:
+			print("Warning: Unit texture not found: ", texture_path)
+		
+		# Add to map objects holder
+		map_objects_holder.add_child(unit_sprite)
+		print("Game: Spawned unit sprite: ", unit_data["unique_id"], " (both living and job assigned)")
 	else:
-		print("Warning: Unit texture not found: ", texture_path)
-	
-	# Add to map objects holder
-	map_objects_holder.add_child(unit_sprite)
+		print("Game: Unit created but no sprite (missing living or job assignment): ", unit_data["unique_id"])
 	
 	# Store unit in player data
 	var player_id = unit_data.get("player_id", 1)
@@ -1164,7 +1184,71 @@ func _spawn_unit(unit_data: Dictionary):
 	if players_data.has(player_id):
 		players_data[player_id]["units"].append(unit_data)
 	
-	print("Game: Spawned unit: ", unit_data["name"], " at ", unit_data["position"])
+	print("Game: Spawned unit: ", unit_data["unique_id"], " (", unit_data["name"], ") at ", unit_data["position"])
+
+func _get_next_unit_id() -> String:
+	# Generate unique unit ID
+	unit_counter += 1
+	return "unit_" + str(unit_counter)
+
+func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String, slots_to_fill: int):
+	"""Automatically assign available units to a building when capacity is increased"""
+	if not building_node:
+		return
+	
+	var owner_player = building_node.get_meta("owner_player", 1)
+	var building_id = building_node.name
+	
+	# Get all unassigned units for this player
+	var player_units = players_data.get(owner_player, {}).get("units", [])
+	var units_assigned = 0
+	
+	for unit in player_units:
+		if units_assigned >= slots_to_fill:
+			break
+		
+		# Check if unit can be assigned to this capacity type
+		var can_assign = false
+		if capacity_type == "living" and unit.get("living_quarters", null) == null:
+			can_assign = true
+		elif capacity_type == "worker" and unit.get("job", null) == null:
+			can_assign = true
+		
+		if can_assign:
+			# Assign unit to this building
+			if capacity_type == "living":
+				unit["living_quarters"] = building_id
+			elif capacity_type == "worker":
+				unit["job"] = building_id
+			
+			units_assigned += 1
+			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at building ", building_id)
+			
+			# Check if unit now has both living and job assignments
+			var living_quarters = unit.get("living_quarters", null)
+			var job = unit.get("job", null)
+			
+			if living_quarters != null and job != null:
+				# Unit is fully assigned - create or update sprite
+				var unit_id = unit["unique_id"]
+				var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+				
+				if not existing_sprite:
+					# Create new sprite since unit is now fully assigned
+					var unit_sprite = Sprite2D.new()
+					unit_sprite.name = unit_id
+					unit_sprite.position = unit["position"]
+					unit_sprite.z_index = 6
+					
+					# Load texture
+					var texture_path = "res://assets/units/human_peasant_side.png"
+					if ResourceLoader.exists(texture_path):
+						unit_sprite.texture = load(texture_path)
+					
+					map_objects_holder.add_child(unit_sprite)
+					print("Created sprite for fully assigned unit: ", unit_id)
+	
+	print("Auto-assigned ", units_assigned, " units to ", capacity_type, " capacity at ", building_id)
 
 func _start_world_creation_mode():
 	print("Game: Starting world creation mode")
@@ -1374,6 +1458,7 @@ func _setup_game_header():
 	game_header.buildings_pressed.connect(_on_header_buildings_pressed)
 	game_header.population_pressed.connect(_on_header_population_pressed)
 	game_header.army_pressed.connect(_on_header_army_pressed)
+	game_header.units_pressed.connect(_on_header_units_pressed)
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
@@ -1509,6 +1594,7 @@ func _setup_info_modals():
 	var BuildingsModalScript = preload("res://scripts/ui/buildings_modal.gd")
 	var PopulationModalScript = preload("res://scripts/ui/population_modal.gd")
 	var ArmyModalScript = preload("res://scripts/ui/army_modal.gd")
+	var UnitsModalScript = preload("res://scripts/ui/units_modal.gd")
 	
 	# Calculate positions to prevent overlap
 	var base_pos = Vector2(10, 60)  # Base position under header
@@ -1519,6 +1605,7 @@ func _setup_info_modals():
 	buildings_modal = BuildingsModalScript.new(self, base_pos + modal_offset * 2)
 	population_modal = PopulationModalScript.new(self, base_pos + modal_offset * 3)
 	army_modal = ArmyModalScript.new(self, base_pos + modal_offset * 4)
+	units_modal = UnitsModalScript.new(self, base_pos + modal_offset * 5)
 	
 	# Add modals to UI layer
 	ui_layer.add_child(players_modal)
@@ -1526,6 +1613,7 @@ func _setup_info_modals():
 	ui_layer.add_child(buildings_modal)
 	ui_layer.add_child(population_modal)
 	ui_layer.add_child(army_modal)
+	ui_layer.add_child(units_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -1533,6 +1621,7 @@ func _setup_info_modals():
 	buildings_modal.modal_closed.connect(_on_modal_closed)
 	population_modal.modal_closed.connect(_on_modal_closed)
 	army_modal.modal_closed.connect(_on_modal_closed)
+	units_modal.modal_closed.connect(_on_modal_closed)
 	
 	print("Game: Info modals setup complete")
 
@@ -1618,6 +1707,10 @@ func _on_header_population_pressed():
 func _on_header_army_pressed():
 	if army_modal:
 		army_modal.toggle()
+
+func _on_header_units_pressed():
+	if units_modal:
+		units_modal.toggle()
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")

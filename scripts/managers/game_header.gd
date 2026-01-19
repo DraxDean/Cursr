@@ -3,6 +3,7 @@ extends Control
 
 # UI Components
 var players_button: Button
+var units_button: Button
 var resources_button: Button
 var buildings_button: Button
 var population_button: Button
@@ -11,6 +12,7 @@ var settings_button: Button
 
 # Signals for button presses
 signal players_pressed
+signal units_pressed
 signal resources_pressed
 signal buildings_pressed
 signal population_pressed
@@ -56,12 +58,14 @@ func _setup_header_ui():
 	
 	# Info buttons
 	players_button = _create_info_button("Players")
+	units_button = _create_info_button("Units")
 	resources_button = _create_info_button("Resources")
 	buildings_button = _create_info_button("Buildings")
 	population_button = _create_info_button("Population")
 	army_button = _create_info_button("Army")
 	
 	left_container.add_child(players_button)
+	left_container.add_child(units_button)
 	left_container.add_child(resources_button)
 	left_container.add_child(buildings_button)
 	left_container.add_child(population_button)
@@ -87,6 +91,7 @@ func _setup_header_ui():
 	
 	# Connect button signals
 	players_button.pressed.connect(_on_players_pressed)
+	units_button.pressed.connect(_on_units_pressed)
 	resources_button.pressed.connect(_on_resources_pressed)
 	buildings_button.pressed.connect(_on_buildings_pressed)
 	population_button.pressed.connect(_on_population_pressed)
@@ -103,6 +108,9 @@ func _create_info_button(label_text: String) -> Button:
 # Signal handlers
 func _on_players_pressed():
 	players_pressed.emit()
+
+func _on_units_pressed():
+	units_pressed.emit()
 
 func _on_resources_pressed():
 	resources_pressed.emit()
