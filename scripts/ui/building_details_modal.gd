@@ -438,11 +438,20 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 						
 						print("Found mountain ", child.name, " at distance ", tile_distance)
 						if tile_distance <= connection_range_tiles:
+							# Calculate path from building to mountain
+							var path = _astar_pathfind(building_tile_coords, mountain_tile_coords, tilemap_layer)
+							# Convert tile coordinates to world positions for the path
+							var world_path = []
+							for tile_pos in path:
+								world_path.append(tilemap_layer.map_to_local(tile_pos))
+							
 							connections.append({
 								"name": child.name,
 								"type": "mountain",
 								"distance": tile_distance,
-								"object_type": "mountain"
+								"object_type": "mountain",
+								"path": world_path,
+								"tile_coords": mountain_tile_coords
 							})
 							print("Added mountain connection: ", child.name, " at ", tile_distance, " tiles away")
 			else:
@@ -457,41 +466,83 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			var trees = game_node.get_environment_objects("trees")
 			print("Found ", trees.size(), " trees in environment system")
 			
+			# First pass: collect trees within range with distances (no pathfinding yet)
+			var nearby_trees = []
 			for tree_id in trees:
 				var tree_data = trees[tree_id]
 				var tree_tile_coords = tree_data["tile_coords"]
 				var tile_distance = abs(building_tile_coords.x - tree_tile_coords.x) + abs(building_tile_coords.y - tree_tile_coords.y)
 				
-				print("Found tree ", tree_id, " at distance ", tile_distance)
 				if tile_distance <= connection_range_tiles:
-					connections.append({
-						"name": tree_id,
-						"type": "tree",
-						"distance": tile_distance,
-						"object_type": "tree"
+					nearby_trees.append({
+						"id": tree_id,
+						"tile_coords": tree_tile_coords,
+						"distance": tile_distance
 					})
-					print("Added tree connection: ", tree_id, " at ", tile_distance, " tiles away")
+			
+			# Sort by distance and take only the 3 closest
+			nearby_trees.sort_custom(func(a, b): return a.distance < b.distance)
+			if nearby_trees.size() > 3:
+				nearby_trees = nearby_trees.slice(0, 3)
+			
+			# Second pass: calculate paths only for the 3 closest trees
+			for tree in nearby_trees:
+				# Calculate path from building to tree
+				var path = _astar_pathfind(building_tile_coords, tree.tile_coords, tilemap_layer)
+				# Convert tile coordinates to world positions for the path
+				var world_path = []
+				for tile_pos in path:
+					world_path.append(tilemap_layer.map_to_local(tile_pos))
+				
+				connections.append({
+					"name": tree.id,
+					"type": "tree",
+					"distance": tree.distance,
+					"object_type": "tree",
+					"path": world_path,
+					"tile_coords": tree.tile_coords
+				})
 		else:
 			print("Environment system not available, falling back to old method")
-			# Fallback to old method
+			# Fallback to old method - also optimize this
 			var map_objects_holder = game_node.get_node_or_null("MapObjects")
 			if map_objects_holder:
 				print("Found MapObjects holder with ", map_objects_holder.get_child_count(), " children")
+				
+				# First pass: collect nearby trees
+				var nearby_trees = []
 				for child in map_objects_holder.get_children():
-					print("Checking child: ", child.name, " type: ", child.get_class())
 					if child.name.begins_with("Tree") or child.name.begins_with("tree_"):
 						var tree_tile_coords = tilemap_layer.local_to_map(child.position)
 						var tile_distance = abs(building_tile_coords.x - tree_tile_coords.x) + abs(building_tile_coords.y - tree_tile_coords.y)
 						
-						print("Found tree ", child.name, " at distance ", tile_distance)
 						if tile_distance <= connection_range_tiles:
-							connections.append({
-								"name": child.name,
-								"type": "tree",
-								"distance": tile_distance,
-								"object_type": "tree"
+							nearby_trees.append({
+								"node": child,
+								"tile_coords": tree_tile_coords,
+								"distance": tile_distance
 							})
-							print("Added tree connection: ", child.name, " at ", tile_distance, " tiles away")
+				
+				# Sort and limit to 3 closest
+				nearby_trees.sort_custom(func(a, b): return a.distance < b.distance)
+				if nearby_trees.size() > 3:
+					nearby_trees = nearby_trees.slice(0, 3)
+				
+				# Calculate paths for only the 3 closest
+				for tree in nearby_trees:
+					var path = _astar_pathfind(building_tile_coords, tree.tile_coords, tilemap_layer)
+					var world_path = []
+					for tile_pos in path:
+						world_path.append(tilemap_layer.map_to_local(tile_pos))
+					
+					connections.append({
+						"name": tree.node.name,
+						"type": "tree",
+						"distance": tree.distance,
+						"object_type": "tree",
+						"path": world_path,
+						"tile_coords": tree.tile_coords
+					})
 			else:
 				print("MapObjects holder not found!")
 	
@@ -1128,6 +1179,8 @@ func _get_living_capacity(building_type: String) -> int:
 			return 7  # Family of up to 7
 		"town_center":
 			return 20  # 20 people living
+		"farmhouse":
+			return 2  # Small farmhouse living quarters
 		"barracks":
 			return 5  # 5 soldiers per barracks
 		_:
@@ -1135,8 +1188,6 @@ func _get_living_capacity(building_type: String) -> int:
 
 func _get_worker_capacity(building_type: String) -> int:
 	match building_type:
-		"town_center":
-			return 10  # 10 people working
 		"stoneworker":
 			return 10  # Most work stations employ up to 10
 		"lumberjack":

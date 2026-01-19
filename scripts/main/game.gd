@@ -74,11 +74,11 @@ var players_data: Dictionary = {
 			"wood": 25
 		},
 		"population": {
-			"total": 30,  # Base starting population
+			"total": 10,  # Base starting population
 			"housed": 0,  # Number of people currently housed
 			"working": 0,  # Number of people currently working
-			"unhoused": 30,  # total - housed
-			"unemployed": 30  # total - working
+			"unhoused": 10,  # total - housed
+			"unemployed": 10  # total - working
 		}
 	},
 	"environment": {
@@ -412,6 +412,9 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	# Auto-assign units to this building if capacity increased
 	if difference > 0:
 		_auto_assign_units_to_building(building_node, capacity_type, difference)
+	elif difference < 0:
+		# Capacity decreased - need to remove some unit assignments
+		_remove_excess_unit_assignments(building_node, capacity_type, abs(difference), owner_player)
 	
 	# Recalculate global population
 	update_player_population(owner_player)
@@ -422,15 +425,16 @@ func update_player_population(player_id: int):
 	# Recalculate housed/unhoused and working/unemployed populations
 	if not players_data.has(player_id):
 		return
-	
+
 	var player_data = players_data[player_id]
 	var pop_data = player_data.get("population", {})
 	
+	# Clean up unit sprites that lost assignments
+	_cleanup_unassigned_unit_sprites(player_id)
+
 	# Calculate housed and working population from actual building data
 	var total_housed = 0
-	var total_working = 0
-	
-	# Get all buildings for this player and sum their occupancy
+	var total_working = 0	# Get all buildings for this player and sum their occupancy
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
 			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
@@ -443,14 +447,131 @@ func update_player_population(player_id: int):
 	# Update population data
 	pop_data["housed"] = total_housed
 	pop_data["working"] = total_working
-	pop_data["unhoused"] = pop_data.get("total", 30) - total_housed
-	pop_data["unemployed"] = pop_data.get("total", 30) - total_working
+	pop_data["unhoused"] = pop_data.get("total", 10) - total_housed
+	pop_data["unemployed"] = pop_data.get("total", 10) - total_working
 	
 	player_data["population"] = pop_data
 	
 	# Ensure values don't go negative
 	pop_data["unhoused"] = max(0, pop_data["unhoused"])
 	pop_data["unemployed"] = max(0, pop_data["unemployed"])
+	
+	# Ensure sprites exist for fully assigned units after population updates
+	_check_and_create_missing_sprites(player_id)
+
+func _check_and_create_missing_sprites(player_id: int):
+	"""Check for units with both assignments but no sprites and create them"""
+	if not players_data.has(player_id) or not map_objects_holder:
+		return
+	
+	var player_data = players_data[player_id]
+	var player_units = player_data.get("units", [])
+	
+	for unit in player_units:
+		var living_quarters = unit.get("living_quarters", null)
+		var job = unit.get("job", null)
+		
+		# CRITICAL: Only create sprites for units with BOTH assignments
+		if living_quarters != null and job != null:
+			var unit_id = unit["unique_id"]
+			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+			
+			if not existing_sprite:
+				print("Creating missing sprite for fully assigned unit: ", unit_id, " (living: ", living_quarters, ", job: ", job, ")")
+				_create_unit_sprite_and_start_cycle(unit)
+
+func _cleanup_unassigned_unit_sprites(player_id: int):
+	"""Remove sprites for units that lost housing or work assignments"""
+	if not players_data.has(player_id) or not map_objects_holder:
+		return
+	
+	var player_data = players_data[player_id]
+	var player_units = player_data.get("units", [])
+	
+	for unit in player_units:
+		var living_quarters = unit.get("living_quarters", null)
+		var job = unit.get("job", null)
+		
+		# Check if unit lost either assignment
+		if living_quarters == null or job == null:
+			# Unit should not have a sprite - remove if it exists
+			var unit_id = unit["unique_id"]
+			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+			if existing_sprite:
+				print("Removing sprite for unit with incomplete assignments: ", unit_id)
+				existing_sprite.queue_free()
+				
+				# Reset movement state since unit is no longer active
+				unit["movement_state"] = "idle"
+				unit["movement_cycle_step"] = 0
+
+func _remove_unit_assignments_for_building(building_name: String, owner_player: int):
+	"""Remove assignments for units that were assigned to a demolished building"""
+	if not players_data.has(owner_player):
+		return
+	
+	var player_data = players_data[owner_player]
+	var player_units = player_data.get("units", [])
+	
+	for unit in player_units:
+		var unit_id = unit["unique_id"]
+		var assignments_removed = false
+		
+		# Check if unit was living in this building
+		if unit.get("living_quarters", null) == building_name:
+			unit["living_quarters"] = null
+			assignments_removed = true
+			print("Removed living assignment for unit ", unit_id, " from demolished building ", building_name)
+		
+		# Check if unit was working in this building
+		if unit.get("job", null) == building_name:
+			unit["job"] = null
+			assignments_removed = true
+			print("Removed job assignment for unit ", unit_id, " from demolished building ", building_name)
+		
+		# If assignments were removed, the sprite cleanup will happen in update_player_population
+		if assignments_removed:
+			# Reset movement state
+			unit["movement_state"] = "idle"
+			unit["movement_cycle_step"] = 0
+
+func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: String, excess_count: int, owner_player: int):
+	"""Remove assignments when building capacity is reduced"""
+	if not players_data.has(owner_player):
+		return
+	
+	var building_name = building_node.name
+	var player_data = players_data[owner_player]
+	var player_units = player_data.get("units", [])
+	var assignments_removed = 0
+	
+	# Find units assigned to this building and remove excess assignments
+	for unit in player_units:
+		if assignments_removed >= excess_count:
+			break
+		
+		var unit_id = unit["unique_id"]
+		var should_remove = false
+		
+		# Check if unit is assigned to this building for the reduced capacity type
+		if capacity_type == "living" and unit.get("living_quarters", null) == building_name:
+			should_remove = true
+		elif capacity_type == "worker" and unit.get("job", null) == building_name:
+			should_remove = true
+		
+		if should_remove:
+			# Remove the specific assignment
+			if capacity_type == "living":
+				unit["living_quarters"] = null
+			elif capacity_type == "worker":
+				unit["job"] = null
+			
+			assignments_removed += 1
+			print("Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name)
+			
+			# Reset movement state - sprite cleanup will happen in update_player_population
+			unit["movement_state"] = "idle"
+			unit["movement_cycle_step"] = 0
 
 func get_nearest_environment_objects(position: Vector2, object_type: String, max_count: int = -1) -> Array:
 	# Get environment objects sorted by distance from a position
@@ -519,16 +640,16 @@ func _migrate_players_data_structure():
 				# Old structure, convert to new
 				var _old_current = pop_data.get("current", 1)
 				pop_data = {
-					"total": 30,  # Start with base 30 population
+					"total": 10,  # Start with base 10 population
 					"housed": 0,  # Will be calculated from buildings
 					"working": 0,  # Will be calculated from buildings
-					"unhoused": 30,  # total - housed
-					"unemployed": 30  # total - working
+					"unhoused": 10,  # total - housed
+					"unemployed": 10  # total - working
 				}
 				print("Game: Migrated player ", player_id, " population to new structure")
 			elif not pop_data.has("total"):
 				# New structure but missing fields
-				pop_data["total"] = pop_data.get("total", 30)
+				pop_data["total"] = pop_data.get("total", 10)
 				pop_data["housed"] = pop_data.get("housed", 0)
 				pop_data["working"] = pop_data.get("working", 0)
 				pop_data["unhoused"] = pop_data["total"] - pop_data["housed"]
@@ -549,11 +670,11 @@ func _migrate_players_data_structure():
 			# Don't reset population if it already exists in new format
 			if not player_data.has("population"):
 				player_data["population"] = {
-					"total": 30,
+					"total": 10,
 					"housed": 0,
 					"working": 0,
-					"unhoused": 30,
-					"unemployed": 30
+					"unhoused": 10,
+					"unemployed": 10
 				}
 			if not player_data.has("name"):
 				player_data["name"] = "Player " + str(player_id)
@@ -808,6 +929,10 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 	var _building_type = building_data_to_delete.get("building_type", "")
 	var living_occupancy = building_data_to_delete.get("living_occupancy", 0)
 	var worker_occupancy = building_data_to_delete.get("worker_occupancy", 0)
+	var owner_player = building_node.get_meta("owner_player", 1)
+	
+	# Remove unit assignments for this building before demolishing
+	_remove_unit_assignments_for_building(building_name, owner_player)
 	
 	# Reduce occupancy to 0 before deletion to update population counts
 	if living_occupancy > 0:
@@ -1023,6 +1148,8 @@ func initialize_map():
 			success = true
 			# Initialize population data for new games
 			_migrate_players_data_structure()
+			# Create initial units based on population total
+			_create_initial_units_from_population()
 		else: push_error("Game: Failed to generate world data.")
 	elif GameManager.start_mode == "new_with_data":
 		print("Game: Mode: New Game with Generated Data")
@@ -1058,6 +1185,8 @@ func initialize_map():
 					players_data = loaded_state["players_data"]
 					# Migrate old save files to include environment player
 					_migrate_players_data_structure()
+					# Create units dynamically based on population total
+					_create_initial_units_from_population()
 					print("Game: Restored player data for ", players_data.size(), " players")
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
@@ -1116,52 +1245,115 @@ func _reset_environment_data():
 	unit_counter = 0
 
 func _create_initial_units():
-	print("Game: Creating initial units...")
+	print("Game: Skipping initial unit creation - units will be created dynamically when buildings get capacity")
 	
-	# Only create units if we don't have any loaded units
-	if loaded_units_data.is_empty():
-		# Create a couple of human peasant sprites near the center
-		# Use map constants or calculate from tilemap used size
-		var center_tile = Vector2i(50, 50)  # Default center for 100x100 map
-		if tilemap_layer and tilemap_layer.get_used_rect().size != Vector2i.ZERO:
-			var used_rect = tilemap_layer.get_used_rect()
-			center_tile = Vector2i(used_rect.position.x + used_rect.size.x / 2, used_rect.position.y + used_rect.size.y / 2)
-		
-		var center_world_pos = tilemap_layer.map_to_local(center_tile)
-		
-		# Create 2-3 units around the center
-		var unit_positions = [
-			Vector2(center_world_pos.x + 50, center_world_pos.y),
-			Vector2(center_world_pos.x - 50, center_world_pos.y + 30),
-			Vector2(center_world_pos.x, center_world_pos.y - 40)
-		]
-		
-		for i in range(unit_positions.size()):
-			var unit_id = _get_next_unit_id()
-			var unit_data = {
-				"unique_id": unit_id,
-				"name": unit_id,  # Use unique_id as name for now
-				"type": "peasant",
-				"race": "human",
-				"player_id": 1,
-				"position": unit_positions[i],
-				"living_quarters": null,  # Can be building name or null
-				"job": null,  # Can be job type or null
-				# Movement properties
-				"current_path": [],
-				"path_index": 0,
-				"movement_state": "idle",  # idle, moving, working
-				"movement_target": null,
-				"movement_cycle_step": 0,  # 0=at_home, 1=to_work, 2=to_resource, 3=back_to_work, 4=back_home
-				"work_timer": 0.0,
-				"movement_speed": 25.0  # pixels per second (slowed down 2x)
-			}
-			_spawn_unit(unit_data)
-	else:
+	# Don't create any initial units - let the dynamic system handle all unit creation
+	# This ensures unlimited unit generation based on building capacity
+	
+	# Only restore units if loading from save data
+	if not loaded_units_data.is_empty():
 		# Restore units from save data
 		for unit_data in loaded_units_data:
 			_spawn_unit(unit_data)
 		loaded_units_data = []  # Clear after restoration
+		print("Game: Restored ", loaded_units_data.size(), " units from save data")
+		
+		# Restore sprites for units that should be visible
+		_restore_unit_sprites_on_load()
+	else:
+		print("Game: Starting with no units - they will be created when buildings gain capacity")
+
+func _clear_existing_unit_sprites():
+	"""Clear any existing unit sprites before restoration"""
+	if not map_objects_holder:
+		return
+	
+	# Remove any existing unit sprites (nodes with unit_X names)
+	for child in map_objects_holder.get_children():
+		if child.name.begins_with("unit_"):
+			print("Removing existing unit sprite: ", child.name)
+			child.queue_free()
+
+func _restore_unit_sprites_on_load():
+	"""Restore unit sprites for loaded units that have both living and job assignments"""
+	print("Game: Restoring unit sprites for loaded game")
+	
+	# Ensure map_objects_holder exists
+	if not map_objects_holder:
+		print("Map objects holder not ready, deferring sprite restoration")
+		await get_tree().process_frame
+		call_deferred("_restore_unit_sprites_on_load")
+		return
+	
+	var sprites_created = 0
+	var units_checked = 0
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		
+		var player_data = players_data[player_id]
+		if not player_data.has("units"):
+			continue
+		
+		print("Player ", player_id, " has ", player_data["units"].size(), " units")
+		
+		for unit in player_data["units"]:
+			units_checked += 1
+			# Check if unit has both assignments
+			var living_quarters = unit.get("living_quarters", null)
+			var job = unit.get("job", null)
+			
+			print("Unit ", unit["unique_id"], " - Living: ", living_quarters, " Job: ", job)
+			
+			if living_quarters != null and job != null:
+				# Unit should be visible - check if sprite exists
+				var unit_id = unit["unique_id"]
+				var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+				
+				if not existing_sprite:
+					# Create sprite for this fully assigned unit
+					var unit_sprite = Sprite2D.new()
+					unit_sprite.name = unit_id
+					unit_sprite.position = unit["position"]
+					unit_sprite.z_index = 6
+					
+					# Load texture
+					var texture_path = "res://assets/units/human_peasant_side.png"
+					if ResourceLoader.exists(texture_path):
+						unit_sprite.texture = load(texture_path)
+					
+					map_objects_holder.add_child(unit_sprite)
+					sprites_created += 1
+					
+					# Initialize movement cycle for restored unit
+					_ensure_unit_movement_properties(unit)
+					unit["movement_cycle_step"] = 0
+					unit["movement_state"] = "idle"
+					
+					print("Restored sprite for unit: ", unit_id)
+				else:
+					print("Unit ", unit["unique_id"], " already has sprite")
+			else:
+				print("Unit ", unit["unique_id"], " is missing assignments - no sprite created")
+	
+	print("Game: Checked ", units_checked, " units, created ", sprites_created, " unit sprites from loaded data")
+
+func _ensure_unit_movement_properties(unit: Dictionary):
+	"""Ensure unit has all required movement properties for backward compatibility"""
+	if not unit.has("current_path"):
+		unit["current_path"] = []
+	if not unit.has("path_index"):
+		unit["path_index"] = 0
+	if not unit.has("movement_state"):
+		unit["movement_state"] = "idle"
+	if not unit.has("movement_target"):
+		unit["movement_target"] = null
+	if not unit.has("movement_cycle_step"):
+		unit["movement_cycle_step"] = 0
+	if not unit.has("work_timer"):
+		unit["work_timer"] = 0.0
+	if not unit.has("movement_speed"):
+		unit["movement_speed"] = 25.0
 	
 func _spawn_unit(unit_data: Dictionary):
 	# Only create sprite if both living_quarters and job are assigned
@@ -1210,19 +1402,27 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 	var owner_player = building_node.get_meta("owner_player", 1)
 	var building_id = building_node.name
 	
+	print("Auto-assigning ", slots_to_fill, " units to ", capacity_type, " capacity at ", building_id)
+	
 	# Get all unassigned units for this player
 	var player_units = players_data.get(owner_player, {}).get("units", [])
 	var units_assigned = 0
 	
+	print("Player ", owner_player, " has ", player_units.size(), " total units")
+	
+	# First, try to assign existing unassigned units
 	for unit in player_units:
 		if units_assigned >= slots_to_fill:
 			break
 		
 		# Check if unit can be assigned to this capacity type
 		var can_assign = false
-		if capacity_type == "living" and unit.get("living_quarters", null) == null:
+		var living_quarters = unit.get("living_quarters", null)
+		var job = unit.get("job", null)
+		
+		if capacity_type == "living" and living_quarters == null:
 			can_assign = true
-		elif capacity_type == "worker" and unit.get("job", null) == null:
+		elif capacity_type == "worker" and job == null:
 			can_assign = true
 		
 		if can_assign:
@@ -1233,38 +1433,246 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 				unit["job"] = building_id
 			
 			units_assigned += 1
-			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at building ", building_id)
-			
-			# Check if unit now has both living and job assignments
-			var living_quarters = unit.get("living_quarters", null)
-			var job = unit.get("job", null)
-			
-			if living_quarters != null and job != null:
-				# Unit is fully assigned - create sprite and start movement cycle
-				var unit_id = unit["unique_id"]
-				var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
-				
-				if not existing_sprite:
-					# Create new sprite since unit is now fully assigned
-					var unit_sprite = Sprite2D.new()
-					unit_sprite.name = unit_id
-					unit_sprite.position = unit["position"]
-					unit_sprite.z_index = 6
-					
-					# Load texture
-					var texture_path = "res://assets/units/human_peasant_side.png"
-					if ResourceLoader.exists(texture_path):
-						unit_sprite.texture = load(texture_path)
-					
-					map_objects_holder.add_child(unit_sprite)
-					print("Created sprite for fully assigned unit: ", unit_id)
-				
-				# Initialize unit at home and start movement cycle
-				unit["movement_cycle_step"] = 0  # Start at home
-				unit["movement_state"] = "idle"
-				_start_unit_movement_cycle(unit)
+			print("Auto-assigned existing unit ", unit["unique_id"], " to ", capacity_type, " at building ", building_id)
 	
-	print("Auto-assigned ", units_assigned, " units to ", capacity_type, " capacity at ", building_id)
+	# If we still need more units, create new ones
+	var remaining_slots = slots_to_fill - units_assigned
+	if remaining_slots > 0:
+		print("Creating ", remaining_slots, " new units for ", capacity_type, " capacity")
+		_create_new_units_for_capacity(building_node, capacity_type, remaining_slots, owner_player)
+	
+	# After all assignments, check for units that now have both living quarters and jobs
+	_check_and_create_missing_sprites(owner_player)
+	
+	print("Auto-assigned ", units_assigned, " existing units and created ", remaining_slots, " new units for ", capacity_type, " capacity at ", building_id)
+
+func _create_unit_sprite_and_start_cycle(unit: Dictionary):
+	"""Create sprite for a fully assigned unit and start its movement cycle"""
+	var unit_id = unit["unique_id"]
+	var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+	
+	print("DEBUG: Creating sprite for unit ", unit_id, ", living: ", unit.get("living_quarters", "null"), ", job: ", unit.get("job", "null"))
+	
+	if not existing_sprite:
+		# Create new sprite since unit is now fully assigned
+		var unit_sprite = Sprite2D.new()
+		unit_sprite.name = unit_id
+		
+		# Position unit at their living quarters (home) building
+		var living_quarters_id = unit.get("living_quarters", null)
+		if living_quarters_id and map_objects_holder:
+			var home_building = map_objects_holder.get_node_or_null(NodePath(living_quarters_id))
+			if home_building:
+				unit_sprite.position = home_building.position
+				# Update unit's stored position to match their home
+				unit["position"] = home_building.position
+				print("DEBUG: Positioning unit ", unit_id, " at home building ", living_quarters_id, " position: ", unit_sprite.position)
+			else:
+				unit_sprite.position = unit["position"]
+				print("DEBUG: Could not find home building ", living_quarters_id, ", using stored position: ", unit_sprite.position)
+		else:
+			unit_sprite.position = unit["position"]
+			print("DEBUG: No living quarters assigned, using stored position: ", unit_sprite.position)
+		
+		unit_sprite.z_index = 6
+		# Normal appearance - no special coloring or scaling
+		
+		# Load texture
+		var texture_path = "res://assets/units/human_peasant_side.png"
+		if ResourceLoader.exists(texture_path):
+			unit_sprite.texture = load(texture_path)
+			print("DEBUG: Loaded texture for unit ", unit_id)
+		else:
+			print("ERROR: Could not find texture at ", texture_path)
+			# Create a colored rectangle as fallback
+			var rect = ColorRect.new()
+			rect.size = Vector2(20, 20)
+			rect.color = Color.RED
+			unit_sprite.add_child(rect)
+		
+		if map_objects_holder:
+			map_objects_holder.add_child(unit_sprite)
+			print("DEBUG: Added sprite ", unit_id, " to map_objects_holder at position ", unit_sprite.position)
+			print("DEBUG: Sprite properties - visible: ", unit_sprite.visible, ", modulate: ", unit_sprite.modulate, ", scale: ", unit_sprite.scale)
+			print("DEBUG: Sprite texture size: ", unit_sprite.texture.get_size() if unit_sprite.texture else "no texture")
+			print("DEBUG: map_objects_holder children count: ", map_objects_holder.get_child_count())
+		else:
+			print("ERROR: map_objects_holder is null, cannot add sprite")
+		
+		print("Created sprite for fully assigned unit: ", unit_id)
+	else:
+		print("DEBUG: Sprite already exists for unit ", unit_id)
+	
+	# Initialize unit at home and start movement cycle
+	unit["movement_cycle_step"] = 0  # Start at home
+	unit["movement_state"] = "idle"
+	_start_unit_movement_cycle(unit)
+
+func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String, count: int, owner_player: int):
+	"""Create new units when capacity is added but no existing units are available"""
+	for i in range(count):
+		# Create unit near the building that triggered the capacity increase
+		var spawn_position = _get_unit_spawn_position_near_building(building_node)
+		
+		var unit_data = {
+			"unique_id": _get_next_unit_id(),
+			"name": "Peasant " + str(unit_counter),
+			"type": "peasant",
+			"race": "human",
+			"player_id": owner_player,
+			"position": spawn_position,
+			"living_quarters": null,
+			"job": null,
+			# Movement properties
+			"current_path": [],
+			"path_index": 0,
+			"movement_state": "idle",
+			"movement_target": null,
+			"movement_cycle_step": 0,
+			"work_timer": 0.0,
+			"movement_speed": 25.0
+		}
+		
+		# Assign to the appropriate capacity immediately
+		if capacity_type == "living":
+			unit_data["living_quarters"] = building_node.name
+		elif capacity_type == "worker":
+			unit_data["job"] = building_node.name
+		
+		# Add unit to player data
+		if not players_data[owner_player].has("units"):
+			players_data[owner_player]["units"] = []
+		players_data[owner_player]["units"].append(unit_data)
+		
+		# Note: Unit will only get sprite when it has both living quarters AND job
+		# No automatic assignment completion - units must be manually assigned to both types
+		
+		print("Created new unit: ", unit_data["unique_id"], " assigned to ", capacity_type, " at ", building_node.name)
+
+func _get_unit_spawn_position_near_building(building_node: Node2D) -> Vector2:
+	"""Get a spawn position near a building"""
+	# Spawn slightly offset from the building to avoid overlap
+	var offset_distance = 30.0
+	var random_angle = randf() * TAU  # Random angle in radians
+	var offset = Vector2(cos(random_angle), sin(random_angle)) * offset_distance
+	return building_node.position + offset
+
+func _try_to_complete_unit_assignment(unit_data: Dictionary, owner_player: int):
+	"""Try to find a matching assignment for the other capacity type"""
+	var living_quarters = unit_data.get("living_quarters", null)
+	var job = unit_data.get("job", null)
+	
+	# If unit already has both assignments, create sprite immediately
+	if living_quarters != null and job != null:
+		_create_unit_sprite_and_start_cycle(unit_data)
+		return
+	
+	# Look for buildings with available capacity of the needed type
+	var needed_capacity_type = "living" if living_quarters == null else "worker"
+	
+	# Find buildings with available capacity
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		
+		var building_owner = child.get_meta("owner_player", 1)
+		if building_owner != owner_player:
+			continue
+		
+		# Check if this building type can provide the needed capacity
+		var building_type = child.get_meta("building_type", "unknown")
+		if not _building_provides_capacity(building_type, needed_capacity_type):
+			continue
+		
+		# Check if building has available capacity
+		var max_capacity = _get_building_max_capacity(building_type, needed_capacity_type)
+		var current_occupancy = child.get_meta(needed_capacity_type + "_occupancy", 0)
+		
+		if current_occupancy < max_capacity:
+			# Assign unit to this building
+			if needed_capacity_type == "living":
+				unit_data["living_quarters"] = child.name
+			else:
+				unit_data["job"] = child.name
+			
+			# Update building occupancy
+			child.set_meta(needed_capacity_type + "_occupancy", current_occupancy + 1)
+			
+			# Update global population
+			update_player_population(owner_player)
+			
+			# Create sprite since unit now has both assignments
+			_create_unit_sprite_and_start_cycle(unit_data)
+			
+			print("Auto-matched unit ", unit_data["unique_id"], " to ", needed_capacity_type, " at ", child.name)
+			return
+	
+	print("No available ", needed_capacity_type, " capacity found for unit ", unit_data["unique_id"])
+
+func _create_initial_units_from_population():
+	"""Dynamically create units based on population total for new games and loaded games"""
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		
+		var player_data = players_data[player_id]
+		var pop_data = player_data.get("population", {})
+		var total_population = pop_data.get("total", 10)
+		
+		# Clear existing units array and create new ones based on population
+		player_data["units"] = []
+		
+		print("Creating ", total_population, " units for player ", player_id, " based on population total")
+		
+		# Create unassigned units at default spawn position
+		for i in range(total_population):
+			var unit_data = {
+				"unique_id": _get_next_unit_id(),
+				"name": "Peasant " + str(unit_counter),
+				"type": "peasant",
+				"race": "human",
+				"player_id": player_id,
+				"position": Vector2(200 + (i * 15), 200 + (i * 10)),  # Spread them out slightly
+				"living_quarters": null,
+				"job": null,
+				# Movement properties
+				"current_path": [],
+				"path_index": 0,
+				"movement_state": "idle",
+				"movement_target": null,
+				"movement_cycle_step": 0,
+				"work_timer": 0.0,
+				"movement_speed": 25.0
+			}
+			
+			player_data["units"].append(unit_data)
+		
+		print("Created ", total_population, " unassigned units for player ", player_id)
+
+func _building_provides_capacity(building_type: String, capacity_type: String) -> bool:
+	"""Check if a building type provides a specific capacity type"""
+	match capacity_type:
+		"living":
+			return building_type in ["house", "town_center", "farmhouse"]
+		"worker":
+			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"]
+	return false
+
+func _get_building_max_capacity(building_type: String, capacity_type: String) -> int:
+	"""Get the maximum capacity for a building type"""
+	# Define capacity limits for different building types
+	var capacity_limits = {
+		"house": {"living": 7, "worker": 0},
+		"farmhouse": {"living": 2, "worker": 6},
+		"town_center": {"living": 20, "worker": 0},
+		"barracks": {"living": 0, "worker": 8},
+		"fishing_hut": {"living": 0, "worker": 5},
+		"stoneworker": {"living": 0, "worker": 10},
+		"lumber_mill": {"living": 0, "worker": 10},
+		"lumberjack": {"living": 0, "worker": 10}
+	}
+	
+	return capacity_limits.get(building_type, {}).get(capacity_type, 0)
 
 func _update_unit_movements(delta: float):
 	"""Update all unit movements each frame"""
@@ -1343,6 +1751,10 @@ func _start_unit_movement_cycle(unit: Dictionary):
 	if living_quarters == null or job == null:
 		return  # Can't move without both assignments
 	
+	# Prevent starting new cycle if unit is already moving
+	if unit.get("movement_state", "idle") == "moving":
+		return
+	
 	print("Starting movement cycle for unit ", unit["unique_id"], " step: ", cycle_step)
 	
 	match cycle_step:
@@ -1363,14 +1775,19 @@ func _on_unit_reached_destination(unit: Dictionary):
 	var cycle_step = unit.get("movement_cycle_step", 0)
 	print("Unit ", unit["unique_id"], " reached destination, cycle step: ", cycle_step)
 	
-	# Advance to next step in cycle
-	unit["movement_cycle_step"] = cycle_step + 1
-	if unit["movement_cycle_step"] > 4:
-		unit["movement_cycle_step"] = 0
-	
-	# Start next movement after a brief pause
-	unit["work_timer"] = 0.0
+	# Clear movement state
 	unit["movement_state"] = "idle"
+	unit["current_path"] = []
+	unit["path_index"] = 0
+	
+	# Advance to next step in cycle
+	unit["movement_cycle_step"] = (cycle_step + 1) % 5
+	
+	# Reset work timer for next phase
+	unit["work_timer"] = 0.0
+	
+	# Immediately start the next part of the movement cycle
+	_start_unit_movement_cycle(unit)
 
 func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: int):
 	"""Move unit to a specific building"""
@@ -1403,50 +1820,81 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	"""Move unit to a resource connected to their workplace"""
 	var job_building = unit.get("job", null)
 	if job_building == null:
+		print("Unit has no job building, skipping resource step")
+		# Skip to next step if no job
+		unit["movement_cycle_step"] = next_step
+		unit["movement_state"] = "idle"
 		return
 	
 	var building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 	if not building_node:
+		print("Job building node not found: ", job_building)
+		# Skip to next step if building not found
+		unit["movement_cycle_step"] = next_step
+		unit["movement_state"] = "idle"
 		return
 	
-	# Get building connections to find connected resources
+	# Get building connections using the exact same system as building details modal
 	var connections = _find_building_connections_for_unit(building_node)
-	var resource_connection = null
 	
-	# Find the first resource connection (mountain, tree, etc.)
+	print("DEBUG: Found ", connections.size(), " total connections for unit resource search")
+	
+	var resource_connections = []
+	
+	# Filter for resource connections (trees, mountains, etc.) - not buildings
 	for connection in connections:
-		if connection["object_type"] == "map_object":
-			resource_connection = connection
-			break
+		var conn_type = connection.get("type", "")
+		print("DEBUG: Connection type: ", conn_type, ", name: ", connection.get("name", "no_name"))
+		if conn_type in ["tree", "mountain"]:  # These are resource types
+			resource_connections.append(connection)
+			print("DEBUG: Added resource connection: ", connection.get("name", "unknown"))
 	
-	if resource_connection == null:
-		# No resource connection - just stay at work
+	print("DEBUG: Found ", resource_connections.size(), " resource connections")
+	
+	if resource_connections.is_empty():
+		print("DEBUG: No resource connections found - skipping resource step")
+		# No resource connection - skip resource step and go to next part of cycle
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
-	# Get resource position
-	var resource_pos = _get_resource_position_by_connection(resource_connection)
-	if resource_pos == null:
-		# Resource not found - skip to next step
+	# Find the closest resource connection (shortest distance)
+	var closest_connection = null
+	var shortest_distance = INF
+	
+	for connection in resource_connections:
+		var distance = connection.get("distance", INF)
+		print("Resource ", connection.get("name", "unknown"), " distance: ", distance)
+		if distance < shortest_distance:
+			shortest_distance = distance
+			closest_connection = connection
+	
+	if closest_connection == null:
+		print("DEBUG: No valid closest resource found")
+		# No valid resource found
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
-	# Get path from building to resource using existing pathfinding
-	var unit_pos = unit["position"]
-	var path = _get_path_between_positions(unit_pos, resource_pos)
-	if path.is_empty():
-		# Fallback to direct path
-		path = [resource_pos]
+	print("DEBUG: Closest connection keys: ", closest_connection.keys())
+	print("DEBUG: Closest connection data: ", closest_connection)
 	
-	unit["current_path"] = path
+	# Use the existing path from the building connection instead of recalculating
+	var existing_path = closest_connection.get("path", [])
+	if existing_path.is_empty():
+		print("DEBUG: No existing path in connection, skipping resource step")
+		# No path available - skip to next step
+		unit["movement_cycle_step"] = next_step
+		unit["movement_state"] = "idle"
+		return
+	
+	print("DEBUG: Using existing connection path with ", existing_path.size(), " waypoints to ", closest_connection.get("name", "unknown"))
+	
+	unit["current_path"] = existing_path
 	unit["path_index"] = 0
 	unit["movement_state"] = "moving"
-	unit["movement_target"] = resource_connection["type"]
+	unit["movement_target"] = closest_connection.get("name", "unknown")
 	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
-	
-	print("Unit ", unit["unique_id"], " moving to resource: ", resource_connection["type"], " with ", path.size(), " waypoints")
 
 func _find_nearest_resource(from_position: Vector2, resource_type: String) -> Vector2:
 	"""Find the nearest resource of the specified type"""
@@ -1488,61 +1936,14 @@ func _find_nearest_resource(from_position: Vector2, resource_type: String) -> Ve
 	return nearest_pos
 
 func _find_building_connections_for_unit(building: Node2D) -> Array:
-	"""Get building connections using the same system as building details modal"""
-	var connections = []
-	var building_type = building.get_meta("building_type", "unknown")
+	"""Get building connections using the exact same system as building details modal"""
+	# Create a temporary building details modal to access its connection finding
+	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
+	var temp_modal = BuildingDetailsModalScript.new()
 	
-	# Define connection rules for different building types
-	var connection_rules = {
-		"house": ["town_center", "barracks", "stoneworker"],
-		"barracks": ["town_center", "house"],
-		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
-		"fishing_hut": ["town_center"],
-		"farmhouse": ["town_center", "house", "farm"],
-		"stoneworker": ["house", "town_center", "mountain"],
-		"lumberjack": ["house", "town_center", "tree"],
-		"lumber_mill": ["town_center", "tree"]
-	}
-	
-	var allowed_connections = connection_rules.get(building_type, [])
-	if allowed_connections.is_empty():
-		return connections
-	
-	var building_tile_coords = tilemap_layer.local_to_map(building.position)
-	var connection_range_tiles = 50
-	
-	# Check for resource connections (mountains, trees)
-	if "mountain" in allowed_connections:
-		var mountains = get_environment_objects("mountains")
-		for mountain_id in mountains:
-			var mountain_data = mountains[mountain_id]
-			var mountain_tile_coords = mountain_data["tile_coords"]
-			var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
-			
-			if tile_distance <= connection_range_tiles:
-				connections.append({
-					"name": mountain_id,
-					"type": "mountain",
-					"distance": tile_distance,
-					"object_type": "map_object",
-					"tile_coords": mountain_tile_coords
-				})
-	
-	if "tree" in allowed_connections:
-		var trees = get_environment_objects("trees")
-		for tree_id in trees:
-			var tree_data = trees[tree_id]
-			var tree_tile_coords = tree_data["tile_coords"]
-			var tile_distance = _hex_distance(building_tile_coords, tree_tile_coords)
-			
-			if tile_distance <= connection_range_tiles:
-				connections.append({
-					"name": tree_id,
-					"type": "tree",
-					"distance": tile_distance,
-					"object_type": "map_object",
-					"tile_coords": tree_tile_coords
-				})
+	# Use the modal's connection finding system
+	var connections = temp_modal._find_building_connections(building, self)
+	temp_modal.queue_free()  # Clean up temp modal
 	
 	return connections
 
@@ -1553,15 +1954,21 @@ func _get_resource_position_by_connection(connection: Dictionary) -> Vector2:
 	return Vector2.ZERO
 
 func _get_path_between_positions(start_pos: Vector2, end_pos: Vector2) -> Array:
-	"""Get pathfinding route between two world positions using existing hex pathfinding"""
+	"""Get pathfinding route between two world positions using building details modal system"""
 	if not tilemap_layer:
 		return [end_pos]  # Fallback to direct path
 	
+	# Create a temporary building details modal to access its pathfinding
+	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
+	var temp_modal = BuildingDetailsModalScript.new()
+	
+	# Use the modal's pathfinding system
 	var start_tile = tilemap_layer.local_to_map(start_pos)
 	var end_tile = tilemap_layer.local_to_map(end_pos)
 	
-	# Use existing A* pathfinding from building details modal
-	var tile_path = _astar_pathfind_simple(start_tile, end_tile)
+	var tile_path = temp_modal._astar_pathfind(start_tile, end_tile, tilemap_layer)
+	temp_modal.queue_free()  # Clean up temp modal
+	
 	if tile_path.is_empty():
 		return [end_pos]  # Fallback if pathfinding fails
 	
@@ -1572,103 +1979,6 @@ func _get_path_between_positions(start_pos: Vector2, end_pos: Vector2) -> Array:
 	
 	return world_path
 
-func _astar_pathfind_simple(start_tile: Vector2i, end_tile: Vector2i) -> Array:
-	"""Simple A* pathfinding implementation for units"""
-	var open_set = []
-	var closed_set = {}
-	var came_from = {}
-	var g_score = {}
-	var f_score = {}
-	
-	# Initialize starting tile
-	open_set.append(start_tile)
-	g_score[start_tile] = 0
-	f_score[start_tile] = _hex_distance(start_tile, end_tile)
-	
-	while open_set.size() > 0:
-		# Find tile with lowest f_score
-		var current = open_set[0]
-		var current_index = 0
-		for i in range(open_set.size()):
-			if f_score.get(open_set[i], INF) < f_score.get(current, INF):
-				current = open_set[i]
-				current_index = i
-		
-		# Remove current from open set
-		open_set.remove_at(current_index)
-		closed_set[current] = true
-		
-		# Check if we reached the goal
-		if current == end_tile:
-			return _reconstruct_path_simple(came_from, current)
-		
-		# Check all neighbors (6-directional for hex grid)
-		var neighbors = _get_hex_neighbors_simple(current)
-		
-		for neighbor in neighbors:
-			if closed_set.has(neighbor):
-				continue
-			
-			# Simple walkability check - assume empty tiles are walkable
-			var tentative_g_score = g_score.get(current, INF) + 1
-			
-			if not open_set.has(neighbor):
-				open_set.append(neighbor)
-			elif tentative_g_score >= g_score.get(neighbor, INF):
-				continue
-			
-			came_from[neighbor] = current
-			g_score[neighbor] = tentative_g_score
-			f_score[neighbor] = g_score[neighbor] + _hex_distance(neighbor, end_tile)
-	
-	return []  # No path found
-
-func _reconstruct_path_simple(came_from: Dictionary, current: Vector2i) -> Array:
-	"""Reconstruct path from A* came_from data"""
-	var path = [current]
-	while came_from.has(current):
-		current = came_from[current]
-		path.push_front(current)
-	return path
-
-func _get_hex_neighbors_simple(tile: Vector2i) -> Array:
-	"""Get 6 neighbors for hexagonal grid"""
-	var neighbors = []
-	
-	# For odd-row offset (pointy-top hexagons)
-	if tile.y % 2 == 0:  # Even row
-		neighbors = [
-			Vector2i(tile.x - 1, tile.y - 1),  # NW
-			Vector2i(tile.x, tile.y - 1),      # NE  
-			Vector2i(tile.x + 1, tile.y),      # E
-			Vector2i(tile.x, tile.y + 1),      # SE
-			Vector2i(tile.x - 1, tile.y + 1),  # SW
-			Vector2i(tile.x - 1, tile.y)       # W
-		]
-	else:  # Odd row
-		neighbors = [
-			Vector2i(tile.x, tile.y - 1),      # NW
-			Vector2i(tile.x + 1, tile.y - 1),  # NE
-			Vector2i(tile.x + 1, tile.y),      # E
-			Vector2i(tile.x + 1, tile.y + 1),  # SE
-			Vector2i(tile.x, tile.y + 1),      # SW
-			Vector2i(tile.x - 1, tile.y)       # W
-		]
-	
-	return neighbors
-
-func _hex_distance(a: Vector2i, b: Vector2i) -> int:
-	"""Calculate hexagonal distance between two tile coordinates"""
-	# Convert offset coordinates to axial coordinates
-	var ax = a.x - (a.y - (a.y & 1)) / 2.0
-	var az = a.y
-	var ay = -ax - az
-	
-	var bx = b.x - (b.y - (b.y & 1)) / 2.0
-	var bz = b.y
-	var by = -bx - bz
-	
-	return int((abs(ax - bx) + abs(ay - by) + abs(az - bz)) / 2.0)
 
 func _start_world_creation_mode():
 	print("Game: Starting world creation mode")
