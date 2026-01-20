@@ -1185,8 +1185,8 @@ func initialize_map():
 					players_data = loaded_state["players_data"]
 					# Migrate old save files to include environment player
 					_migrate_players_data_structure()
-					# Create units dynamically based on population total
-					_create_initial_units_from_population()
+					# Don't create new units - they should already exist in the save file with assignments
+					# Sprite restoration will happen after buildings are restored
 					print("Game: Restored player data for ", players_data.size(), " players")
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
@@ -1261,7 +1261,11 @@ func _create_initial_units():
 		# Restore sprites for units that should be visible
 		_restore_unit_sprites_on_load()
 	else:
-		print("Game: Starting with no units - they will be created when buildings gain capacity")
+		# If loading from save (units exist in players_data), restore their sprites
+		if GameManager.start_mode == "load":
+			_restore_unit_sprites_on_load()
+		else:
+			print("Game: Starting with no sprites - they will be created when buildings gain capacity")
 
 func _clear_existing_unit_sprites():
 	"""Clear any existing unit sprites before restoration"""
@@ -1276,11 +1280,9 @@ func _clear_existing_unit_sprites():
 
 func _restore_unit_sprites_on_load():
 	"""Restore unit sprites for loaded units that have both living and job assignments"""
-	print("Game: Restoring unit sprites for loaded game")
 	
 	# Ensure map_objects_holder exists
 	if not map_objects_holder:
-		print("Map objects holder not ready, deferring sprite restoration")
 		await get_tree().process_frame
 		call_deferred("_restore_unit_sprites_on_load")
 		return
@@ -1295,15 +1297,11 @@ func _restore_unit_sprites_on_load():
 		if not player_data.has("units"):
 			continue
 		
-		print("Player ", player_id, " has ", player_data["units"].size(), " units")
-		
 		for unit in player_data["units"]:
 			units_checked += 1
 			# Check if unit has both assignments
 			var living_quarters = unit.get("living_quarters", null)
 			var job = unit.get("job", null)
-			
-			print("Unit ", unit["unique_id"], " - Living: ", living_quarters, " Job: ", job)
 			
 			if living_quarters != null and job != null:
 				# Unit should be visible - check if sprite exists
@@ -1312,31 +1310,10 @@ func _restore_unit_sprites_on_load():
 				
 				if not existing_sprite:
 					# Create sprite for this fully assigned unit
-					var unit_sprite = Sprite2D.new()
-					unit_sprite.name = unit_id
-					unit_sprite.position = unit["position"]
-					unit_sprite.z_index = 6
-					
-					# Load texture
-					var texture_path = "res://assets/units/human_peasant_side.png"
-					if ResourceLoader.exists(texture_path):
-						unit_sprite.texture = load(texture_path)
-					
-					map_objects_holder.add_child(unit_sprite)
+					_create_unit_sprite_and_start_cycle(unit)
 					sprites_created += 1
-					
-					# Initialize movement cycle for restored unit
-					_ensure_unit_movement_properties(unit)
-					unit["movement_cycle_step"] = 0
-					unit["movement_state"] = "idle"
-					
-					print("Restored sprite for unit: ", unit_id)
-				else:
-					print("Unit ", unit["unique_id"], " already has sprite")
-			else:
-				print("Unit ", unit["unique_id"], " is missing assignments - no sprite created")
-	
-	print("Game: Checked ", units_checked, " units, created ", sprites_created, " unit sprites from loaded data")
+		
+	print("Restored ", sprites_created, " unit sprites from saved data")
 
 func _ensure_unit_movement_properties(unit: Dictionary):
 	"""Ensure unit has all required movement properties for backward compatibility"""
@@ -1451,8 +1428,6 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 	var unit_id = unit["unique_id"]
 	var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 	
-	print("DEBUG: Creating sprite for unit ", unit_id, ", living: ", unit.get("living_quarters", "null"), ", job: ", unit.get("job", "null"))
-	
 	if not existing_sprite:
 		# Create new sprite since unit is now fully assigned
 		var unit_sprite = Sprite2D.new()
@@ -1463,16 +1438,19 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		if living_quarters_id and map_objects_holder:
 			var home_building = map_objects_holder.get_node_or_null(NodePath(living_quarters_id))
 			if home_building:
-				unit_sprite.position = home_building.position
-				# Update unit's stored position to match their home
-				unit["position"] = home_building.position
-				print("DEBUG: Positioning unit ", unit_id, " at home building ", living_quarters_id, " position: ", unit_sprite.position)
+				# Scatter units around the building to avoid overlap
+				var base_position = home_building.position
+				var scatter_radius = 40.0
+				var random_angle = randf() * TAU  # Random angle in radians
+				var random_distance = randf() * scatter_radius
+				var offset = Vector2(cos(random_angle), sin(random_angle)) * random_distance
+				unit_sprite.position = base_position + offset
+				# Update unit's stored position to match their scattered position
+				unit["position"] = unit_sprite.position
 			else:
 				unit_sprite.position = unit["position"]
-				print("DEBUG: Could not find home building ", living_quarters_id, ", using stored position: ", unit_sprite.position)
 		else:
 			unit_sprite.position = unit["position"]
-			print("DEBUG: No living quarters assigned, using stored position: ", unit_sprite.position)
 		
 		unit_sprite.z_index = 6
 		# Normal appearance - no special coloring or scaling
@@ -1481,9 +1459,7 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		var texture_path = "res://assets/units/human_peasant_side.png"
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
-			print("DEBUG: Loaded texture for unit ", unit_id)
 		else:
-			print("ERROR: Could not find texture at ", texture_path)
 			# Create a colored rectangle as fallback
 			var rect = ColorRect.new()
 			rect.size = Vector2(20, 20)
@@ -1492,16 +1468,8 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		
 		if map_objects_holder:
 			map_objects_holder.add_child(unit_sprite)
-			print("DEBUG: Added sprite ", unit_id, " to map_objects_holder at position ", unit_sprite.position)
-			print("DEBUG: Sprite properties - visible: ", unit_sprite.visible, ", modulate: ", unit_sprite.modulate, ", scale: ", unit_sprite.scale)
-			print("DEBUG: Sprite texture size: ", unit_sprite.texture.get_size() if unit_sprite.texture else "no texture")
-			print("DEBUG: map_objects_holder children count: ", map_objects_holder.get_child_count())
 		else:
 			print("ERROR: map_objects_holder is null, cannot add sprite")
-		
-		print("Created sprite for fully assigned unit: ", unit_id)
-	else:
-		print("DEBUG: Sprite already exists for unit ", unit_id)
 	
 	# Initialize unit at home and start movement cycle
 	unit["movement_cycle_step"] = 0  # Start at home
@@ -1837,22 +1805,15 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	# Get building connections using the exact same system as building details modal
 	var connections = _find_building_connections_for_unit(building_node)
 	
-	print("DEBUG: Found ", connections.size(), " total connections for unit resource search")
-	
 	var resource_connections = []
 	
 	# Filter for resource connections (trees, mountains, etc.) - not buildings
 	for connection in connections:
 		var conn_type = connection.get("type", "")
-		print("DEBUG: Connection type: ", conn_type, ", name: ", connection.get("name", "no_name"))
 		if conn_type in ["tree", "mountain"]:  # These are resource types
 			resource_connections.append(connection)
-			print("DEBUG: Added resource connection: ", connection.get("name", "unknown"))
-	
-	print("DEBUG: Found ", resource_connections.size(), " resource connections")
 	
 	if resource_connections.is_empty():
-		print("DEBUG: No resource connections found - skipping resource step")
 		# No resource connection - skip resource step and go to next part of cycle
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
@@ -1864,31 +1825,23 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	
 	for connection in resource_connections:
 		var distance = connection.get("distance", INF)
-		print("Resource ", connection.get("name", "unknown"), " distance: ", distance)
 		if distance < shortest_distance:
 			shortest_distance = distance
 			closest_connection = connection
 	
 	if closest_connection == null:
-		print("DEBUG: No valid closest resource found")
 		# No valid resource found
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
-	print("DEBUG: Closest connection keys: ", closest_connection.keys())
-	print("DEBUG: Closest connection data: ", closest_connection)
-	
 	# Use the existing path from the building connection instead of recalculating
 	var existing_path = closest_connection.get("path", [])
 	if existing_path.is_empty():
-		print("DEBUG: No existing path in connection, skipping resource step")
 		# No path available - skip to next step
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
-	
-	print("DEBUG: Using existing connection path with ", existing_path.size(), " waypoints to ", closest_connection.get("name", "unknown"))
 	
 	unit["current_path"] = existing_path
 	unit["path_index"] = 0
@@ -2200,7 +2153,7 @@ func _setup_game_header():
 	_setup_game_footer()
 
 func _restore_buildings_with_proper_centering(buildings_data: Array):
-	print("Game: Restoring ", buildings_data.size(), " buildings from save data")
+	# Restore buildings from save data
 	
 	# Clear any existing buildings to avoid duplicates
 	if map_objects_holder:
@@ -2265,13 +2218,11 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			var owner_player = setup_data.get("owner_player", 1)
 			if players_data.has(owner_player):
 				players_data[owner_player]["buildings"].append(building_name)
-				print("Game: Restored building ", building_name, " to player ", owner_player, " buildings list")
 		else:
-			print("Warning: Could not restore building with texture: ", building_info.get("texture_path", "unknown"))
+			push_warning("Could not restore building with texture: " + building_info.get("texture_path", "unknown"))
 
 func _restore_environment_objects(environment_objects_data: Array):
 	# Restore environment objects (mountains and trees) with their unique IDs
-	print("Game: Restoring ", environment_objects_data.size(), " environment objects...")
 	
 	if not tilemap_layer or not map_objects_holder:
 		print("Warning: Cannot restore environment objects - missing tilemap or objects holder")
@@ -2302,9 +2253,9 @@ func _restore_environment_objects(environment_objects_data: Array):
 			elif object_type == "tree":
 				register_tree(existing_node)
 			
-			print("Game: Restored environment object ", environment_id, " at ", obj_position)
+			# print("Game: Restored environment object ", environment_id, " at ", obj_position)
 		else:
-			print("Warning: Could not find existing node to restore environment object: ", environment_id)
+			push_warning("Could not find existing node to restore environment object: " + environment_id)
 
 func _setup_game_footer():
 	# Create and setup the game footer
