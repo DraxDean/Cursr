@@ -14,6 +14,7 @@ const MAP_HEIGHT = 100
 @onready var camera: Camera2D = $Camera2D
 @onready var ui_layer: CanvasLayer = $UI_Layer
 @onready var map_objects_holder: Node2D = $MapObjects
+@onready var console_modal: Control = $UI_Layer/ConsoleModal
 # Manager Nodes
 @onready var camera_controller: Node = $CameraController
 @onready var ui_manager: Node = $UIManager
@@ -316,6 +317,13 @@ func debug_print_all_buildings():
 	
 	print("Building counters: ", building_counter)
 	print("===========================")
+
+func log_to_console(message: String):
+	# Send message to debug console
+	if is_instance_valid(console_modal):
+		console_modal.add_debug_message(message)
+	else:
+		print(message)
 
 # Environment Object Management Functions
 func register_mountain(mountain_node: Node2D) -> String:
@@ -952,6 +960,13 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 	_clear_building_selection()
 
 func _unhandled_input(event: InputEvent):
+	# Handle debug console toggle
+	if event.is_action_pressed("debug_console"):
+		if is_instance_valid(console_modal):
+			console_modal.toggle_console()
+		get_viewport().set_input_as_handled()
+		return
+	
 	# Debug key for building info
 	if event.is_action_pressed("ui_accept") and Input.is_action_pressed("ui_cancel"):
 		debug_print_all_buildings()

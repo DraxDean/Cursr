@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://bwlj6t8v4x4kq"]
+
+[ext_resource type="Script" uid="uid://console_modal_script" path="res://scripts/ui/console_modal.gd" id="1_console"]
+
+[node name="ConsoleModal" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_console")

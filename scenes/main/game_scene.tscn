@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://cahoywwt6us5c"]
+[gd_scene load_steps=12 format=3 uid="uid://cahoywwt6us5c"]
 
 [ext_resource type="Script" uid="uid://c0j3tt2dduq3v" path="res://scripts/main/game.gd" id="1_onqr8"]
 [ext_resource type="PackedScene" uid="uid://dlogpnjxp7vys" path="res://scenes/objects/tree.tscn" id="2_bw6k5"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://rv73t5wb1lu" path="res://scripts/managers/ui_manager.gd" id="6_o41ig"]
 [ext_resource type="Script" uid="uid://qghfvfjku3xu" path="res://scripts/managers/map_object_manager.gd" id="7_wktqh"]
 [ext_resource type="Script" uid="uid://cec0wdtvo70ms" path="res://scripts/managers/turn_manager.gd" id="8_tj35g"]
+[ext_resource type="PackedScene" uid="uid://bwlj6t8v4x4kq" path="res://scenes/ui/console_modal.tscn" id="9_console"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_v1wow"]
 texture = ExtResource("2_ycayy")
@@ -255,6 +256,9 @@ text = "Continue"
 layout_mode = 2
 text = "Start Game"
 visible = false
+
+[node name="ConsoleModal" parent="UI_Layer" instance=ExtResource("9_console")]
+layout_mode = 1
 
 [node name="Camera2D" type="Camera2D" parent="."]
 
