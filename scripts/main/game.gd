@@ -210,11 +210,14 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		
 		print("Game: Placing building at tile ", tile_coords, " world pos ", world_pos)
 		
+		# Deduct building costs from player resources
+		var owner_player = setup_data.get("owner_player", 1)
+		_deduct_building_cost(owner_player, building_type)
+		
 		# Add to map objects holder
 		map_objects_holder.add_child(building_scene)
 		
 		# Add building to player's buildings list
-		var owner_player = setup_data.get("owner_player", 1)
 		if players_data.has(owner_player):
 			var player_data = players_data[owner_player]
 			if not player_data.has("buildings"):
@@ -415,6 +418,37 @@ func apply_resource_production(player_id: int):
 		resources[resource_type] += rates[resource_type]
 		if rates[resource_type] != 0:
 			print("Player ", player_id, " produced +", rates[resource_type], " ", resource_type)
+
+func _deduct_building_cost(player_id: int, building_type: String):
+	"""Deduct building cost from player resources"""
+	if not players_data.has(player_id):
+		return
+	
+	var building_costs = {
+		"house": {"wood": 10, "stone": 5},
+		"barracks": {"wood": 10, "stone": 5},
+		"fishing_hut": {"wood": 12, "stone": 3},
+		"lumberjack": {"wood": 15, "stone": 8},
+		"stoneworker": {"wood": 8, "stone": 15},
+		"town_center": {"wood": 30, "stone": 25, "gold": 15},
+		"farmhouse": {"wood": 15},
+		"farm": {"wood": 10},
+		"lumber_mill": {"wood": 20, "stone": 10}
+	}
+	
+	var costs = building_costs.get(building_type, {})
+	var player_data = players_data[player_id]
+	var resources = player_data.get("resources", {})
+	
+	# Ensure all resource types exist
+	for resource_type in costs.keys():
+		if not resources.has(resource_type):
+			resources[resource_type] = 0
+	
+	# Deduct costs
+	for resource_type in costs.keys():
+		resources[resource_type] -= costs[resource_type]
+		print("Player ", player_id, " paid -", costs[resource_type], " ", resource_type, " for ", building_type)
 
 func log_to_console(message: String):
 	# Send message to debug console

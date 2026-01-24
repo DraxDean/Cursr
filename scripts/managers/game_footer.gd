@@ -36,12 +36,21 @@ func _setup_footer():
 	background_panel.add_theme_stylebox_override("panel", style_box)
 	add_child(background_panel)
 	
-	# Left container for buttons
+	# Main container to hold left and right sections
+	var main_container = HBoxContainer.new()
+	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	main_container.add_theme_constant_override("separation", 10)
+	main_container.add_theme_constant_override("margin_left", 10)
+	main_container.add_theme_constant_override("margin_right", 10)
+	main_container.add_theme_constant_override("margin_top", 10)
+	main_container.add_theme_constant_override("margin_bottom", 10)
+	add_child(main_container)
+	
+	# Left container for build button
 	var left_container = HBoxContainer.new()
-	left_container.position = Vector2(10, 10)
 	left_container.custom_minimum_size.y = 30
 	left_container.add_theme_constant_override("separation", 10)
-	add_child(left_container)
+	main_container.add_child(left_container)
 	
 	# Build button
 	build_button = Button.new()
@@ -51,14 +60,17 @@ func _setup_footer():
 	build_button.pressed.connect(_on_build_pressed)
 	left_container.add_child(build_button)
 	
+	# Spacer to push right controls to the right
+	var spacer = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main_container.add_child(spacer)
+	
 	# Right container for end day controls
 	var right_container = HBoxContainer.new()
 	right_container.alignment = BoxContainer.ALIGNMENT_END
 	right_container.custom_minimum_size.y = 30
 	right_container.add_theme_constant_override("separation", 10)
-	right_container.position = Vector2(0, 10)
-	right_container.size.x = get_viewport().get_visible_rect().size.x - 20
-	add_child(right_container)
+	main_container.add_child(right_container)
 	
 	# Day counter label
 	day_label = Label.new()
