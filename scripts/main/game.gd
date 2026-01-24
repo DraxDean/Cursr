@@ -48,12 +48,16 @@ var build_selection_modal: Control
 var building_placement_modal: Control
 var building_details_modal: Control
 
+# Unit Sprite Tracking - bidirectional mapping
+var unit_sprite_map: Dictionary = {}  # Maps unit_id -> sprite_node for quick lookup
+
 # Building Selection System
 var selected_building: Node2D = null
 var highlighted_building: Node2D = null
 var building_outline_material: ShaderMaterial
 var building_counter: Dictionary = {}  # Track building counts for unique IDs
 var unit_counter: int = 0  # Track unit counts for unique IDs
+var buildings_connections_cache: Dictionary = {}  # Cache for building-to-building connections with paths (no recalculation)
 
 # --- Variables ---
 var world_data: Dictionary = {}
@@ -210,6 +214,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			print("Game: Added building ", building_name, " to player ", owner_player, " buildings list")
 		
 		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
+		
+		# Calculate and cache connections for the new building (one-time, with bidirectional paths)
+		_calculate_and_cache_building_connections(building_scene)
 		
 		# Auto-save after placing building
 		print("Game: Auto-saving after building placement...")
@@ -487,6 +494,12 @@ func _check_and_create_missing_sprites(player_id: int):
 			if not existing_sprite:
 				print("Creating missing sprite for fully assigned unit: ", unit_id, " (living: ", living_quarters, ", job: ", job, ")")
 				_create_unit_sprite_and_start_cycle(unit)
+			else:
+				# Sprite exists, ensure it's tracked in sprite_id
+				if not unit.has("sprite_id") or unit.get("sprite_id") == "":
+					unit["sprite_id"] = unit_id
+					unit_sprite_map[unit_id] = existing_sprite
+					print("Unit %s: Sprite already existed, added to tracking" % unit_id)
 
 func _cleanup_unassigned_unit_sprites(player_id: int):
 	"""Remove sprites for units that lost housing or work assignments"""
@@ -507,6 +520,9 @@ func _cleanup_unassigned_unit_sprites(player_id: int):
 			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 			if existing_sprite:
 				print("Removing sprite for unit with incomplete assignments: ", unit_id)
+				# Clean up sprite tracking
+				unit_sprite_map.erase(unit_id)
+				unit["sprite_id"] = ""
 				existing_sprite.queue_free()
 				
 				# Reset movement state since unit is no longer active
@@ -620,6 +636,9 @@ func debug_print_environment_objects():
 func _migrate_players_data_structure():
 	# Migrate old save files to include the environment player structure
 	print("Game: Migrating players_data structure...")
+	
+	# Check for duplicate unit IDs first
+	_fix_duplicate_unit_ids()
 	
 	# Check if environment player exists
 	if not players_data.has("environment"):
@@ -1159,6 +1178,7 @@ func initialize_map():
 		return  # Don't proceed with normal map initialization
 	elif GameManager.start_mode == "new":
 		print("Game: Mode: New Game"); current_save_path = ""
+		unit_counter = 0  # Reset unit counter for new games
 		if generate_world_data(): 
 			success = true
 			# Initialize population data for new games
@@ -1169,6 +1189,7 @@ func initialize_map():
 	elif GameManager.start_mode == "new_with_data":
 		print("Game: Mode: New Game with Generated Data")
 		current_save_path = ""
+		unit_counter = 0  # Reset unit counter for new games
 		if not GameManager.generated_world_data.is_empty():
 			world_data = GameManager.generated_world_data.duplicate()
 			GameManager.generated_world_data.clear()  # Clear it after use
@@ -1200,6 +1221,8 @@ func initialize_map():
 					players_data = loaded_state["players_data"]
 					# Migrate old save files to include environment player
 					_migrate_players_data_structure()
+					# Update unit_counter based on existing units so new units get correct IDs
+					_update_unit_counter_from_existing_units()
 					# Don't create new units - they should already exist in the save file with assignments
 					# Sprite restoration will happen after buildings are restored
 					print("Game: Restored player data for ", players_data.size(), " players")
@@ -1231,6 +1254,12 @@ func initialize_map():
 		# Create initial units (cosmetic)
 		_create_initial_units()
 		
+		# CRITICAL: Ensure unit sprites are restored after buildings
+		# This is especially important for loaded games where units exist but have no sprites yet
+		if GameManager.start_mode == "load":
+			call_deferred("_restore_unit_sprites_on_load")
+			print("Game: Queued unit sprite restoration for loaded game")
+		
 		camera_controller.center_camera()
 		print("Game: Map ready.")
 	else: print("Game: Map initialization failed.")
@@ -1258,6 +1287,53 @@ func _reset_environment_data():
 	loaded_environment_objects_data = []
 	# Reset unit counter for fresh IDs
 	unit_counter = 0
+
+func _fix_duplicate_unit_ids():
+	"""Check for and fix duplicate unit IDs in player data"""
+	var all_unit_ids = {}  # Track all unit IDs and their occurrences
+	var duplicates_found = 0
+	
+	for player_id in players_data.keys():
+		if str(player_id) == "environment":
+			continue
+		
+		var player_data = players_data[player_id]
+		if not player_data.has("units"):
+			continue
+		
+		var player_units = player_data.get("units", [])
+		
+		for unit in player_units:
+			var unit_id = unit.get("unique_id", "")
+			if unit_id == "":
+				continue
+			
+			# Track this unit ID
+			if unit_id not in all_unit_ids:
+				all_unit_ids[unit_id] = []
+			all_unit_ids[unit_id].append({"unit": unit, "player_id": player_id})
+	
+	# Now check for duplicates and fix them
+	for unit_id in all_unit_ids.keys():
+		var occurrences = all_unit_ids[unit_id]
+		
+		if occurrences.size() > 1:
+			print("Game: Found %d units with duplicate ID: %s" % [occurrences.size(), unit_id])
+			duplicates_found += occurrences.size() - 1  # Count extras
+			
+			# Keep the first one, reassign the others
+			for i in range(1, occurrences.size()):
+				var duplicate_unit = occurrences[i]["unit"]
+				var old_id = duplicate_unit["unique_id"]
+				var new_id = _get_next_unit_id()
+				
+				duplicate_unit["unique_id"] = new_id
+				print("Game: Fixed duplicate unit - reassigned %s -> %s (name: %s)" % [old_id, new_id, duplicate_unit.get("name", "Unknown")])
+	
+	if duplicates_found > 0:
+		print("Game: Fixed %d duplicate unit IDs" % duplicates_found)
+	else:
+		print("Game: No duplicate unit IDs found")
 
 func _create_initial_units():
 	print("Game: Skipping initial unit creation - units will be created dynamically when buildings get capacity")
@@ -1304,6 +1380,10 @@ func _restore_unit_sprites_on_load():
 	
 	var sprites_created = 0
 	var units_checked = 0
+	var units_with_assignments = 0
+	var units_without_sprites = 0
+	var units_already_have_sprites = 0
+	
 	for player_id in players_data:
 		if str(player_id) == "environment":
 			continue
@@ -1319,16 +1399,21 @@ func _restore_unit_sprites_on_load():
 			var job = unit.get("job", null)
 			
 			if living_quarters != null and job != null:
+				units_with_assignments += 1
 				# Unit should be visible - check if sprite exists
 				var unit_id = unit["unique_id"]
 				var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 				
 				if not existing_sprite:
+					units_without_sprites += 1
 					# Create sprite for this fully assigned unit
+					print("Restoring sprite for unit %s (%s): Living=%s, Job=%s" % [unit_id, unit.get("name", "Unknown"), living_quarters, job])
 					_create_unit_sprite_and_start_cycle(unit)
 					sprites_created += 1
-		
-	print("Restored ", sprites_created, " unit sprites from saved data")
+				else:
+					units_already_have_sprites += 1
+	
+	print("Unit sprite restoration complete: %d created, %d checked, %d with assignments, %d without sprites, %d already had sprites" % [sprites_created, units_checked, units_with_assignments, units_without_sprites, units_already_have_sprites])
 
 func _ensure_unit_movement_properties(unit: Dictionary):
 	"""Ensure unit has all required movement properties for backward compatibility"""
@@ -1346,6 +1431,8 @@ func _ensure_unit_movement_properties(unit: Dictionary):
 		unit["work_timer"] = 0.0
 	if not unit.has("movement_speed"):
 		unit["movement_speed"] = 25.0
+	if not unit.has("speed_multiplier"):
+		unit["speed_multiplier"] = randf_range(0.85, 1.15)  # Random speed variation for older saves
 	
 func _spawn_unit(unit_data: Dictionary):
 	# Only create sprite if both living_quarters and job are assigned
@@ -1386,6 +1473,115 @@ func _get_next_unit_id() -> String:
 	unit_counter += 1
 	return "unit_" + str(unit_counter)
 
+func _update_unit_counter_from_existing_units():
+	"""Update the unit_counter based on all existing units in players_data.
+	Call this after loading a game to ensure new units get correct unique_ids."""
+	var max_unit_num = 0
+	
+	# Scan all players' units to find the highest unit number
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		var player_data = players_data[player_id]
+		if player_data.has("units"):
+			for unit in player_data["units"]:
+				var unit_id = unit.get("unique_id", "")
+				if unit_id.begins_with("unit_"):
+					var num_str = unit_id.trim_prefix("unit_")
+					if num_str.is_valid_int():
+						var num = num_str.to_int()
+						max_unit_num = max(max_unit_num, num)
+	
+	# Set counter to the next number after the highest found
+	unit_counter = max_unit_num
+	print("Game: Updated unit_counter to %d (next unit will be unit_%d)" % [unit_counter, unit_counter + 1])
+
+func _cache_job_connections_for_unit(unit: Dictionary):
+	"""Cache or recache the job connections for a unit after a new building is placed.
+	This updates the unit's cached paths to include any newly available buildings."""
+	var job = unit.get("job")
+	if not job:
+		return  # Unit doesn't have a job, nothing to do
+	
+	# Check if job building's connections are already cached
+	if buildings_connections_cache.has(job):
+		unit["job_connections"] = buildings_connections_cache[job]
+		print("Game: Used cached connections for unit ", unit.get("unique_id"), " at job ", job)
+	else:
+		var job_building_node = map_objects_holder.get_node_or_null(NodePath(job))
+		if job_building_node:
+			# Fallback: calculate if not cached (shouldn't happen in normal flow)
+			var connections = _find_building_connections_for_unit(job_building_node)
+			unit["job_connections"] = connections
+			# Also cache it for future use
+			buildings_connections_cache[job] = connections
+			print("Game: Calculated and cached connections for unit ", unit.get("unique_id"), " at job ", job)
+		else:
+			print("Game: Warning - could not find job building node: ", job)
+
+func _recalculate_affected_unit_paths_after_building_placement(new_building_name: String, owner_player: int):
+	"""Recalculate paths for all units with jobs after a new building is placed.
+	This ensures that the new building can be accessed as a resource location if applicable."""
+	if not players_data.has(owner_player):
+		return
+	
+	var player_data = players_data[owner_player]
+	var units = player_data.get("units", [])
+	var units_updated = 0
+	
+	# Check all units with jobs - they might need path updates
+	for unit in units:
+		var job = unit.get("job")
+		if job:  # Unit has a job assignment
+			# Re-cache the job connections to include the new building
+			_cache_job_connections_for_unit(unit)
+			units_updated += 1
+	
+	if units_updated > 0:
+		print("Game: Updated paths for ", units_updated, " units after building ", new_building_name, " was placed")
+
+func _calculate_and_cache_building_connections(new_building: Node2D):
+	"""Calculate connections for a new building ONCE and cache them with paths bidirectionally.
+	This eliminates the need to recalculate paths for every unit assignment and building placement."""
+	var building_name = new_building.name
+	var connections = _find_building_connections_for_unit(new_building)
+	
+	# Store connections in cache indexed by building name
+	buildings_connections_cache[building_name] = connections
+	
+	# Also add reverse connections: if A→B exists, add B→A with reversed path
+	for connection in connections:
+		var target_building_name = connection.get("name", "")
+		if target_building_name and connection.get("object_type") == "building":
+			# Get or create the target building's connection list
+			if not buildings_connections_cache.has(target_building_name):
+				buildings_connections_cache[target_building_name] = []
+			
+			# Create reverse connection with reversed path
+			var reversed_path = connection.get("path", []).duplicate()
+			reversed_path.reverse()
+			
+			var reverse_connection = {
+				"name": building_name,
+				"type": new_building.get_meta("building_type", "unknown"),
+				"distance": connection.get("distance", 0),
+				"object_type": "building",
+				"path": reversed_path,
+				"tile_coords": tilemap_layer.local_to_map(new_building.position)
+			}
+			
+			# Check if this reverse connection already exists
+			var already_exists = false
+			for existing in buildings_connections_cache[target_building_name]:
+				if existing.get("name") == building_name:
+					already_exists = true
+					break
+			
+			if not already_exists:
+				buildings_connections_cache[target_building_name].append(reverse_connection)
+	
+	print("Game: Cached connections for building ", building_name, " (", connections.size(), " connections)")
+
 func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String, slots_to_fill: int):
 	"""Automatically assign available units to a building when capacity is increased"""
 	if not building_node:
@@ -1423,6 +1619,15 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 				unit["living_quarters"] = building_id
 			elif capacity_type == "worker":
 				unit["job"] = building_id
+				# Use cached building connections if available, otherwise calculate
+				if buildings_connections_cache.has(building_id):
+					unit["job_connections"] = buildings_connections_cache[building_id]
+				else:
+					var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
+					if job_building_node:
+						var connections = _find_building_connections_for_unit(job_building_node)
+						unit["job_connections"] = connections
+						buildings_connections_cache[building_id] = connections  # Cache for future
 			
 			units_assigned += 1
 			print("Auto-assigned existing unit ", unit["unique_id"], " to ", capacity_type, " at building ", building_id)
@@ -1442,6 +1647,13 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 	"""Create sprite for a fully assigned unit and start its movement cycle"""
 	var unit_id = unit["unique_id"]
 	var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+	
+	# Cache building connections if unit has a job (calculate once, reuse in cycle)
+	var job_building = unit.get("job", null)
+	if job_building and not unit.has("job_connections"):
+		var building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
+		if building_node:
+			unit["job_connections"] = _find_building_connections_for_unit(building_node)
 	
 	if not existing_sprite:
 		# Create new sprite since unit is now fully assigned
@@ -1468,23 +1680,37 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 			unit_sprite.position = unit["position"]
 		
 		unit_sprite.z_index = 6
-		# Normal appearance - no special coloring or scaling
+		unit_sprite.centered = true  # Center the sprite on its position
 		
 		# Load texture
 		var texture_path = "res://assets/units/human_peasant_side.png"
 		if ResourceLoader.exists(texture_path):
-			unit_sprite.texture = load(texture_path)
+			var texture = load(texture_path)
+			unit_sprite.texture = texture
+			print("Unit %s: Loaded texture %s (size: %s)" % [unit_id, texture_path, str(texture.get_size())])
 		else:
+			print("Unit %s: Texture not found at %s - using fallback" % [unit_id, texture_path])
 			# Create a colored rectangle as fallback
 			var rect = ColorRect.new()
-			rect.size = Vector2(20, 20)
-			rect.color = Color.RED
+			rect.size = Vector2(16, 16)
+			rect.color = Color.YELLOW
 			unit_sprite.add_child(rect)
+		
+		# Track bidirectional mapping
+		unit_sprite.set_meta("unit_id", unit_id)  # Sprite knows which unit it belongs to
 		
 		if map_objects_holder:
 			map_objects_holder.add_child(unit_sprite)
+			print("Unit %s sprite added to scene at position: %s" % [unit_id, str(unit_sprite.position)])
 		else:
 			print("ERROR: map_objects_holder is null, cannot add sprite")
+		
+		existing_sprite = unit_sprite  # Store reference for tracking below
+	
+	# ALWAYS set sprite_id in unit data, whether sprite was just created or already existed
+	unit["sprite_id"] = unit_id  # Unit data tracks its sprite ID
+	unit_sprite_map[unit_id] = existing_sprite  # Game tracks unit -> sprite mapping
+	print("Unit %s: Sprite tracking added to map" % unit_id)
 	
 	# Initialize unit at home and start movement cycle
 	unit["movement_cycle_step"] = 0  # Start at home
@@ -1513,7 +1739,8 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			"movement_target": null,
 			"movement_cycle_step": 0,
 			"work_timer": 0.0,
-			"movement_speed": 25.0
+			"movement_speed": 25.0,
+			"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
 		}
 		
 		# Assign to the appropriate capacity immediately
@@ -1625,7 +1852,8 @@ func _create_initial_units_from_population():
 				"movement_target": null,
 				"movement_cycle_step": 0,
 				"work_timer": 0.0,
-				"movement_speed": 25.0
+				"movement_speed": 25.0,
+				"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
 			}
 			
 			player_data["units"].append(unit_data)
@@ -1712,7 +1940,8 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			var current_pos = sprite.position
 			var direction = (target_pos - current_pos).normalized()
 			var movement_speed = unit.get("movement_speed", 50.0)
-			var move_distance = movement_speed * delta
+			var speed_multiplier = unit.get("speed_multiplier", 1.0)
+			var move_distance = movement_speed * speed_multiplier * delta
 			
 			if current_pos.distance_to(target_pos) <= move_distance:
 				# Reached this waypoint
@@ -1773,7 +2002,7 @@ func _on_unit_reached_destination(unit: Dictionary):
 	_start_unit_movement_cycle(unit)
 
 func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: int):
-	"""Move unit to a specific building"""
+	"""Move unit to a specific building using pre-calculated paths from connections"""
 	if building_name == null:
 		return
 	
@@ -1782,14 +2011,26 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 		print("Building not found: ", building_name)
 		return
 	
-	var unit_pos = unit["position"]
-	var target_pos = building_node.position
+	# Try to find the pre-calculated path from job connections
+	var connections = unit.get("job_connections", [])
+	var path = []
 	
-	# Get actual path using existing pathfinding system
-	var path = _get_path_between_positions(unit_pos, target_pos)
+	# Look for a connection to this building
+	for connection in connections:
+		if connection.get("name") == building_name and connection.has("path"):
+			path = connection.get("path", [])
+			break
+	
+	# Fallback: if no pre-calculated path found, calculate it
 	if path.is_empty():
-		# Fallback to direct path if pathfinding fails
-		path = [target_pos]
+		var unit_pos = unit["position"]
+		var target_pos = building_node.position
+		
+		# Get actual path using existing pathfinding system
+		path = _get_path_between_positions(unit_pos, target_pos)
+		if path.is_empty():
+			# Fallback to direct path if pathfinding fails
+			path = [target_pos]
 	
 	unit["current_path"] = path
 	unit["path_index"] = 0
@@ -1817,16 +2058,27 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 		unit["movement_state"] = "idle"
 		return
 	
-	# Get building connections using the exact same system as building details modal
-	var connections = _find_building_connections_for_unit(building_node)
+	# Get building connections using cached data if available
+	var connections = unit.get("job_connections", [])
+	if connections.is_empty():
+		# Fallback: calculate if not cached
+		connections = _find_building_connections_for_unit(building_node)
+		unit["job_connections"] = connections  # Cache for future use
 	
 	var resource_connections = []
 	
-	# Filter for resource connections (trees, mountains, etc.) - not buildings
+	# Filter for resource connections (trees, mountains) from the pre-calculated connections
 	for connection in connections:
 		var conn_type = connection.get("type", "")
-		if conn_type in ["tree", "mountain"]:  # These are resource types
+		if conn_type in ["tree", "mountain"]:  # These are resource types with pre-calculated paths
 			resource_connections.append(connection)
+	
+	# Find nearest farm as a resource (farms don't have pre-calculated paths)
+	var farm_resource = _find_nearest_farm(unit["position"])
+	if farm_resource:
+		# Check if this farm is connected to the job building (within range and path-findable)
+		# For now, include all farms as potential resources
+		resource_connections.append(farm_resource)
 	
 	if resource_connections.is_empty():
 		# No resource connection - skip resource step and go to next part of cycle
@@ -1850,10 +2102,19 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 		unit["movement_state"] = "idle"
 		return
 	
-	# Use the existing path from the building connection instead of recalculating
+	# Use the existing path from the building connection, or calculate for farms
 	var existing_path = closest_connection.get("path", [])
+	
+	# For farms, we need to calculate the path since it wasn't pre-calculated
+	if existing_path.is_empty() and closest_connection.get("type") == "farm":
+		var farm_node = map_objects_holder.get_node_or_null(NodePath(closest_connection.get("name")))
+		if farm_node:
+			# Calculate path from unit's current position to farm
+			existing_path = _get_path_between_positions(unit["position"], farm_node.position)
+	
 	if existing_path.is_empty():
 		# No path available - skip to next step
+		print("No path available to resource: ", closest_connection.get("name"))
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
@@ -1863,45 +2124,71 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	unit["movement_state"] = "moving"
 	unit["movement_target"] = closest_connection.get("name", "unknown")
 	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
+	
+	print("Unit ", unit["unique_id"], " moving to resource: ", closest_connection.get("name"), " (", closest_connection.get("type"), ")")
 
-func _find_nearest_resource(from_position: Vector2, resource_type: String) -> Vector2:
-	"""Find the nearest resource of the specified type"""
-	var nearest_pos = null
+func _find_nearest_mountain(from_position: Vector2) -> Dictionary:
+	"""Find the nearest mountain and return connection data"""
+	var mountains = get_environment_objects("mountains")
+	var nearest = null
 	var nearest_distance = INF
 	
-	match resource_type:
-		"mountain":
-			var mountains = get_environment_objects("mountains")
-			for mountain_id in mountains:
-				var mountain_data = mountains[mountain_id]
-				var mountain_pos = tilemap_layer.map_to_local(mountain_data["tile_coords"])
-				var distance = from_position.distance_to(mountain_pos)
-				if distance < nearest_distance:
-					nearest_distance = distance
-					nearest_pos = mountain_pos
-		
-		"tree":
-			var trees = get_environment_objects("trees")
-			for tree_id in trees:
-				var tree_data = trees[tree_id]
-				var tree_pos = tilemap_layer.map_to_local(tree_data["tile_coords"])
-				var distance = from_position.distance_to(tree_pos)
-				if distance < nearest_distance:
-					nearest_distance = distance
-					nearest_pos = tree_pos
-		
-		"farm":
-			# Find farm buildings
-			for child in map_objects_holder.get_children():
-				if _is_building_node(child):
-					var building_type = child.get_meta("building_type", "unknown")
-					if building_type == "farm":
-						var distance = from_position.distance_to(child.position)
-						if distance < nearest_distance:
-							nearest_distance = distance
-							nearest_pos = child.position
+	for mountain_id in mountains:
+		var mountain_data = mountains[mountain_id]
+		var mountain_pos = tilemap_layer.map_to_local(mountain_data["tile_coords"])
+		var distance = from_position.distance_to(mountain_pos)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = {
+				"name": mountain_id,
+				"type": "mountain",
+				"distance": nearest_distance,
+				"object_type": "mountain"
+			}
 	
-	return nearest_pos
+	return nearest
+
+func _find_nearest_tree(from_position: Vector2) -> Dictionary:
+	"""Find the nearest tree and return connection data"""
+	var trees = get_environment_objects("trees")
+	var nearest = null
+	var nearest_distance = INF
+	
+	for tree_id in trees:
+		var tree_data = trees[tree_id]
+		var tree_pos = tilemap_layer.map_to_local(tree_data["tile_coords"])
+		var distance = from_position.distance_to(tree_pos)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = {
+				"name": tree_id,
+				"type": "tree",
+				"distance": nearest_distance,
+				"object_type": "tree"
+			}
+	
+	return nearest
+
+func _find_nearest_farm(from_position: Vector2) -> Dictionary:
+	"""Find the nearest farm building and return connection data"""
+	var nearest = null
+	var nearest_distance = INF
+	
+	for child in map_objects_holder.get_children():
+		if _is_building_node(child):
+			var building_type = child.get_meta("building_type", "unknown")
+			if building_type == "farm":
+				var distance = from_position.distance_to(child.position)
+				if distance < nearest_distance:
+					nearest_distance = distance
+					nearest = {
+						"name": child.name,
+						"type": "farm",
+						"distance": nearest_distance,
+						"object_type": "farm"
+					}
+	
+	return nearest
 
 func _find_building_connections_for_unit(building: Node2D) -> Array:
 	"""Get building connections using the exact same system as building details modal"""

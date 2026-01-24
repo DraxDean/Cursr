@@ -8,8 +8,13 @@ extends Node
 @export var map_objects_holder: Node2D
 @export var turn_manager: Node
 @export var players_data: Dictionary
+var game_node: Node  # Reference to main game node for path recalculation
 
 var building_counter: Dictionary = {}
+
+func set_game_node(game: Node):
+	"""Set reference to main game node for path recalculation after building placement"""
+	game_node = game
 
 func update_building_preview(building_preview_sprite: Sprite2D, _mouse_pos: Vector2, building_type: String):
 	var world_pos = tilemap_layer.local_to_map(_mouse_pos)
@@ -64,6 +69,10 @@ func place_building_at_tile(tile_coords: Vector2i, building_type: String):
 				player_data["buildings"] = []
 			player_data["buildings"].append(building_name)
 		print("Building placed successfully.")
+		
+		# Recalculate paths for all units with jobs that might be affected by the new building
+		if game_node:
+			_recalculate_affected_unit_paths(building_name, owner_player)
 	else:
 		print("Building texture not found.")
 
@@ -100,3 +109,18 @@ func is_building_node(node: Node) -> bool:
 		if node.name.begins_with(building_type):
 			return true
 	return false
+func _recalculate_affected_unit_paths(new_building_name: String, owner_player: int):
+	"""Recalculate paths for all units with jobs, since a new building might be in range"""
+	if not game_node or not players_data.has(owner_player):
+		return
+	
+	var player_data = players_data[owner_player]
+	var units = player_data.get("units", [])
+	
+	# Check all units with jobs - they might need path updates
+	for unit in units:
+		var job = unit.get("job")
+		if job:  # Unit has a job assignment
+			# Re-cache the job connections to include the new building
+			game_node._cache_job_connections_for_unit(unit)
+			print("BuildingManager: Recalculated paths for unit ", unit.get("unique_id"), " after building ", new_building_name, " was placed")

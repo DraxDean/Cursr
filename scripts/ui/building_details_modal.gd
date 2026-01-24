@@ -410,50 +410,82 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			var mountains = game_node.get_environment_objects("mountains")
 			print("Found ", mountains.size(), " mountains in environment system")
 			
+			# First pass: collect mountains within range with distances (no pathfinding yet)
+			var nearby_mountains = []
 			for mountain_id in mountains:
 				var mountain_data = mountains[mountain_id]
 				var mountain_tile_coords = mountain_data["tile_coords"]
 				var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
 				
-				print("Found mountain ", mountain_id, " at distance ", tile_distance)
 				if tile_distance <= connection_range_tiles:
-					connections.append({
-						"name": mountain_id,
-						"type": "mountain",
-						"distance": tile_distance,
-						"object_type": "mountain"
+					nearby_mountains.append({
+						"id": mountain_id,
+						"tile_coords": mountain_tile_coords,
+						"distance": tile_distance
 					})
-					print("Added mountain connection: ", mountain_id, " at ", tile_distance, " tiles away")
+			
+			# Sort by distance and take only the 3 closest
+			nearby_mountains.sort_custom(func(a, b): return a.distance < b.distance)
+			print("Found ", nearby_mountains.size(), " nearby mountains, limiting to 3 if needed")
+			if nearby_mountains.size() > 3:
+				nearby_mountains = nearby_mountains.slice(0, 3)
+			
+			# Second pass: only add the 3 closest mountains
+			for mountain in nearby_mountains:
+				print("Added mountain connection: ", mountain.id, " at ", mountain.distance, " tiles away")
+				connections.append({
+					"name": mountain.id,
+					"type": "mountain",
+					"distance": mountain.distance,
+					"object_type": "mountain"
+				})
 		else:
 			print("Environment system not available, falling back to old method")
 			# Fallback to old method
 			var map_objects_holder = game_node.get_node_or_null("MapObjects")
 			if map_objects_holder:
 				print("Found MapObjects holder with ", map_objects_holder.get_child_count(), " children")
+				
+				# First pass: collect nearby mountains
+				var nearby_mountains = []
 				for child in map_objects_holder.get_children():
 					print("Checking child: ", child.name, " type: ", child.get_class())
 					if child.name.begins_with("Mountain") or child.name.begins_with("mountain_"):
 						var mountain_tile_coords = tilemap_layer.local_to_map(child.position)
 						var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
 						
-						print("Found mountain ", child.name, " at distance ", tile_distance)
 						if tile_distance <= connection_range_tiles:
-							# Calculate path from building to mountain
-							var path = _astar_pathfind(building_tile_coords, mountain_tile_coords, tilemap_layer)
-							# Convert tile coordinates to world positions for the path
-							var world_path = []
-							for tile_pos in path:
-								world_path.append(tilemap_layer.map_to_local(tile_pos))
-							
-							connections.append({
-								"name": child.name,
-								"type": "mountain",
-								"distance": tile_distance,
-								"object_type": "mountain",
-								"path": world_path,
-								"tile_coords": mountain_tile_coords
+							nearby_mountains.append({
+								"node": child,
+								"tile_coords": mountain_tile_coords,
+								"distance": tile_distance
 							})
-							print("Added mountain connection: ", child.name, " at ", tile_distance, " tiles away")
+				
+				# Sort and limit to 3 closest
+				nearby_mountains.sort_custom(func(a, b): return a.distance < b.distance)
+				print("Found ", nearby_mountains.size(), " nearby mountains, limiting to 3 if needed")
+				if nearby_mountains.size() > 3:
+					nearby_mountains = nearby_mountains.slice(0, 3)
+				
+				# Second pass: add the 3 closest mountains with their paths
+				for mountain in nearby_mountains:
+					print("Found mountain ", mountain.node.name, " at distance ", mountain.distance)
+					# Calculate path from building to mountain
+					var path = _astar_pathfind(building_tile_coords, mountain.tile_coords, tilemap_layer)
+					# Convert tile coordinates to world positions for the path
+					var world_path = []
+					for tile_pos in path:
+						world_path.append(tilemap_layer.map_to_local(tile_pos))
+					
+					connections.append({
+						"name": mountain.node.name,
+						"type": "mountain",
+						"distance": mountain.distance,
+						"object_type": "mountain",
+						"path": world_path,
+						"tile_coords": mountain.tile_coords
+					})
+					print("Added mountain connection: ", mountain.node.name, " at ", mountain.distance, " tiles away")
 			else:
 				print("MapObjects holder not found!")
 	
@@ -549,27 +581,9 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
-	# For stoneworkers, limit mountain connections to 3 nearest
 	# For lumberjacks, limit tree connections to 3 nearest
-	if building_type == "stoneworker":
-		var mountain_connections = []
-		var other_connections = []
-		
-		for connection in connections:
-			if connection.type == "mountain":
-				mountain_connections.append(connection)
-			else:
-				other_connections.append(connection)
-		
-		# Keep only the 3 nearest mountains
-		if mountain_connections.size() > 3:
-			mountain_connections = mountain_connections.slice(0, 3)
-		
-		# Combine back together
-		connections = other_connections + mountain_connections
-		connections.sort_custom(func(a, b): return a.distance < b.distance)
-	
-	elif building_type == "lumberjack":
+	# (Mountains are already limited during collection above)
+	if building_type == "lumberjack":
 		var tree_connections = []
 		var other_connections = []
 		

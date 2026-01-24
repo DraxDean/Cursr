@@ -89,6 +89,7 @@ func _setup_ui():
 	output_text = Label.new()
 	output_text.text = "Debug console initialized. Messages will appear here.\n"
 	output_text.autowrap_mode = TextServer.AUTOWRAP_WORD
+	output_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	output_text.add_theme_color_override("font_color", Color.WHITE)
 	output_text.add_theme_font_size_override("font_size", 12)
 	output_scroll.add_child(output_text)
@@ -181,6 +182,22 @@ func _process_command(command: String):
 			_show_players_info()
 		"buildings":
 			_show_buildings_info()
+		"objects":
+			_show_objects_info()
+		"units":
+			_show_units_info()
+		"map":
+			_show_map_info()
+		"list":
+			_list_scene_nodes()
+		"test":
+			_create_test_sprite()
+		"spritemap":
+			_show_sprite_map()
+		"sync":
+			_sync_unit_sprites()
+		"duplicates":
+			_check_for_duplicates()
 		"save":
 			add_debug_message("Executing save command...")
 			if get_parent().get_parent().has_method("_execute_save"):
@@ -197,25 +214,32 @@ func _show_help():
 	add_debug_message("clear - Clear console output")
 	add_debug_message("players - Show player information")
 	add_debug_message("buildings - Show buildings information")
+	add_debug_message("objects - Show environment objects (trees, mountains)")
+	add_debug_message("units - Show units information with sprite status")
+	add_debug_message("map - Show map and world creation info")
+	add_debug_message("list - List all scene nodes in tree")
+	add_debug_message("test - Create a test sprite at camera center")
+	add_debug_message("spritemap - Show unit-to-sprite mapping status")
+	add_debug_message("sync - Sync unit sprite_id with actual sprites in scene")
+	add_debug_message("duplicates - Check for duplicate unit IDs and fix them")
 	add_debug_message("save - Execute save game")
 	add_debug_message("load - Load saved game")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
 	var game = get_parent().get_parent()
-	if game.has_method("debug_print_all_buildings"):
-		add_debug_message("Players Data:")
-		for player_id in game.players_data.keys():
-			if player_id != "environment":
-				var player = game.players_data[player_id]
-				add_debug_message("  Player %d: %s" % [player_id, player.get("name", "Unknown")])
-				add_debug_message("    Race: %s" % [player.get("race", "Unknown")])
-				var resources = player.get("resources", {})
-				add_debug_message("    Resources: Gold=%d, Food=%d, Wood=%d" % [
-					resources.get("gold", 0),
-					resources.get("food", 0),
-					resources.get("wood", 0)
-				])
+	add_debug_message("Players Data:")
+	for player_id in game.players_data.keys():
+		if str(player_id) != "environment":
+			var player = game.players_data[player_id]
+			add_debug_message("  Player %s: %s" % [str(player_id), player.get("name", "Unknown")])
+			add_debug_message("    Race: %s" % [player.get("race", "Unknown")])
+			var resources = player.get("resources", {})
+			add_debug_message("    Resources: Gold=%d, Food=%d, Wood=%d" % [
+				resources.get("gold", 0),
+				resources.get("food", 0),
+				resources.get("wood", 0)
+			])
 
 func _show_buildings_info():
 	var game = get_parent().get_parent()
@@ -235,9 +259,290 @@ func _show_buildings_info():
 func _on_close_pressed():
 	close_console()
 
+func _show_objects_info():
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== ENVIRONMENT OBJECTS ===")
+	if game.players_data.has("environment"):
+		var env = game.players_data["environment"]
+		var objects = env.get("objects", {})
+		var counts = env.get("counts", {})
+		
+		add_debug_message("Mountains: " + str(counts.get("mountains", 0)))
+		var mountains = objects.get("mountains", {})
+		for m_id in mountains.keys():
+			var m = mountains[m_id]
+			add_debug_message("  - %s at %s" % [m.get("name", "Unknown"), str(m.get("position", Vector2.ZERO))])
+		
+		add_debug_message("Trees: " + str(counts.get("trees", 0)))
+		var trees = objects.get("trees", {})
+		for t_id in trees.keys():
+			var t = trees[t_id]
+			add_debug_message("  - %s at %s" % [t.get("name", "Unknown"), str(t.get("position", Vector2.ZERO))])
+	add_debug_message("===========================\n")
+
+func _show_units_info():
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== UNITS INFO ===")
+	
+	# Get all units from all players
+	var total_units = 0
+	var total_with_sprites = 0
+	var units_without_both_assignments = 0
+	
+	for player_id in game.players_data.keys():
+		if str(player_id) == "environment":
+			continue
+		var player = game.players_data[player_id]
+		var player_units = player.get("units", [])
+		
+		if player_units.size() > 0:
+			add_debug_message("Player %s units (%d):" % [str(player_id), player_units.size()])
+			for unit in player_units:
+				var unit_name = unit.get("name", "Unknown")
+				var unit_id = unit.get("unique_id", "?")
+				var pos = unit.get("position", Vector2.ZERO)
+				var living = unit.get("living_quarters", "None")
+				var job = unit.get("job", "None")
+				var speed_mult = unit.get("speed_multiplier", 1.0)
+				var speed_percent = int(speed_mult * 100)
+				var has_sprite = unit.has("sprite_id") and unit.get("sprite_id") != ""
+				var sprite_status = "[SPRITE]" if has_sprite else "[NO SPRITE]"
+				
+				# Check if unit should have a sprite
+				var should_have_sprite = living != "None" and job != "None"
+				
+				var detail = ""
+				if not should_have_sprite:
+					detail = " (Missing assignments: "
+					if living == "None":
+						detail += "living "
+					if job == "None":
+						detail += "job"
+					detail += ")"
+					units_without_both_assignments += 1
+				elif not has_sprite:
+					detail = " [ERROR: Should have sprite but doesn't!]"
+				
+				add_debug_message("  %s %s: %s at %s (Living: %s, Job: %s, Speed: %d%%)%s" % [sprite_status, unit_id, unit_name, str(pos), living, job, speed_percent, detail])
+				
+				# Show path info if unit has a path
+				var current_path = unit.get("current_path", [])
+				var path_index = unit.get("path_index", 0)
+				var movement_state = unit.get("movement_state", "idle")
+				
+				if not current_path.is_empty():
+					var path_info = "Path [%d/%d]: " % [path_index, current_path.size()]
+					for i in range(current_path.size()):
+						var waypoint = current_path[i]
+						if i == path_index:
+							path_info += "*%s* " % str(waypoint)  # Mark current waypoint
+						else:
+							path_info += "%s " % str(waypoint)
+					add_debug_message("    %s (State: %s)" % [path_info, movement_state])
+				
+				total_units += 1
+				if has_sprite:
+					total_with_sprites += 1
+	
+	if total_units == 0:
+		add_debug_message("No units spawned")
+	else:
+		add_debug_message("Total units: %d (%d with sprites, %d missing assignments)" % [total_units, total_with_sprites, units_without_both_assignments])
+	add_debug_message("==================\n")
+
+func _show_map_info():
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== MAP INFO ===")
+	add_debug_message("Map dimensions: %dx%d" % [game.MAP_WIDTH, game.MAP_HEIGHT])
+	add_debug_message("Is in world creation: " + str(game.is_in_world_creation))
+	if game.world_data.has("size"):
+		add_debug_message("World seed: " + str(game.world_data.get("seed", "Unknown")))
+	add_debug_message("Loaded buildings: " + str(game.loaded_buildings_data.size()))
+	add_debug_message("Loaded units: " + str(game.loaded_units_data.size()))
+	add_debug_message("Loaded environment objects: " + str(game.loaded_environment_objects_data.size()))
+	add_debug_message("================\n")
+
+func _list_scene_nodes():
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== SCENE TREE (Top 20) ===")
+	var nodes: Array = []
+	_recursive_list_nodes(game, 0, 20, nodes)
+	for node_info in nodes:
+		add_debug_message(node_info)
+	add_debug_message("============================\n")
+
+func _recursive_list_nodes(node: Node, indent: int, max_depth: int, nodes: Array) -> void:
+	if indent > max_depth or nodes.size() >= 20:
+		return
+	
+	var indent_str = "  ".repeat(indent)
+	var node_info = indent_str + node.name + " (" + node.get_class() + ")"
+	nodes.append(node_info)
+	
+	for child in node.get_children():
+		if nodes.size() >= 20:
+			break
+		_recursive_list_nodes(child, indent + 1, max_depth, nodes)
+
+func _create_test_sprite():
+	"""Create a visible test sprite at the center of the screen"""
+	var game = get_parent().get_parent()
+	if not game or not game.map_objects_holder:
+		add_debug_message("ERROR: Cannot access game or map_objects_holder")
+		return
+	
+	# Get camera center position
+	var camera = game.camera
+	if not camera:
+		add_debug_message("ERROR: No camera found")
+		return
+	
+	var center_pos = camera.get_screen_center_position()
+	add_debug_message("Creating test sprite at screen center: " + str(center_pos))
+	
+	# Create a simple test sprite
+	var test_sprite = Sprite2D.new()
+	test_sprite.name = "test_sprite_debug"
+	test_sprite.position = center_pos
+	test_sprite.z_index = 10  # Above units
+	test_sprite.centered = true
+	
+	# Try to load the unit texture
+	var texture_path = "res://assets/units/human_peasant_side.png"
+	if ResourceLoader.exists(texture_path):
+		var texture = load(texture_path)
+		test_sprite.texture = texture
+		add_debug_message("Test sprite: Loaded texture (size: " + str(texture.get_size()) + ")")
+	else:
+		# Use a colored rectangle instead
+		var rect = ColorRect.new()
+		rect.size = Vector2(16, 16)
+		rect.color = Color.CYAN
+		test_sprite.add_child(rect)
+		add_debug_message("Test sprite: Using colored rectangle (no texture found)")
+	
+	game.map_objects_holder.add_child(test_sprite)
+	add_debug_message("Test sprite created and added to scene!")
+
+func _show_sprite_map():
+	"""Show the unit sprite mapping status"""
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== UNIT SPRITE MAPPING ===")
+	add_debug_message("Mapped units: " + str(game.unit_sprite_map.size()))
+	
+	if game.unit_sprite_map.is_empty():
+		add_debug_message("No unit-sprite mappings found")
+	else:
+		for unit_id in game.unit_sprite_map.keys():
+			var sprite = game.unit_sprite_map[unit_id]
+			if is_instance_valid(sprite):
+				add_debug_message("  %s -> Sprite (pos: %s)" % [unit_id, str(sprite.position)])
+			else:
+				add_debug_message("  %s -> [INVALID/FREED]" % unit_id)
+	
+	add_debug_message("===========================\n")
+
+func _sync_unit_sprites():
+	"""Sync unit sprite_id values with actual sprites in scene"""
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== SYNCING UNIT SPRITES ===")
+	
+	var synced = 0
+	var already_valid = 0
+	var missing_sprites = []
+	var missing_sprite_ids = []
+	var map_objects = game.map_objects_holder
+	
+	if not map_objects:
+		add_debug_message("ERROR: map_objects_holder not found")
+		return
+	
+	# Check all units and ensure they have sprite_id set if sprite exists
+	for player_id in game.players_data.keys():
+		if str(player_id) == "environment":
+			continue
+		
+		var player = game.players_data[player_id]
+		var player_units = player.get("units", [])
+		
+		for unit in player_units:
+			var unit_id = unit.get("unique_id", "?")
+			var unit_name = unit.get("name", "Unknown")
+			var has_sprite_id = unit.has("sprite_id") and unit.get("sprite_id") != ""
+			var sprite_in_scene = map_objects.get_node_or_null(unit_id)
+			
+			if sprite_in_scene:
+				if has_sprite_id:
+					already_valid += 1
+					add_debug_message("  ✓ %s (%s) has sprite_id (valid)" % [unit_id, unit_name])
+				else:
+					# Sprite exists but sprite_id not set - FIX IT
+					unit["sprite_id"] = unit_id
+					game.unit_sprite_map[unit_id] = sprite_in_scene
+					synced += 1
+					add_debug_message("  ⚠ %s (%s) SYNCED - sprite exists but sprite_id was missing!" % [unit_id, unit_name])
+			else:
+				if has_sprite_id:
+					add_debug_message("  ✗ %s (%s) has sprite_id but NO SPRITE IN SCENE!" % [unit_id, unit_name])
+					missing_sprites.append(unit_id)
+				else:
+					add_debug_message("  ✗ %s (%s) has NO SPRITE and NO sprite_id" % [unit_id, unit_name])
+					missing_sprite_ids.append(unit_id)
+	
+	add_debug_message("Sync complete: %d synced, %d already valid" % [synced, already_valid])
+	if missing_sprites.size() > 0:
+		add_debug_message("Units with sprite_id but no sprite in scene: %s" % str(missing_sprites))
+	if missing_sprite_ids.size() > 0:
+		add_debug_message("Units with no sprite_id and no sprite: %s" % str(missing_sprite_ids))
+	add_debug_message("============================\n")
+
+func _check_for_duplicates():
+	"""Check for and report duplicate unit IDs"""
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== CHECKING FOR DUPLICATE UNIT IDs ===")
+	
+	var all_unit_ids = {}
+	var duplicates = []
+	
+	for player_id in game.players_data.keys():
+		if str(player_id) == "environment":
+			continue
+		
+		var player = game.players_data[player_id]
+		var player_units = player.get("units", [])
+		
+		for unit in player_units:
+			var unit_id = unit.get("unique_id", "")
+			if unit_id == "":
+				continue
+			
+			if unit_id not in all_unit_ids:
+				all_unit_ids[unit_id] = []
+			all_unit_ids[unit_id].append({"player": player_id, "name": unit.get("name", "Unknown")})
+	
+	# Report duplicates
+	for unit_id in all_unit_ids.keys():
+		if all_unit_ids[unit_id].size() > 1:
+			add_debug_message("✗ DUPLICATE: %s appears %d times:" % [unit_id, all_unit_ids[unit_id].size()])
+			for occurrence in all_unit_ids[unit_id]:
+				add_debug_message("  - Player %s: %s" % [str(occurrence["player"]), occurrence["name"]])
+			duplicates.append(unit_id)
+	
+	if duplicates.size() == 0:
+		add_debug_message("✓ No duplicate unit IDs found")
+	else:
+		add_debug_message("Found %d duplicate unit IDs - consider saving to trigger automatic fix" % duplicates.size())
+	
+	add_debug_message("=====================================\n")
+
 func _input(event: InputEvent):
 	if is_open:
 		if event is InputEventKey and event.pressed:
+			# Handle tilde key to close console
+			if event.keycode == KEY_QUOTELEFT or event.physical_keycode == 96:
+				close_console()
+				get_tree().root.set_input_as_handled()
+				return
 			# Handle history navigation
 			if event.keycode == KEY_UP:
 				if command_history.size() > 0:

@@ -44,6 +44,7 @@ func refresh_content():
 	_add_header_cell(header_container, "Type", 70)
 	_add_header_cell(header_container, "Living", 90)
 	_add_header_cell(header_container, "Job", 70)
+	_add_header_cell(header_container, "Speed", 60)
 	
 	# Add separator
 	var separator = HSeparator.new()
@@ -65,6 +66,10 @@ func refresh_content():
 		var job = unit.get("job", null)
 		var job_text = "Unemployed" if job == null else str(job)
 		_add_unit_cell(row_container, job_text, 70)
+		
+		var speed_mult = unit.get("speed_multiplier", 1.0)
+		var speed_percent = int(speed_mult * 100)
+		_add_unit_cell(row_container, str(speed_percent) + "%", 60)
 	
 	# Add summary
 	var summary_separator = HSeparator.new()
