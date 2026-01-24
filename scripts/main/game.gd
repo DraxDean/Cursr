@@ -2794,6 +2794,14 @@ func _on_end_day_pressed():
 		# Update the footer day label with new day
 		if game_footer:
 			game_footer.set_day_text(turn_manager.get_day())
+		
+		# Refresh open modals to show updated data
+		if resources_modal and resources_modal.is_open:
+			resources_modal.refresh_content()
+		if population_modal and population_modal.is_open:
+			population_modal.refresh_content()
+		if buildings_modal and buildings_modal.is_open:
+			buildings_modal.refresh_content()
 
 # Footer button handlers
 func _on_build_pressed():
