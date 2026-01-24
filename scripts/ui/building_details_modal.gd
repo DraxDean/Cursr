@@ -993,13 +993,13 @@ func _populate_building_info():
 		
 		var building_type = building_data.get("building_type", "unknown")
 		
-		# Health/Durability
-		_add_info_row(stats_container, "Health:", "100/100 (Perfect)")
-		
-		# Production based on building type and age
+		# Production based on building type and workers - FIRST DETAIL
 		var production = _get_building_production()
 		if production != "None":
 			_add_info_row(stats_container, "Production:", production)
+		
+		# Health/Durability
+		_add_info_row(stats_container, "Health:", "100/100 (Perfect)")
 		
 		# Population impact (skip for town center)
 		if building_type != "town_center":

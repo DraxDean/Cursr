@@ -13,6 +13,7 @@ var background_panel: Panel
 var title_label: Label
 var close_button: Button
 var content_container: VBoxContainer
+var footer_container: HBoxContainer
 
 func _init(type: String, title: String, start_position: Vector2 = Vector2.ZERO):
 	modal_type = type
@@ -100,6 +101,13 @@ func _setup_ui(title: String):
 	content_container.add_theme_constant_override("separation", 5)
 	main_container.add_child(content_container)
 	
+	# Footer container for buttons and controls (right-aligned)
+	footer_container = HBoxContainer.new()
+	footer_container.alignment = BoxContainer.ALIGNMENT_END
+	footer_container.add_theme_constant_override("separation", 10)
+	footer_container.custom_minimum_size.y = 40
+	main_container.add_child(footer_container)
+	
 	# Add some padding
 	main_container.add_theme_constant_override("margin_left", 10)
 	main_container.add_theme_constant_override("margin_right", 10)
@@ -145,6 +153,10 @@ func refresh_content():
 # Helper function to add content to the modal
 func add_content_child(child: Control):
 	content_container.add_child(child)
+
+# Helper function to add footer items (buttons, etc.)
+func add_footer_child(child: Control):
+	footer_container.add_child(child)
 
 func clear_content():
 	for child in content_container.get_children():

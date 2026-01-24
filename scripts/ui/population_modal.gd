@@ -39,8 +39,26 @@ func refresh_content():
 	pop_icon.custom_minimum_size = Vector2(25, 20)
 	total_container.add_child(pop_icon)
 	
+	# Calculate turns until +1 population is gained
+	var growth_accumulator = 0.0
+	var turns_for_one = 0
+	if game_ref and game_ref.has_method("get_player_population_data"):
+		var pop_data = game_ref.get_player_population_data(1)
+		if not pop_data.is_empty():
+			growth_accumulator = pop_data.get("growth_accumulator", 0.0)
+	
+	# Calculate how many turns until next population increase
+	var growth_rate = 0.01  # 1% of population per turn
+	if population > 0:
+		var daily_growth = population * growth_rate
+		if daily_growth > 0:
+			turns_for_one = int(ceil((1.0 - growth_accumulator) / daily_growth))
+	
 	var total_pop = Label.new()
-	total_pop.text = "Total Population: " + str(population)
+	var pop_text = "Population: " + str(population)
+	if turns_for_one > 0:
+		pop_text += " (+1 in " + str(turns_for_one) + " turn" + ("s" if turns_for_one != 1 else "") + ")"
+	total_pop.text = pop_text
 	total_pop.add_theme_color_override("font_color", Color.CYAN)
 	total_container.add_child(total_pop)
 	
@@ -76,8 +94,8 @@ func refresh_content():
 	var separator = HSeparator.new()
 	add_content_child(separator)
 	
-	# Population growth
+	# Growth rate field
 	var growth_label = Label.new()
-	growth_label.text = "Growth Rate: +2% per turn"
+	growth_label.text = "Growth Rate: " + str(growth_rate)
 	growth_label.add_theme_color_override("font_color", Color.LIGHT_GREEN)
 	add_content_child(growth_label)

@@ -3,9 +3,12 @@ extends Control
 
 # UI Components
 var build_button: Button
+var end_day_button: Button
+var day_label: Label
 
 # Signals for button presses
 signal build_pressed
+signal end_day_pressed
 
 func _init():
 	name = "GameFooter"
@@ -47,6 +50,38 @@ func _setup_footer():
 	build_button.flat = false
 	build_button.pressed.connect(_on_build_pressed)
 	left_container.add_child(build_button)
+	
+	# Right container for end day controls
+	var right_container = HBoxContainer.new()
+	right_container.alignment = BoxContainer.ALIGNMENT_END
+	right_container.custom_minimum_size.y = 30
+	right_container.add_theme_constant_override("separation", 10)
+	right_container.position = Vector2(0, 10)
+	right_container.size.x = get_viewport().get_visible_rect().size.x - 20
+	add_child(right_container)
+	
+	# Day counter label
+	day_label = Label.new()
+	day_label.text = "Day 1"
+	day_label.custom_minimum_size = Vector2(80, 30)
+	day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	day_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	right_container.add_child(day_label)
+	
+	# End day button
+	end_day_button = Button.new()
+	end_day_button.text = "End Day"
+	end_day_button.custom_minimum_size = Vector2(100, 30)
+	end_day_button.flat = false
+	end_day_button.pressed.connect(_on_end_day_pressed)
+	right_container.add_child(end_day_button)
 
 func _on_build_pressed():
 	build_pressed.emit()
+
+func _on_end_day_pressed():
+	end_day_pressed.emit()
+
+func set_day_text(day: int):
+	if day_label:
+		day_label.text = "Day %d" % day

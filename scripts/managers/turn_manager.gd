@@ -47,7 +47,14 @@ func _update_label():
 
 func _compute_turn_results():
 	print("TurnManager: Computing turn results for end of Day %d..." % (current_day - 1))
-	# --- !!! Add your game logic here !!! ---
+	
+	# Get reference to game node for applying effects
+	var game_node = get_parent()
+	if game_node and game_node.has_method("apply_population_growth"):
+		# Apply population growth for all players
+		for player_id in game_node.players_data.keys():
+			if typeof(player_id) == TYPE_INT:  # Only for actual players, not environment
+				game_node.apply_population_growth(player_id)
 	# Access other managers via get_node() or singletons if needed,
 	# or have game.gd coordinate actions based on turn_computed signal.
 	print("TurnManager: Turn computations complete.")

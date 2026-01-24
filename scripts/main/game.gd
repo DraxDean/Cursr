@@ -91,7 +91,8 @@ var players_data: Dictionary = {
 			"housed": 0,  # Number of people currently housed
 			"working": 0,  # Number of people currently working
 			"unhoused": 10,  # total - housed
-			"unemployed": 10  # total - working
+			"unemployed": 10,  # total - working
+			"growth_accumulator": 0.0  # Fractional growth accumulation (adds 1 when >= 1.0)
 		}
 	},
 	"environment": {
@@ -547,6 +548,38 @@ func update_player_population(player_id: int):
 	# Ensure sprites exist for fully assigned units after population updates
 	_check_and_create_missing_sprites(player_id)
 
+func apply_population_growth(player_id: int):
+	"""Apply population growth per turn (current_total * 0.1)"""
+	if not players_data.has(player_id):
+		return
+	
+	var player_data = players_data[player_id]
+	var pop_data = player_data.get("population", {})
+	
+	if pop_data.is_empty():
+		return
+	
+	var current_total = pop_data.get("total", 10)
+	var growth_accumulator = pop_data.get("growth_accumulator", 0.0)
+	
+	# Calculate growth: 1% of current population per turn
+	var daily_growth = current_total * 0.01
+	growth_accumulator += daily_growth
+	
+	# Convert accumulated growth to actual population increase
+	var pop_to_add = int(growth_accumulator)
+	if pop_to_add > 0:
+		pop_data["total"] = current_total + pop_to_add
+		growth_accumulator -= pop_to_add  # Keep the fractional part
+		print("Player ", player_id, " population grew by ", pop_to_add, " (total: ", pop_data["total"], ")")
+	
+	# Store updated accumulator
+	pop_data["growth_accumulator"] = growth_accumulator
+	
+	# Recalculate unhoused/unemployed with new total
+	pop_data["unhoused"] = pop_data.get("total", 10) - pop_data.get("housed", 0)
+	pop_data["unemployed"] = pop_data.get("total", 10) - pop_data.get("working", 0)
+
 func _check_and_create_missing_sprites(player_id: int):
 	"""Check for units with both assignments but no sprites and create them"""
 	if not players_data.has(player_id) or not map_objects_holder:
@@ -774,8 +807,14 @@ func _migrate_players_data_structure():
 					"housed": 0,
 					"working": 0,
 					"unhoused": 10,
-					"unemployed": 10
+					"unemployed": 10,
+					"growth_accumulator": 0.0
 				}
+			else:
+				# Ensure existing population data has growth_accumulator
+				var pop_data = player_data["population"]
+				if not pop_data.has("growth_accumulator"):
+					pop_data["growth_accumulator"] = 0.0
 			if not player_data.has("name"):
 				player_data["name"] = "Player " + str(player_id)
 			if not player_data.has("race"):
@@ -1163,6 +1202,9 @@ func _ready():
 	if not is_instance_valid(day_label): push_error("Game: Day counter label node not found!")
 	turn_manager.setup(day_label)
 	
+	# Hide the old turn controls container since controls are now in resources modal footer
+	$UI_Layer/TurnControlsContainer.hide()
+	
 	# Load preview textures for building placement
 	# Create simple colored rectangles for overlays since we don't have overlay assets
 	print("Game: Setting up building placement preview system")
@@ -1199,9 +1241,7 @@ func _ready():
 	if quit_btn: quit_btn.pressed.connect(ui_manager.request_quit)
 	else: push_error("Game: QuitButton not found for connection.")
 
-	var end_day_btn = get_node_or_null("UI_Layer/TurnControlsContainer/TurnVBox/EndDayButton")
-	if end_day_btn: end_day_btn.pressed.connect(turn_manager.end_turn)
-	else: push_error("Game: EndDayButton not found for connection.")
+	# End day button connection removed - now in resources modal footer
 
 
 	# --- DEBUG: Connect signals *from* UIManager back to game.gd ---
@@ -2640,6 +2680,11 @@ func _setup_game_footer():
 	
 	# Connect footer signals
 	game_footer.build_pressed.connect(_on_build_pressed)
+	game_footer.end_day_pressed.connect(_on_end_day_pressed)
+	
+	# Set initial day label
+	if game_footer:
+		game_footer.set_day_text(1)
 	
 	print("Game: Game footer created and connected")
 
@@ -2683,6 +2728,15 @@ func _setup_info_modals():
 
 func _on_modal_closed(modal_type: String):
 	print("Game: Modal closed: ", modal_type)
+
+func _on_end_day_pressed():
+	print("Game: End day pressed")
+	# Call turn manager to end the turn
+	if is_instance_valid(turn_manager):
+		turn_manager.end_turn()
+		# Update the footer day label with new day
+		if game_footer:
+			game_footer.set_day_text(turn_manager.get_day())
 
 # Footer button handlers
 func _on_build_pressed():
