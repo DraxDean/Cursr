@@ -10,6 +10,11 @@ func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
 func refresh_content():
 	clear_content()
 	
+	# Ensure resource rates are calculated before displaying
+	var player_id = 1
+	if game_ref and game_ref.has_method("calculate_resource_rates"):
+		game_ref.calculate_resource_rates(player_id)
+	
 	var buildings_label = Label.new()
 	buildings_label.text = "Player Buildings:"
 	buildings_label.add_theme_color_override("font_color", Color.WHITE)
@@ -27,7 +32,9 @@ func refresh_content():
 					var building_info = {
 						"name": child.name,
 						"position": child.position,
-						"type": game_ref._extract_building_type_from_name(child.name)
+						"type": game_ref._extract_building_type_from_name(child.name),
+						"living_occupancy": child.get_meta("living_occupancy", 0),
+						"worker_occupancy": child.get_meta("worker_occupancy", 0)
 					}
 					player_buildings.append(building_info)
 	
@@ -59,6 +66,14 @@ func refresh_content():
 			building_coords.text = "Location: (" + str(tile_coords.x) + ", " + str(tile_coords.y) + ")"
 			building_coords.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 			building_info_container.add_child(building_coords)
+			
+			# Add production/occupancy info
+			var production_text = _get_building_production_text(building["type"], building["worker_occupancy"])
+			if production_text != "":
+				var production_label = Label.new()
+				production_label.text = production_text
+				production_label.add_theme_color_override("font_color", Color.GREEN)
+				building_info_container.add_child(production_label)
 	
 	# Add separator
 	var separator = HSeparator.new()
@@ -114,3 +129,18 @@ func _get_building_icon(building_type: String) -> String:
 			return "🌾"
 		_:
 			return "🏗️"
+
+func _get_building_production_text(building_type: String, worker_count: int) -> String:
+	"""Get production text for a building based on type and workers"""
+	match building_type:
+		"fishing_hut":
+			var food = worker_count * 1
+			return "Produces: +" + str(food) + " Food/day"
+		"lumberjack", "lumber_mill":
+			var wood = worker_count * 1
+			return "Produces: +" + str(wood) + " Wood/day"
+		"stoneworker":
+			var stone = worker_count * 1
+			return "Produces: +" + str(stone) + " Stone/day"
+		_:
+			return ""

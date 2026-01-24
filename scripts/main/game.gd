@@ -76,7 +76,15 @@ var players_data: Dictionary = {
 		"resources": {
 			"gold": 100,
 			"food": 50,
-			"wood": 25
+			"wood": 25,
+			"stone": 0
+		},
+		"resource_rates": {
+			# Per-day production/consumption rates
+			"gold": 0,
+			"food": 0,
+			"wood": 0,
+			"stone": 0
 		},
 		"population": {
 			"total": 10,  # Base starting population
@@ -325,6 +333,68 @@ func debug_print_all_buildings():
 	print("Building counters: ", building_counter)
 	print("===========================")
 
+func calculate_resource_rates(player_id: int) -> Dictionary:
+	"""Calculate per-day resource production/consumption rates based on buildings and workers"""
+	var rates = {
+		"gold": 0,
+		"food": 0,
+		"wood": 0,
+		"stone": 0
+	}
+	
+	if not map_objects_holder:
+		return rates
+	
+	# Iterate through all buildings owned by this player
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		
+		var owner_player = child.get_meta("owner_player", 1)
+		if owner_player != player_id:
+			continue
+		
+		var building_type = _extract_building_type_from_name(child.name)
+		var worker_count = child.get_meta("worker_occupancy", 0)
+		
+		# Each building type produces different resources based on worker count
+		match building_type:
+			"lumberjack":
+				rates["wood"] += worker_count * 1  # +1 wood per worker
+			"stoneworker":
+				rates["stone"] += worker_count * 1  # +1 stone per worker
+			"fishing_hut":
+				rates["food"] += worker_count * 1  # +1 food per worker
+			"farm":
+				# Farms are special - will implement later
+				pass
+			"barracks":
+				# Barracks don't produce resources
+				pass
+			"house", "farmhouse":
+				# Housing doesn't produce resources
+				pass
+			"town_center":
+				# Town center doesn't produce resources
+				pass
+	
+	# Update player data
+	if players_data.has(player_id):
+		players_data[player_id]["resource_rates"] = rates
+	
+	return rates
+
+func get_resource_rates(player_id: int) -> Dictionary:
+	"""Get current resource rates for a player"""
+	if players_data.has(player_id):
+		return players_data[player_id].get("resource_rates", {
+			"gold": 0,
+			"food": 0,
+			"wood": 0,
+			"stone": 0
+		})
+	return {"gold": 0, "food": 0, "wood": 0, "stone": 0}
+
 func log_to_console(message: String):
 	# Send message to debug console
 	if is_instance_valid(console_modal):
@@ -433,6 +503,9 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	
 	# Recalculate global population
 	update_player_population(owner_player)
+	
+	# Recalculate resource production rates based on worker assignments
+	calculate_resource_rates(owner_player)
 	
 	return true
 

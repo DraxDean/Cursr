@@ -276,8 +276,13 @@ func setup_building_details(building: Node2D):
 	building_node = building
 	building_data = _extract_building_data(building)
 	
-	# Get camera controller reference for position tracking
+	# Get game reference and ensure resource rates are calculated
 	var game_node = building_node.get_parent().get_parent()
+	if game_node and game_node.has_method("calculate_resource_rates"):
+		var owner_player = building_data.get("owner_player", 1)
+		game_node.calculate_resource_rates(owner_player)
+	
+	# Get camera controller reference for position tracking
 	camera_controller = game_node.get_node_or_null("CameraController")
 	
 	# Connect to camera movement signals if available
@@ -310,6 +315,10 @@ func _extract_building_data(building: Node2D) -> Dictionary:
 	data["owner_player"] = building.get_meta("owner_player", 1)
 	data["building_type"] = building.get_meta("building_type", "unknown")
 	data["construction_day"] = building.get_meta("construction_day", 0)
+	
+	# Get occupancy data
+	data["living_occupancy"] = building.get_meta("living_occupancy", 0)
+	data["worker_occupancy"] = building.get_meta("worker_occupancy", 0)
 	
 	# Get texture from sprite child if available
 	if building.has_node("Sprite2D"):
@@ -1118,39 +1127,34 @@ func _get_building_display_name(building_type: String) -> String:
 
 func _get_building_production() -> String:
 	var building_type = building_data.get("building_type", "unknown")
-	var days_active = building_data.get("days_built", 0)
+	var worker_occupancy = building_data.get("worker_occupancy", 0)
 	
 	match building_type:
 		"fishing_hut":
-			var base_food = 2
-			var bonus = max(0, (days_active / 10))  # Bonus every 10 days
-			return "+" + str(base_food + bonus) + " Food/turn"
+			var food_production = worker_occupancy * 1  # +1 food per worker
+			return "+" + str(food_production) + " Food/day (" + str(worker_occupancy) + " workers)"
 		"house":
-			return "+1 Population capacity"
+			return "Housing (no production)"
 		"town_center":
-			return "+1 to all resources/turn"
+			return "Town Center (no production)"
 		"barracks":
-			return "Trains military units"
+			return "Barracks (no production)"
 		"farm":
-			var base_food = 3
-			var bonus = max(0, (days_active / 15))
-			return "+" + str(base_food + bonus) + " Food/turn"
+			# Farms special handling - placeholder for now
+			return "Farm (special - to implement)"
 		"farmhouse":
-			return "Manages farm operations (+6 worker capacity)"
+			return "Farmhouse (no production)"
 		"stoneworker":
-			var base_stone = 2
-			var bonus = max(0, (days_active / 20))
-			return "+" + str(base_stone + bonus) + " Stone/turn"
+			var stone_production = worker_occupancy * 1  # +1 stone per worker
+			return "+" + str(stone_production) + " Stone/day (" + str(worker_occupancy) + " workers)"
 		"lumberjack":
-			var base_wood = 2
-			var bonus = max(0, (days_active / 15))
-			return "+" + str(base_wood + bonus) + " Wood/turn"
+			var wood_production = worker_occupancy * 1  # +1 wood per worker
+			return "+" + str(wood_production) + " Wood/day (" + str(worker_occupancy) + " workers)"
 		"lumber_mill":
-			var base_wood = 2
-			var bonus = max(0, (days_active / 12))
-			return "+" + str(base_wood + bonus) + " Wood/turn"
+			var wood_production = worker_occupancy * 1  # +1 wood per worker
+			return "+" + str(wood_production) + " Wood/day (" + str(worker_occupancy) + " workers)"
 		_:
-			return "None"
+			return "Unknown"
 
 func _get_building_maintenance() -> String:
 	var building_type = building_data.get("building_type", "unknown")
