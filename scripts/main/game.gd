@@ -396,6 +396,26 @@ func get_resource_rates(player_id: int) -> Dictionary:
 		})
 	return {"gold": 0, "food": 0, "wood": 0, "stone": 0}
 
+func apply_resource_production(player_id: int):
+	"""Apply resource production based on current rates"""
+	if not players_data.has(player_id):
+		return
+	
+	var player_data = players_data[player_id]
+	var rates = player_data.get("resource_rates", {})
+	var resources = player_data.get("resources", {})
+	
+	# Ensure all resource types exist in the resources dict (for compatibility with old saves)
+	for resource_type in rates.keys():
+		if not resources.has(resource_type):
+			resources[resource_type] = 0
+	
+	# Apply production to each resource
+	for resource_type in rates.keys():
+		resources[resource_type] += rates[resource_type]
+		if rates[resource_type] != 0:
+			print("Player ", player_id, " produced +", rates[resource_type], " ", resource_type)
+
 func log_to_console(message: String):
 	# Send message to debug console
 	if is_instance_valid(console_modal):
@@ -799,7 +819,7 @@ func _migrate_players_data_structure():
 			if not player_data.has("buildings"):
 				player_data["buildings"] = []
 			if not player_data.has("resources"):
-				player_data["resources"] = {"gold": 100, "food": 50, "wood": 25}
+				player_data["resources"] = {"gold": 100, "food": 50, "wood": 25, "stone": 0}
 			# Don't reset population if it already exists in new format
 			if not player_data.has("population"):
 				player_data["population"] = {
@@ -1348,6 +1368,9 @@ func initialize_map():
 			_reset_environment_data()
 		
 		turn_manager.set_day(loaded_day); _clear_and_draw_map(); map_object_manager.clear_objects()
+		# Update footer to display loaded day
+		if game_footer:
+			game_footer.set_day_text(loaded_day)
 		map_object_manager.place_objects(world_data)
 		# Restore buildings if loading from save
 		if not loaded_buildings_data.is_empty():
