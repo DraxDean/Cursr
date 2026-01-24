@@ -43,7 +43,7 @@ func _ready():
 			size = custom_minimum_size
 
 func _setup_ui(title: String):
-	# Semi-transparent background panel
+	# Semi-transparent background panel - fill the entire control
 	background_panel = Panel.new()
 	background_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
@@ -63,7 +63,7 @@ func _setup_ui(title: String):
 	background_panel.add_theme_stylebox_override("panel", style_box)
 	add_child(background_panel)
 	
-	# Main container
+	# Main container - fill the control to show background
 	var main_container = VBoxContainer.new()
 	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main_container.add_theme_constant_override("separation", 10)
@@ -149,3 +149,28 @@ func add_content_child(child: Control):
 func clear_content():
 	for child in content_container.get_children():
 		child.queue_free()
+
+func fit_to_content():
+	"""Calculate and set modal size to fit its content"""
+	# Wait a frame for layout to update
+	await get_tree().process_frame
+	
+	# Get the size needed by content
+	var content_size = content_container.get_combined_minimum_size()
+	
+	# Calculate total size with header and padding
+	var header_height = 30
+	var padding = 20  # Top + bottom padding
+	var total_height = header_height + content_size.y + padding
+	var total_width = content_size.x + padding
+	
+	# Get viewport to constrain size
+	var viewport_size = get_viewport().get_visible_rect().size
+	
+	# Don't exceed 80% of viewport
+	total_width = mini(total_width, viewport_size.x * 0.8)
+	total_height = mini(total_height, viewport_size.y * 0.8)
+	
+	# Set the modal size
+	custom_minimum_size = Vector2(total_width, total_height)
+	size = custom_minimum_size

@@ -25,27 +25,25 @@ func refresh_content():
 		var player_data = game_ref.players_data[player_id]
 		if player_data.has("units"):
 			for unit in player_data["units"]:
-				var unit_copy = unit.duplicate()
-				unit_copy["owner"] = player_data["name"]
-				all_units.append(unit_copy)
+				all_units.append(unit)
 	
 	if all_units.is_empty():
 		var no_units_label = Label.new()
 		no_units_label.text = "No units found."
 		no_units_label.add_theme_color_override("font_color", Color.GRAY)
 		add_content_child(no_units_label)
+		fit_to_content()
 		return
 	
 	# Create header row
 	var header_container = HBoxContainer.new()
 	add_content_child(header_container)
 	
-	_add_header_cell(header_container, "ID", 80)
-	_add_header_cell(header_container, "Name", 100)
-	_add_header_cell(header_container, "Type", 80)
-	_add_header_cell(header_container, "Owner", 80)
-	_add_header_cell(header_container, "Living", 100)
-	_add_header_cell(header_container, "Job", 80)
+	_add_header_cell(header_container, "ID", 70)
+	_add_header_cell(header_container, "Name", 90)
+	_add_header_cell(header_container, "Type", 70)
+	_add_header_cell(header_container, "Living", 90)
+	_add_header_cell(header_container, "Job", 70)
 	
 	# Add separator
 	var separator = HSeparator.new()
@@ -56,18 +54,17 @@ func refresh_content():
 		var row_container = HBoxContainer.new()
 		add_content_child(row_container)
 		
-		_add_unit_cell(row_container, unit.get("unique_id", "unknown"), 80)
-		_add_unit_cell(row_container, unit.get("name", "unnamed"), 100)
-		_add_unit_cell(row_container, unit.get("type", "unknown"), 80)
-		_add_unit_cell(row_container, unit.get("owner", "unknown"), 80)
+		_add_unit_cell(row_container, unit.get("unique_id", "unknown"), 70)
+		_add_unit_cell(row_container, unit.get("name", "unnamed"), 90)
+		_add_unit_cell(row_container, unit.get("type", "unknown"), 70)
 		
 		var living_quarters = unit.get("living_quarters", null)
 		var living_text = "None" if living_quarters == null else str(living_quarters)
-		_add_unit_cell(row_container, living_text, 100)
+		_add_unit_cell(row_container, living_text, 90)
 		
 		var job = unit.get("job", null)
 		var job_text = "Unemployed" if job == null else str(job)
-		_add_unit_cell(row_container, job_text, 80)
+		_add_unit_cell(row_container, job_text, 70)
 	
 	# Add summary
 	var summary_separator = HSeparator.new()
@@ -78,6 +75,9 @@ func refresh_content():
 	summary_label.add_theme_color_override("font_color", Color.YELLOW)
 	summary_label.add_theme_font_size_override("font_size", 12)
 	add_content_child(summary_label)
+	
+	# Fit the modal to content
+	fit_to_content()
 
 func _add_header_cell(container: HBoxContainer, text: String, min_width: int):
 	var label = Label.new()

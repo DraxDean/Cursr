@@ -134,3 +134,6 @@ func refresh_content():
 		var separator = HSeparator.new()
 		separator.custom_minimum_size = Vector2(0, 10)
 		add_content_child(separator)
+	
+	# Fit the modal to content
+	fit_to_content()
