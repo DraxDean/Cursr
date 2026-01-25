@@ -8,6 +8,7 @@ const MAP_HEIGHT = 100
 # --- Export Variables for Scenes ---
 @export var tree_scene: PackedScene
 @export var mountain_scene: PackedScene
+@export var fish_scene: PackedScene
 
 # --- Node References ---
 @onready var tilemap_layer: TileMapLayer = $TileMapLayer
@@ -100,11 +101,13 @@ var players_data: Dictionary = {
 		"type": "environment",
 		"objects": {
 			"mountains": {},  # Dictionary of mountain_id: {name, position, tile_coords}
-			"trees": {}       # Dictionary of tree_id: {name, position, tile_coords}
+			"trees": {},      # Dictionary of tree_id: {name, position, tile_coords}
+			"fish": {}        # Dictionary of fish_id: {name, position, tile_coords}
 		},
 		"counts": {
 			"mountains": 0,
-			"trees": 0
+			"trees": 0,
+			"fish": 0
 		}
 	}
 }
@@ -509,6 +512,32 @@ func register_tree(tree_node: Node2D) -> String:
 	tree_node.set_meta("environment_id", tree_id)
 	
 	return tree_id
+
+func register_fish(fish_node: Node2D) -> String:
+	# Generate unique ID for fish
+	var fish_id = "fish_" + str(players_data["environment"]["counts"]["fish"] + 1)
+	
+	# Get tile coordinates
+	var tile_coords = Vector2i(0, 0)
+	if tilemap_layer:
+		tile_coords = tilemap_layer.local_to_map(fish_node.position)
+	
+	# Store fish data
+	players_data["environment"]["objects"]["fish"][fish_id] = {
+		"name": fish_node.name,
+		"position": fish_node.position,
+		"tile_coords": tile_coords,
+		"node_path": fish_node.get_path()
+	}
+	
+	# Update count
+	players_data["environment"]["counts"]["fish"] += 1
+	
+	# Update the node name to include the unique ID
+	fish_node.name = fish_id
+	fish_node.set_meta("environment_id", fish_id)
+	
+	return fish_id
 
 func get_environment_objects(object_type: String) -> Dictionary:
 	# Get all environment objects of a specific type (mountains, trees, etc.)
@@ -1248,8 +1277,8 @@ func _ready():
 	ui_manager.setup(ui_nodes)
 
 	print("Game: Setting up MapObjectManager...")
-	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3) # Corrected coords
-	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self)
+	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3); var fish_coords = Vector2i(0, 7) # Corrected coords
+	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self, fish_scene, fish_coords)
 
 	print("Game: Setting up TurnManager...")
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
