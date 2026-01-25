@@ -2113,6 +2113,10 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			var speed_multiplier = unit.get("speed_multiplier", 1.0)
 			var move_distance = movement_speed * speed_multiplier * delta
 			
+			# Handle sprite flipping based on direction
+			if direction.x != 0:  # Only flip if there's horizontal movement
+				sprite.flip_h = direction.x > 0  # Flip when moving right
+			
 			if current_pos.distance_to(target_pos) <= move_distance:
 				# Reached this waypoint
 				sprite.position = target_pos
