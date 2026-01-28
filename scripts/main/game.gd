@@ -101,7 +101,11 @@ var players_data: Dictionary = {
 		"type": "environment",
 		"objects": {
 			"mountains": {},  # Dictionary of mountain_id: {name, position, tile_coords}
+<<<<<<< HEAD
 			"trees": {},       # Dictionary of tree_id: {name, position, tile_coords}
+=======
+			"trees": {},      # Dictionary of tree_id: {name, position, tile_coords}
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 			"fish": {}        # Dictionary of fish_id: {name, position, tile_coords}
 		},
 		"counts": {
@@ -1277,6 +1281,7 @@ func _ready():
 	ui_manager.setup(ui_nodes)
 
 	print("Game: Setting up MapObjectManager...")
+<<<<<<< HEAD
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3); var ocean_coords = Vector2i(0, 2) # Corrected coords
 	print("Game: fish_scene before setup = %s" % fish_scene)
 	
@@ -1287,6 +1292,10 @@ func _ready():
 	
 	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self, fish_scene, ocean_coords)
 	print("Game: map_object_manager.fish_scene after setup = %s" % map_object_manager.fish_scene)
+=======
+	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3); var fish_coords = Vector2i(0, 7) # Corrected coords
+	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self, fish_scene, fish_coords)
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 
 	print("Game: Setting up TurnManager...")
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel

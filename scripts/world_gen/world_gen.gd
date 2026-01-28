@@ -12,6 +12,7 @@ const MOUNTAIN_COORDS = Vector2i(0, 3)
 const FOREST_COORDS = Vector2i(0, 4)
 const GRASS_COORDS = Vector2i(0, 6) # Grasslands (plains) - was DESERT_COORDS
 const ICE_COORDS = Vector2i(0, 1)
+const FISH_COORDS = Vector2i(0, 7) # Fish modifier - ocean resource tiles
 
 # Biome generation parameters
 const NUM_MOUNTAIN_PATCHES = 4
@@ -28,6 +29,11 @@ const DESERT_PATCH_RADIUS_MAX = 11
 
 const ICE_CAP_HEIGHT = 4 # How many rows from top/bottom are ice
 const NUM_FISH = 60  # Target number of fish to spawn
+
+# Bay generation parameters
+const NUM_BAYS = 1  # Number of bays to create on coastline
+const BAY_INDENTATION_DEPTH = 8  # How deep the bay carves into land
+const BAY_INDENTATION_WIDTH = 15  # Width of the bay opening
 
 # --- Private Variables ---
 # Moved rng here so helper methods can access it without passing it everywhere
@@ -56,6 +62,9 @@ func generate_world_data(map_width: int, map_height: int) -> Dictionary:
 	# 4. Add ice caps in the ocean areas at top/bottom
 	_add_ice_caps(map_width, map_height, world_data)
 	print("Ice caps added.")
+
+	# Note: Bay generation and fish spawning are now manual steps in world creation
+	# They are not called automatically here to allow user control in the UI
 
 	print("--- World Generation Finished ---")
 	return world_data
@@ -189,6 +198,7 @@ func _apply_circular_patch(center: Vector2i, radius: int, tile_coords: Vector2i,
 									"atlas_coords": tile_coords
 								}
 
+<<<<<<< HEAD
 func _place_fish(width: int, height: int, world_data: Dictionary):
 	"""Place fish markers in ocean tiles"""
 	var fish_placed = 0
@@ -210,3 +220,81 @@ func _place_fish(width: int, height: int, world_data: Dictionary):
 					fish_placed += 1
 	
 	print("_place_fish: Placed %d fish markers in the ocean (attempts: %d)" % [fish_placed, attempts])
+=======
+func _generate_bays(width: int, height: int, world_data: Dictionary):
+	"""Generate coastal bays/indentations on the island coastline"""
+	var _center = Vector2(width / 2.0, height / 2.0)
+	
+	# Choose random side for bay (top, bottom, left, right)
+	var bay_sides = ["top", "bottom", "left", "right"]
+	var bay_side = bay_sides[_rng.randi() % bay_sides.size()]
+	
+	var bay_center_x: int
+	var bay_center_y: int
+	
+	match bay_side:
+		"top":
+			bay_center_y = BORDER_SIZE + 10
+			bay_center_x = _rng.randi_range(BORDER_SIZE + 10, width - BORDER_SIZE - 10)
+		"bottom":
+			bay_center_y = height - BORDER_SIZE - 10
+			bay_center_x = _rng.randi_range(BORDER_SIZE + 10, width - BORDER_SIZE - 10)
+		"left":
+			bay_center_x = BORDER_SIZE + 10
+			bay_center_y = _rng.randi_range(BORDER_SIZE + 10, height - BORDER_SIZE - 10)
+		"right":
+			bay_center_x = width - BORDER_SIZE - 10
+			bay_center_y = _rng.randi_range(BORDER_SIZE + 10, height - BORDER_SIZE - 10)
+	
+	# Carve out the bay
+	_carve_bay(Vector2i(bay_center_x, bay_center_y), bay_side, width, height, world_data)
+
+
+func _carve_bay(center: Vector2i, side: String, width: int, height: int, world_data: Dictionary):
+	"""Carve a bay indentation from the specified side using circular pattern"""
+	var indent_radius = int(float(BAY_INDENTATION_DEPTH) * 0.7)  # Slightly smaller for circular pattern
+	var radius_squared = indent_radius * indent_radius
+	
+	# Create a circular indentation and offset it to the appropriate side
+	for x_offset in range(-indent_radius, indent_radius + 1):
+		for y_offset in range(-indent_radius, indent_radius + 1):
+			# Use circular distance for natural bay shape
+			if Vector2(x_offset, y_offset).length_squared() <= radius_squared:
+				var x: int
+				var y: int
+				
+				match side:
+					"top":
+						x = center.x + x_offset
+						y = center.y + y_offset  # offset goes downward into the land
+					"bottom":
+						x = center.x + x_offset
+						y = center.y - y_offset  # offset goes upward into the land
+					"left":
+						x = center.x + y_offset  # depth becomes x offset
+						y = center.y + x_offset  # width becomes y offset
+					"right":
+						x = center.x - y_offset  # depth becomes negative x offset
+						y = center.y + x_offset  # width becomes y offset
+				
+				if x >= BORDER_SIZE and x < width - BORDER_SIZE and y >= BORDER_SIZE and y < height - BORDER_SIZE:
+					if world_data.has(Vector2i(x, y)):
+						world_data[Vector2i(x, y)] = {
+							"source_id": SOURCE_ID,
+							"atlas_coords": OCEAN_COORDS
+						}
+
+
+func _add_fish_to_waters(_width: int, _height: int, world_data: Dictionary):
+	"""Add fish tiles to ocean and bay waters for food productivity"""
+	var fish_spawn_chance = 0.15  # 15% chance of fish on ocean tiles
+	
+	for coords in world_data:
+		if world_data[coords]["atlas_coords"] == OCEAN_COORDS:
+			# Add fish to some ocean tiles, especially in bays
+			if _rng.randf() < fish_spawn_chance:
+				world_data[coords] = {
+					"source_id": SOURCE_ID,
+					"atlas_coords": FISH_COORDS
+				}
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175

@@ -2,6 +2,7 @@
 extends Control
 
 var back_button: Button
+var back_step_button: Button
 var reset_camera_button: Button
 var reroll_button: Button
 var continue_button: Button
@@ -9,6 +10,7 @@ var start_game_button: Button
 
 # Signals for the modal to connect to
 signal back_pressed
+signal back_step_pressed
 signal reset_camera_pressed
 signal reroll_pressed
 signal continue_pressed
@@ -57,6 +59,12 @@ func _setup_footer_container():
 	back_button.pressed.connect(_on_back_pressed)
 	button_container.add_child(back_button)
 	
+	back_step_button = Button.new()
+	back_step_button.name = "BackStepButton"
+	back_step_button.text = "< Back Step"
+	back_step_button.pressed.connect(_on_back_step_pressed)
+	button_container.add_child(back_step_button)
+	
 	reset_camera_button = Button.new()
 	reset_camera_button.name = "ResetCameraButton" 
 	reset_camera_button.text = "Reset Camera"
@@ -85,6 +93,11 @@ func _setup_footer_container():
 	content_container.add_child(button_container)
 
 func update_buttons_for_step(current_step: int, max_steps: int):
+	# Reset all button visibility
+	if back_button: back_button.visible = true
+	if back_step_button: back_step_button.visible = (current_step > 0)
+	if reset_camera_button: reset_camera_button.visible = true
+	if reroll_button: reroll_button.visible = (current_step > 0)
 	if continue_button and start_game_button:
 		if current_step >= max_steps - 1:
 			continue_button.visible = false
@@ -96,6 +109,7 @@ func update_buttons_for_step(current_step: int, max_steps: int):
 func update_buttons(button_texts: Array):
 	# Hide all buttons first
 	if back_button: back_button.visible = false
+	if back_step_button: back_step_button.visible = false
 	if reset_camera_button: reset_camera_button.visible = false
 	if reroll_button: reroll_button.visible = false
 	if continue_button: continue_button.visible = false
@@ -125,6 +139,9 @@ func update_buttons(button_texts: Array):
 # Button signal handlers
 func _on_back_pressed():
 	back_pressed.emit()
+
+func _on_back_step_pressed():
+	back_step_pressed.emit()
 
 func _on_reset_camera_pressed():
 	reset_camera_pressed.emit()

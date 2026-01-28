@@ -12,11 +12,16 @@ var fish_scene: PackedScene
 # Tunables (set via setup or kept here)
 var tree_spawn_chance: float = 0.7
 var mountain_spawn_chance: float = 0.5
+var fish_spawn_chance: float = 0.6
 
 # Tile Coordinates (Set via setup)
 var forest_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
 var mountain_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
+<<<<<<< HEAD
 var ocean_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
+=======
+var fish_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 
 var rng = RandomNumberGenerator.new()
 
@@ -26,7 +31,11 @@ func _ready():
 	print("MapObjectManager ready.")
 
 
+<<<<<<< HEAD
 func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i, _game_node: Node = null, _fish_scn: PackedScene = null, _ocean_coords: Vector2i = Vector2i.ZERO):
+=======
+func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i, _game_node: Node = null, _fish_scn: PackedScene = null, _fish_coords: Vector2i = Vector2i.ZERO):
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 	map_objects_holder = _holder
 	tilemap_layer = _tilemap
 	game_node = _game_node
@@ -35,7 +44,11 @@ func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mou
 	fish_scene = _fish_scn
 	forest_tile_coords = _forest_coords
 	mountain_tile_coords = _mountain_coords
+<<<<<<< HEAD
 	ocean_tile_coords = _ocean_coords
+=======
+	fish_tile_coords = _fish_coords
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 
 	if not is_instance_valid(map_objects_holder) or not is_instance_valid(tilemap_layer):
 		push_error("MapObjectManager: Invalid holder or tilemap node provided.")
@@ -56,7 +69,7 @@ func place_objects(world_data: Dictionary):
 	print("MapObjectManager: Placing map objects...")
 	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
 	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
-	if forest_tile_coords == Vector2i.ZERO and mountain_tile_coords == Vector2i.ZERO:
+	if forest_tile_coords == Vector2i.ZERO and mountain_tile_coords == Vector2i.ZERO and fish_tile_coords == Vector2i.ZERO:
 		push_warning("MapObjectManager: Tile coordinates for objects not set up.")
 		return # Avoid errors if coords weren't set
 
@@ -76,6 +89,13 @@ func place_objects(world_data: Dictionary):
 			if rng.randf() < mountain_spawn_chance:
 				var y_offset = rng.randi_range(0, 4)
 				_place_single_object(mountain_scene, coords, y_offset)
+
+		# Place Fish
+		elif current_atlas_coords == fish_tile_coords and fish_scene:
+			if rng.randf() < fish_spawn_chance:
+				# Fish are water-based, use consistent offset to stay at tile center
+				var y_offset = 0
+				_place_single_object(fish_scene, coords, y_offset)
 
 	print("MapObjectManager: Map object placement finished.")
 
@@ -108,6 +128,7 @@ func place_trees_only(world_data: Dictionary):
 		push_warning("MapObjectManager: Forest tile coordinates not set up.")
 		return
 
+	var tree_count = 0
 	for coords in world_data:
 		var tile_info = world_data[coords]
 		if typeof(tile_info) != TYPE_DICTIONARY or not tile_info.has("atlas_coords"): continue
@@ -118,8 +139,42 @@ func place_trees_only(world_data: Dictionary):
 			if rng.randf() < tree_spawn_chance:
 				var y_offset = rng.randi_range(-12, -8)
 				_place_single_object(tree_scene, coords, y_offset)
+				tree_count += 1
 
-	print("MapObjectManager: Tree placement finished.")
+	print("MapObjectManager: Tree placement finished. Total trees placed: %d" % tree_count)
+
+func place_fish_only(world_data: Dictionary):
+	print("MapObjectManager: Placing fish only...")
+	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
+	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
+	if fish_tile_coords == Vector2i.ZERO:
+		push_warning("MapObjectManager: Fish tile coordinates not set up.")
+		return
+	
+	# DEBUG: Check tilemap and holder state
+	print("DEBUG: Tilemap position: %s, scale: %s" % [tilemap_layer.position, tilemap_layer.scale])
+	print("DEBUG: Objects holder position: %s, scale: %s" % [map_objects_holder.position, map_objects_holder.scale])
+
+	var fish_count = 0
+	var placed_coords = []
+	for coords in world_data:
+		var tile_info = world_data[coords]
+		if typeof(tile_info) != TYPE_DICTIONARY or not tile_info.has("atlas_coords"): continue
+		var current_atlas_coords = tile_info["atlas_coords"]
+
+		# Place Fish only
+		if current_atlas_coords == fish_tile_coords and fish_scene:
+			if rng.randf() < fish_spawn_chance:
+				# Use a consistent Y offset for fish to maintain alignment with ocean tiles
+				# Fish are water-based, so they should stay closer to the tile center
+				var y_offset = 0  # Fixed at center for water creatures
+				_place_single_object(fish_scene, coords, y_offset)
+				placed_coords.append(coords)
+				fish_count += 1
+
+	print("MapObjectManager: Fish placement finished. Total fish placed: %d" % fish_count)
+	if fish_count > 0 and fish_count <= 10:
+		print("DEBUG: All fish placed at coordinates: %s" % [placed_coords])
 
 func place_fish(world_data: Dictionary):
 	print("MapObjectManager: Placing fish...")
@@ -182,6 +237,35 @@ func clear_trees_only():
 	
 	print("MapObjectManager: Tree objects cleared.")
 
+func clear_fish_only():
+	print("MapObjectManager: Clearing fish objects only...")
+	if not is_instance_valid(map_objects_holder): 
+		push_error("MapObjects holder node is not valid!")
+		return
+		
+	# Remove only fish objects
+	for child in map_objects_holder.get_children():
+		if child.name.begins_with("Fish") or child.name.begins_with("fish_") or child.scene_file_path.ends_with("fish.tscn"):
+			child.queue_free()
+	
+	print("MapObjectManager: Fish objects cleared.")
+
+
+func place_bays_only(world_data: Dictionary):
+	print("MapObjectManager: Placing bays only...")
+	if world_data.is_empty(): print("MapObjectManager: No world data to place bays on."); return
+	
+	# Call the world gen bay carving function
+	var world_gen = preload("res://scripts/world_gen/world_gen.gd").new()
+	world_gen._generate_bays(100, 100, world_data)  # MAP_WIDTH and MAP_HEIGHT are 100
+	
+	print("MapObjectManager: Bay placement finished.")
+
+func clear_bays_only():
+	print("MapObjectManager: Clearing bays (reverting to ocean)...")
+	# Bays are terrain, not objects, so we handle this in world_creation_modal by reloading previous state
+	print("MapObjectManager: Bays cleared via state revert.")
+
 
 func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: int = 0):
 	if not scene: return
@@ -189,9 +273,17 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 	var instance = scene.instantiate()
 	var world_pos = tilemap_layer.map_to_local(tile_coords)
 	instance.position = world_pos + Vector2(0, y_offset)
+	
+	# Set debug info for fish
+	if scene == fish_scene and instance.has_meta("fish_id") == false:
+		# Generate a simple counter for fish tracking
+		instance.fish_id = hash(tile_coords) % 100000
+		instance.tile_coords = tile_coords
+	
 	map_objects_holder.add_child(instance)
 	
 	# Register with game's environment system if game node is available
+<<<<<<< HEAD
 	if game_node:
 		if game_node.has_method("register_mountain") and scene == mountain_scene:
 			game_node.register_mountain(instance)
@@ -199,6 +291,14 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 			game_node.register_tree(instance)
 		elif game_node.has_method("register_fish") and scene == fish_scene:
 			print("_place_single_object: Placing fish at %s" % instance.position)
+=======
+	if game_node and game_node.has_method("register_mountain") and game_node.has_method("register_tree") and game_node.has_method("register_fish"):
+		if scene == mountain_scene:
+			game_node.register_mountain(instance)
+		elif scene == tree_scene:
+			game_node.register_tree(instance)
+		elif scene == fish_scene:
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 			game_node.register_fish(instance)
 
 

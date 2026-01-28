@@ -41,6 +41,11 @@ var generation_steps = [
 		"action": "_step_land"
 	},
 	{
+		"title": "And Then There Were Bays",
+		"description": "Gentle indentations form along the coast,\ncreating sheltered waters perfect for fishing.\nPress Continue when satisfied or Reroll to try again.",
+		"action": "_step_bays"
+	},
+	{
 		"title": "Let there be Ice",
 		"description": "At the world's edges, eternal winter takes hold,\nfreezing the northern and southern waters.",
 		"action": "_step_ice"
@@ -71,8 +76,13 @@ var generation_steps = [
 		"action": "_step_ancient_forests"
 	},
 	{
+<<<<<<< HEAD
 		"title": "Let there be Fish",
 		"description": "The oceans teem with life,\nthriving schools of fish swim in the deep.",
+=======
+		"title": "And Then There Were Fish",
+		"description": "Shimmering schools of fish fill the coastal waters,\nproviding sustenance for those who dwell nearby.\nPress Continue when satisfied or Reroll to try again.",
+>>>>>>> 2aeb49ef4a2144d1f1dda9b7f0a82b9074dac175
 		"action": "_step_fish"
 	},
 	{
@@ -123,6 +133,7 @@ func _create_world_creation_ui():
 	
 	# Connect footer signals
 	footer_component.back_pressed.connect(_on_back_pressed)
+	footer_component.back_step_pressed.connect(_on_back_step_pressed)
 	footer_component.reset_camera_pressed.connect(_on_reset_camera_pressed)
 	footer_component.reroll_pressed.connect(_on_reroll_pressed)
 	footer_component.continue_pressed.connect(_on_continue_pressed)
@@ -238,27 +249,38 @@ func _show_current_step():
 func _step_void():
 	world_data.clear()
 	_clear_and_draw_map()
-	_center_camera_on_map()
+	if current_step == 0:
+		_center_camera_on_map()
 
 func _step_water():
 	world_data.clear()
 	generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
 	_clear_and_draw_map()
-	_center_camera_on_map()
 
 func _step_land():
 	if world_data.is_empty():
 		generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
 	generator._generate_continent(MAP_WIDTH, MAP_HEIGHT, world_data)
 	_clear_and_draw_map()
-	_center_camera_on_map()
+
+func _step_bays():
+	print("WorldCreation: Executing bays step")
+	# Generate bays on the continent
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_bays_only"):
+			map_object_manager.place_bays_only(world_data)
+			print("WorldCreation: Bays generated")
+			_clear_and_draw_map()
+		else:
+			print("WorldCreation: Map object manager not found or missing method")
 
 func _step_ice():
 	if world_data.is_empty():
 		_step_land()
 	generator._add_ice_caps(MAP_WIDTH, MAP_HEIGHT, world_data)
 	_clear_and_draw_map()
-	_center_camera_on_map()
 
 func _step_mountains():
 	if world_data.is_empty():
@@ -272,7 +294,6 @@ func _step_mountains():
 	)
 	_clear_and_draw_map()
 	# No object placement here - terrain only
-	_center_camera_on_map()
 
 func _step_forests():
 	if world_data.is_empty():
@@ -285,8 +306,6 @@ func _step_forests():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
-	# No object placement here - terrain only
-	_center_camera_on_map()
 
 func _step_plains():
 	if world_data.is_empty():
@@ -299,7 +318,6 @@ func _step_plains():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
-	_center_camera_on_map()
 
 func _step_mountain_peaks():
 	print("WorldCreation: Executing mountain peaks step")
@@ -312,7 +330,6 @@ func _step_mountain_peaks():
 			print("WorldCreation: Mountain peaks placed")
 		else:
 			print("WorldCreation: Map object manager not found or missing method")
-	_center_camera_on_map()
 
 func _step_ancient_forests():
 	print("WorldCreation: Executing ancient forests step")
@@ -325,7 +342,22 @@ func _step_ancient_forests():
 			print("WorldCreation: Ancient forests placed")
 		else:
 			print("WorldCreation: Map object manager not found or missing method")
-	_center_camera_on_map()
+
+func _step_fish():
+	print("WorldCreation: Executing fish step")
+	# First, add fish tiles to the world_data
+	generator._add_fish_to_waters(MAP_WIDTH, MAP_HEIGHT, world_data)
+	_clear_and_draw_map()
+	
+	# Then place the fish object sprites
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_fish_only"):
+			map_object_manager.place_fish_only(world_data)
+			print("WorldCreation: Fish added to waters")
+		else:
+			print("WorldCreation: Map object manager not found or missing method")
 
 func _step_fish():
 	print("WorldCreation: Executing fish step")
@@ -412,6 +444,14 @@ func _on_back_pressed():
 	cleanup_ui()
 	game_node._cancel_world_creation()
 
+func _on_back_step_pressed():
+	print("WorldCreation: Going back one step from %d" % current_step)
+	if current_step > 0:
+		current_step -= 1
+		_show_current_step()
+	else:
+		print("WorldCreation: Already at first step")
+
 func _on_reset_camera_pressed():
 	print("WorldCreation: Resetting camera view")
 	_center_camera_on_map()
@@ -436,6 +476,17 @@ func _on_reroll_pressed():
 				var map_object_manager = parent_game_node.get_node("MapObjectManager")
 				if map_object_manager and map_object_manager.has_method("clear_trees_only"):
 					map_object_manager.clear_trees_only()
+		elif step_data["action"] == "_step_fish":
+			# Clear only fish objects before rerolling
+			var parent_game_node = get_parent()
+			if parent_game_node and parent_game_node.has_method("get_node"):
+				var map_object_manager = parent_game_node.get_node("MapObjectManager")
+				if map_object_manager and map_object_manager.has_method("clear_fish_only"):
+					map_object_manager.clear_fish_only()
+		elif step_data["action"] == "_step_bays":
+			# Bays are terrain, so we revert the world_data to previous state
+			print("WorldCreation: Reverting to pre-bay state for reroll")
+			# The step_states system will handle this
 	
 	_show_current_step()
 

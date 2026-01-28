@@ -205,6 +205,8 @@ func _process_command(command: String):
 				add_debug_message("Save executed!")
 		"load":
 			add_debug_message("Load command not yet implemented")
+		"fish":
+			_show_fish_info()
 		_:
 			add_debug_message("Unknown command: " + cmd + ". Type 'help' for commands.")
 
@@ -224,6 +226,7 @@ func _show_help():
 	add_debug_message("duplicates - Check for duplicate unit IDs and fix them")
 	add_debug_message("save - Execute save game")
 	add_debug_message("load - Load saved game")
+	add_debug_message("fish - Debug fish sprite instances and textures")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -559,3 +562,54 @@ func _input(event: InputEvent):
 					history_index = -1
 					input_field.clear()
 				get_tree().root.set_input_as_handled()
+
+func _show_fish_info():
+	var game = get_parent().get_parent()
+	add_debug_message("\n=== FISH DEBUG INFO ===")
+	
+	# Find the map objects holder
+	var map_objects_holder = null
+	if game.has_node("MapObjects"):
+		map_objects_holder = game.get_node("MapObjects")
+	
+	if not map_objects_holder:
+		add_debug_message("ERROR: MapObjects not found!")
+		return
+	
+	# Find all fish instances
+	var fish_instances = []
+	var grey_box_count = 0
+	var valid_count = 0
+	
+	for child in map_objects_holder.get_children():
+		if child.name.begins_with("Fish") or child.scene_file_path.ends_with("fish.tscn"):
+			fish_instances.append(child)
+			
+			# Check texture validity
+			if child.has_node("Sprite2D"):
+				var sprite = child.get_node("Sprite2D")
+				if sprite.texture == null:
+					grey_box_count += 1
+					var coords = child.get("tile_coords", Vector2i(-1, -1))
+					var fish_id = child.get("fish_id", -1)
+					add_debug_message("  GREY BOX - Fish %d at %s: texture is NULL" % [fish_id, coords])
+				else:
+					valid_count += 1
+	
+	add_debug_message("Total fish instances: %d" % fish_instances.size())
+	add_debug_message("Valid textures: %d" % valid_count)
+	add_debug_message("Grey boxes (NULL texture): %d" % grey_box_count)
+	add_debug_message("Grey box percentage: %.1f%%" % [(float(grey_box_count) / max(1, fish_instances.size())) * 100.0])
+	
+	if grey_box_count > 0:
+		add_debug_message("\nAttempting to fix grey boxes...")
+		for child in fish_instances:
+			if child.has_node("Sprite2D"):
+				var sprite = child.get_node("Sprite2D")
+				if sprite.texture == null:
+					# Try to reload
+					if child.has_method("_ready"):
+						child._ready()
+					add_debug_message("  Fixed fish %d" % child.get("fish_id", -1))
+	
+	add_debug_message("===============================\n")
