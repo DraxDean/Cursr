@@ -134,7 +134,7 @@ func _get_building_production_text(building_type: String, worker_count: int) -> 
 	"""Get production text for a building based on type and workers"""
 	match building_type:
 		"fishing_hut":
-			var food = worker_count * 1
+			var food = worker_count * 5
 			return "Produces: +" + str(food) + " Food/day"
 		"lumberjack", "lumber_mill":
 			var wood = worker_count * 1

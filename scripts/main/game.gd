@@ -371,7 +371,7 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 			"stoneworker":
 				rates["stone"] += worker_count * 1  # +1 stone per worker
 			"fishing_hut":
-				rates["food"] += worker_count * 1  # +1 food per worker
+				rates["food"] += worker_count * 5  # +5 food per worker
 			"farm":
 				# Farms are special - will implement later
 				pass
@@ -2279,10 +2279,10 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	
 	var resource_connections = []
 	
-	# Filter for resource connections (trees, mountains) from the pre-calculated connections
+	# Filter for resource connections (trees, mountains, fish) from the pre-calculated connections
 	for connection in connections:
 		var conn_type = connection.get("type", "")
-		if conn_type in ["tree", "mountain"]:  # These are resource types with pre-calculated paths
+		if conn_type in ["tree", "mountain", "fish"]:  # These are resource types with pre-calculated paths
 			resource_connections.append(connection)
 	
 	# Find nearest farm as a resource (farms don't have pre-calculated paths)
@@ -2314,15 +2314,21 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 		unit["movement_state"] = "idle"
 		return
 	
-	# Use the existing path from the building connection, or calculate for farms
+	# Use the existing path from the building connection, or calculate for farms and fish
 	var existing_path = closest_connection.get("path", [])
 	
-	# For farms, we need to calculate the path since it wasn't pre-calculated
+	# For farms and fish, we need to calculate the path since it wasn't pre-calculated
 	if existing_path.is_empty() and closest_connection.get("type") == "farm":
 		var farm_node = map_objects_holder.get_node_or_null(NodePath(closest_connection.get("name")))
 		if farm_node:
 			# Calculate path from unit's current position to farm
 			existing_path = _get_path_between_positions(unit["position"], farm_node.position)
+	elif existing_path.is_empty() and closest_connection.get("type") == "fish":
+		# For fish, use the tile_coords stored in the connection
+		if closest_connection.has("tile_coords"):
+			var fish_world_pos = tilemap_layer.map_to_local(closest_connection.get("tile_coords"))
+			# Calculate path from unit's current position to fish
+			existing_path = _get_path_between_positions(unit["position"], fish_world_pos)
 	
 	if existing_path.is_empty():
 		# No path available - skip to next step
@@ -2383,7 +2389,7 @@ func _find_nearest_tree(from_position: Vector2) -> Dictionary:
 
 func _find_nearest_farm(from_position: Vector2) -> Dictionary:
 	"""Find the nearest farm building and return connection data"""
-	var nearest = null
+	var nearest = {}
 	var nearest_distance = INF
 	
 	for child in map_objects_holder.get_children():

@@ -359,7 +359,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
 		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
-		"fishing_hut": ["town_center"],
+		"fishing_hut": ["town_center", "fish"],
 		"farmhouse": ["town_center", "house", "farm"],
 		"stoneworker": ["house", "town_center", "mountain"],
 		"lumberjack": ["house", "town_center", "tree"],
@@ -587,6 +587,45 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			else:
 				print("MapObjects holder not found!")
 	
+	# Also search for fish if they're in allowed connections
+	if "fish" in allowed_connections:
+		print("Looking for fish connections for ", building_type)
+		
+		# Use the new environment system to get fish
+		if game_node.has_method("get_environment_objects"):
+			var fish = game_node.get_environment_objects("fish")
+			print("Found ", fish.size(), " fish in environment system")
+			
+			# Collect all fish with distances
+			var all_fish = []
+			for fish_id in fish:
+				var fish_data = fish[fish_id]
+				var fish_tile_coords = fish_data["tile_coords"]
+				var tile_distance = _hex_distance(building_tile_coords, fish_tile_coords)
+				
+				all_fish.append({
+					"id": fish_id,
+					"tile_coords": fish_tile_coords,
+					"distance": tile_distance
+				})
+			
+			# Sort by distance and take only the 5 closest
+			all_fish.sort_custom(func(a, b): return a.distance < b.distance)
+			print("Found ", all_fish.size(), " fish total, taking 5 closest")
+			if all_fish.size() > 5:
+				all_fish = all_fish.slice(0, 5)
+			
+			# Add the 5 closest fish to connections
+			for fish_obj in all_fish:
+				print("Added fish connection: ", fish_obj.id, " at ", fish_obj.distance, " tiles away")
+				connections.append({
+					"name": fish_obj.id,
+					"type": "fish",
+					"distance": fish_obj.distance,
+					"object_type": "fish",
+					"tile_coords": fish_obj.tile_coords
+				})
+	
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
@@ -777,7 +816,8 @@ func _redraw_connections():
 		"lumberjack": Color.DARK_GREEN,
 		"lumber_mill": Color.SADDLE_BROWN,
 		"mountain": Color.GRAY,
-		"tree": Color.GREEN
+		"tree": Color.GREEN,
+		"fish": Color.DEEP_SKY_BLUE
 	}
 	
 	for connection in connections:
@@ -814,6 +854,20 @@ func _redraw_connections():
 					if map_objects_holder:
 						for child in map_objects_holder.get_children():
 							if child.position.distance_to(tree_pos) < 32:  # Within one tile
+								target_node = child
+								break
+		elif connection.object_type == "fish":
+			# For fish objects, try to find by position
+			if game_node.has_method("get_environment_objects"):
+				var fish = game_node.get_environment_objects("fish")
+				if fish.has(connection.name):
+					var fish_data = fish[connection.name]
+					var fish_pos = tilemap.map_to_local(fish_data["tile_coords"])
+					# Find the actual node by position
+					var map_objects_holder = game_node.get_node_or_null("MapObjects")
+					if map_objects_holder:
+						for child in map_objects_holder.get_children():
+							if child.position.distance_to(fish_pos) < 32:  # Within one tile
 								target_node = child
 								break
 		
@@ -1131,7 +1185,7 @@ func _get_building_production() -> String:
 	
 	match building_type:
 		"fishing_hut":
-			var food_production = worker_occupancy * 1  # +1 food per worker
+			var food_production = worker_occupancy * 5  # +5 food per worker
 			return "+" + str(food_production) + " Food/day (" + str(worker_occupancy) + " workers)"
 		"house":
 			return "Housing (no production)"
