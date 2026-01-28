@@ -70,6 +70,21 @@ var generation_steps = [
 		"title": "Let there be Plains",
 		"description": "Rolling grasslands complete the world,\nperfect for civilization to take root.",
 		"action": "_step_plains"
+	},
+	{
+		"title": "Mountain Objects",
+		"description": "Great stone peaks rise from the earth,\nscattered across the landscape.",
+		"action": "_step_place_mountains"
+	},
+	{
+		"title": "Forest Objects",
+		"description": "Mighty trees spread across the land,\nproviding timber and shelter.",
+		"action": "_step_place_trees"
+	},
+	{
+		"title": "Fish Objects",
+		"description": "The oceans teem with life,\nthriving schools of fish swim in the deep.",
+		"action": "_step_place_fish"
 	}
 ]
 
@@ -232,6 +247,26 @@ func _step_plains():
 		generator.GRASS_COORDS, 
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
+	_clear_and_draw_map()
+
+func _step_place_mountains():
+	"""Step 7: Place mountain objects"""
+	if world_data.is_empty():
+		_step_plains()  # Ensure previous steps are done
+	_clear_and_draw_map()
+	# Note: Objects are not visualized in the preview, but this step marks object placement progression
+
+func _step_place_trees():
+	"""Step 8: Place tree objects"""
+	if world_data.is_empty():
+		_step_place_mountains()  # Ensure previous steps are done
+	_clear_and_draw_map()
+	# Note: Objects are not visualized in the preview, but this step marks object placement progression
+
+func _step_place_fish():
+	"""Step 9: Place fish objects"""
+	if world_data.is_empty():
+		_step_place_trees()  # Ensure previous steps are done
 	_clear_and_draw_map()
 
 func _clear_and_draw_map():

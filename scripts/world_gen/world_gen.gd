@@ -27,6 +27,7 @@ const DESERT_PATCH_RADIUS_MIN = 5
 const DESERT_PATCH_RADIUS_MAX = 11
 
 const ICE_CAP_HEIGHT = 4 # How many rows from top/bottom are ice
+const NUM_FISH = 60  # Target number of fish to spawn
 
 # --- Private Variables ---
 # Moved rng here so helper methods can access it without passing it everywhere
@@ -187,3 +188,25 @@ func _apply_circular_patch(center: Vector2i, radius: int, tile_coords: Vector2i,
 									"source_id": SOURCE_ID,
 									"atlas_coords": tile_coords
 								}
+
+func _place_fish(width: int, height: int, world_data: Dictionary):
+	"""Place fish markers in ocean tiles"""
+	var fish_placed = 0
+	var attempts = 0
+	var max_attempts = NUM_FISH * 5  # Allow multiple attempts per fish
+	
+	while fish_placed < NUM_FISH and attempts < max_attempts:
+		attempts += 1
+		var random_x = _rng.randi_range(0, width - 1)
+		var random_y = _rng.randi_range(0, height - 1)
+		var coords = Vector2i(random_x, random_y)
+		
+		if world_data.has(coords):
+			var current_tile = world_data[coords]["atlas_coords"]
+			# Place fish only in ocean tiles (not ice)
+			if current_tile == OCEAN_COORDS:
+				if not world_data[coords].has("fish"):
+					world_data[coords]["fish"] = true
+					fish_placed += 1
+	
+	print("_place_fish: Placed %d fish markers in the ocean (attempts: %d)" % [fish_placed, attempts])

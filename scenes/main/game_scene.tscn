@@ -1,9 +1,10 @@
-[gd_scene load_steps=12 format=3 uid="uid://cahoywwt6us5c"]
+[gd_scene load_steps=13 format=3 uid="uid://cahoywwt6us5c"]
 
 [ext_resource type="Script" uid="uid://c0j3tt2dduq3v" path="res://scripts/main/game.gd" id="1_onqr8"]
 [ext_resource type="PackedScene" uid="uid://dlogpnjxp7vys" path="res://scenes/objects/tree.tscn" id="2_bw6k5"]
 [ext_resource type="Texture2D" uid="uid://h208gi60xkav" path="res://assets/hextileset-export.png" id="2_ycayy"]
 [ext_resource type="PackedScene" uid="uid://ei48utypbjgo" path="res://scenes/objects/mountain.tscn" id="3_y3j0m"]
+[ext_resource type="PackedScene" uid="uid://b88u2p7cjmqu" path="res://scenes/objects/fish.tscn" id="4_fish"]
 [ext_resource type="Script" uid="uid://cuskd62ykpl26" path="res://scripts/managers/camera_controller.gd" id="5_ynmmy"]
 [ext_resource type="Script" uid="uid://rv73t5wb1lu" path="res://scripts/managers/ui_manager.gd" id="6_o41ig"]
 [ext_resource type="Script" uid="uid://qghfvfjku3xu" path="res://scripts/managers/map_object_manager.gd" id="7_wktqh"]
@@ -61,6 +62,7 @@ anchors_preset = 0
 script = ExtResource("1_onqr8")
 tree_scene = ExtResource("2_bw6k5")
 mountain_scene = ExtResource("3_y3j0m")
+fish_scene = ExtResource("4_fish")
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
 tile_set = SubResource("TileSet_mixcd")

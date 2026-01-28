@@ -7,6 +7,7 @@ var tilemap_layer: TileMapLayer
 var game_node: Node  # Reference to main game node
 var tree_scene: PackedScene
 var mountain_scene: PackedScene
+var fish_scene: PackedScene
 
 # Tunables (set via setup or kept here)
 var tree_spawn_chance: float = 0.7
@@ -15,6 +16,7 @@ var mountain_spawn_chance: float = 0.5
 # Tile Coordinates (Set via setup)
 var forest_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
 var mountain_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
+var ocean_tile_coords: Vector2i = Vector2i.ZERO # Default invalid
 
 var rng = RandomNumberGenerator.new()
 
@@ -24,19 +26,22 @@ func _ready():
 	print("MapObjectManager ready.")
 
 
-func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i, _game_node: Node = null):
+func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i, _game_node: Node = null, _fish_scn: PackedScene = null, _ocean_coords: Vector2i = Vector2i.ZERO):
 	map_objects_holder = _holder
 	tilemap_layer = _tilemap
 	game_node = _game_node
 	tree_scene = _tree_scn
 	mountain_scene = _mountain_scn
+	fish_scene = _fish_scn
 	forest_tile_coords = _forest_coords
 	mountain_tile_coords = _mountain_coords
+	ocean_tile_coords = _ocean_coords
 
 	if not is_instance_valid(map_objects_holder) or not is_instance_valid(tilemap_layer):
 		push_error("MapObjectManager: Invalid holder or tilemap node provided.")
 	if not tree_scene: push_warning("MapObjectManager: Tree scene not assigned.")
 	if not mountain_scene: push_warning("MapObjectManager: Mountain scene not assigned.")
+	if not fish_scene: push_warning("MapObjectManager: Fish scene not assigned.")
 	print("MapObjectManager setup complete.")
 
 
@@ -116,6 +121,41 @@ func place_trees_only(world_data: Dictionary):
 
 	print("MapObjectManager: Tree placement finished.")
 
+func place_fish(world_data: Dictionary):
+	print("MapObjectManager: Placing fish...")
+	print("MapObjectManager: is_instance_valid(map_objects_holder) = %s" % is_instance_valid(map_objects_holder))
+	if not is_instance_valid(map_objects_holder): 
+		push_error("MapObjects holder node invalid!")
+		return
+	
+	print("MapObjectManager: world_data.is_empty() = %s" % world_data.is_empty())
+	if world_data.is_empty(): 
+		print("MapObjectManager: No world data to place objects on.")
+		return
+	
+	print("MapObjectManager: fish_scene = %s" % fish_scene)
+	if not fish_scene:
+		push_error("MapObjectManager: Fish scene not assigned.")
+		return
+
+	print("MapObjectManager: Fish scene is valid. Starting iteration...")
+	var fish_count = 0
+	var tiles_checked = 0
+	for coords in world_data:
+		tiles_checked += 1
+		var tile_info = world_data[coords]
+		if typeof(tile_info) != TYPE_DICTIONARY or not tile_info.has("atlas_coords"): continue
+		if not tile_info.has("fish"): continue
+
+		# Place Fish on marked tiles
+		if tile_info["fish"] == true:
+			print("MapObjectManager: Placing fish at %s" % coords)
+			var y_offset = rng.randi_range(-8, 8)
+			_place_single_object(fish_scene, coords, y_offset)
+			fish_count += 1
+
+	print("MapObjectManager: Fish placement finished. Checked %d tiles, placed %d fish." % [tiles_checked, fish_count])
+
 func clear_mountains_only():
 	print("MapObjectManager: Clearing mountain objects only...")
 	if not is_instance_valid(map_objects_holder): 
@@ -152,18 +192,14 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 	map_objects_holder.add_child(instance)
 	
 	# Register with game's environment system if game node is available
-	if game_node and game_node.has_method("register_mountain") and game_node.has_method("register_tree"):
-		if scene == mountain_scene:
+	if game_node:
+		if game_node.has_method("register_mountain") and scene == mountain_scene:
 			game_node.register_mountain(instance)
-		elif scene == tree_scene:
+		elif game_node.has_method("register_tree") and scene == tree_scene:
 			game_node.register_tree(instance)
-	
-	# Register with game's environment system if game node is available
-	if game_node and game_node.has_method("register_mountain") and game_node.has_method("register_tree"):
-		if scene == mountain_scene:
-			game_node.register_mountain(instance)
-		elif scene == tree_scene:
-			game_node.register_tree(instance)
+		elif game_node.has_method("register_fish") and scene == fish_scene:
+			print("_place_single_object: Placing fish at %s" % instance.position)
+			game_node.register_fish(instance)
 
 
 func place_building(building_data, coords):

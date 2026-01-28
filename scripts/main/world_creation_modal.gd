@@ -71,6 +71,11 @@ var generation_steps = [
 		"action": "_step_ancient_forests"
 	},
 	{
+		"title": "Let there be Fish",
+		"description": "The oceans teem with life,\nthriving schools of fish swim in the deep.",
+		"action": "_step_fish"
+	},
+	{
 		"title": "Choose Your People",
 		"description": "Select the race that will inhabit this world\nand choose their starting settlement.",
 		"action": "_step_race_select"
@@ -318,6 +323,22 @@ func _step_ancient_forests():
 		if map_object_manager and map_object_manager.has_method("place_trees_only"):
 			map_object_manager.place_trees_only(world_data)
 			print("WorldCreation: Ancient forests placed")
+		else:
+			print("WorldCreation: Map object manager not found or missing method")
+	_center_camera_on_map()
+
+func _step_fish():
+	print("WorldCreation: Executing fish step")
+	# First, generate fish markers in world_data
+	generator._place_fish(MAP_WIDTH, MAP_HEIGHT, world_data)
+	
+	# Then place fish objects in ocean tiles
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
+		if map_object_manager and map_object_manager.has_method("place_fish"):
+			map_object_manager.place_fish(world_data)
+			print("WorldCreation: Fish placed")
 		else:
 			print("WorldCreation: Map object manager not found or missing method")
 	_center_camera_on_map()

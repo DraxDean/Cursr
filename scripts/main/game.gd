@@ -8,6 +8,7 @@ const MAP_HEIGHT = 100
 # --- Export Variables for Scenes ---
 @export var tree_scene: PackedScene
 @export var mountain_scene: PackedScene
+@export var fish_scene: PackedScene
 
 # --- Node References ---
 @onready var tilemap_layer: TileMapLayer = $TileMapLayer
@@ -100,11 +101,13 @@ var players_data: Dictionary = {
 		"type": "environment",
 		"objects": {
 			"mountains": {},  # Dictionary of mountain_id: {name, position, tile_coords}
-			"trees": {}       # Dictionary of tree_id: {name, position, tile_coords}
+			"trees": {},       # Dictionary of tree_id: {name, position, tile_coords}
+			"fish": {}        # Dictionary of fish_id: {name, position, tile_coords}
 		},
 		"counts": {
 			"mountains": 0,
-			"trees": 0
+			"trees": 0,
+			"fish": 0
 		}
 	}
 }
@@ -509,6 +512,32 @@ func register_tree(tree_node: Node2D) -> String:
 	tree_node.set_meta("environment_id", tree_id)
 	
 	return tree_id
+
+func register_fish(fish_node: Node2D) -> String:
+	# Generate unique ID for fish
+	var fish_id = "fish_" + str(players_data["environment"]["counts"]["fish"] + 1)
+	
+	# Get tile coordinates
+	var tile_coords = Vector2i(0, 0)
+	if tilemap_layer:
+		tile_coords = tilemap_layer.local_to_map(fish_node.position)
+	
+	# Store fish data
+	players_data["environment"]["objects"]["fish"][fish_id] = {
+		"name": fish_node.name,
+		"position": fish_node.position,
+		"tile_coords": tile_coords,
+		"node_path": fish_node.get_path()
+	}
+	
+	# Update count
+	players_data["environment"]["counts"]["fish"] += 1
+	
+	# Update the node name to include the unique ID
+	fish_node.name = fish_id
+	fish_node.set_meta("environment_id", fish_id)
+	
+	return fish_id
 
 func get_environment_objects(object_type: String) -> Dictionary:
 	# Get all environment objects of a specific type (mountains, trees, etc.)
@@ -1248,8 +1277,16 @@ func _ready():
 	ui_manager.setup(ui_nodes)
 
 	print("Game: Setting up MapObjectManager...")
-	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3) # Corrected coords
-	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self)
+	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3); var ocean_coords = Vector2i(0, 2) # Corrected coords
+	print("Game: fish_scene before setup = %s" % fish_scene)
+	
+	# Fallback: if fish_scene is not assigned, load it
+	if not fish_scene:
+		fish_scene = preload("res://scenes/objects/fish.tscn")
+		print("Game: Fish scene was null, loaded via preload: %s" % fish_scene)
+	
+	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self, fish_scene, ocean_coords)
+	print("Game: map_object_manager.fish_scene after setup = %s" % map_object_manager.fish_scene)
 
 	print("Game: Setting up TurnManager...")
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
@@ -1406,6 +1443,7 @@ func initialize_map():
 		if game_footer:
 			game_footer.set_day_text(loaded_day)
 		map_object_manager.place_objects(world_data)
+		map_object_manager.place_fish(world_data)
 		# Restore buildings if loading from save
 		if not loaded_buildings_data.is_empty():
 			_restore_buildings_with_proper_centering(loaded_buildings_data)
@@ -2698,7 +2736,7 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			push_warning("Could not restore building with texture: " + building_info.get("texture_path", "unknown"))
 
 func _restore_environment_objects(environment_objects_data: Array):
-	# Restore environment objects (mountains and trees) with their unique IDs
+	# Restore environment objects (mountains, trees, and fish) with their unique IDs
 	
 	if not tilemap_layer or not map_objects_holder:
 		print("Warning: Cannot restore environment objects - missing tilemap or objects holder")
@@ -2728,6 +2766,8 @@ func _restore_environment_objects(environment_objects_data: Array):
 				register_mountain(existing_node)
 			elif object_type == "tree":
 				register_tree(existing_node)
+			elif object_type == "fish":
+				register_fish(existing_node)
 			
 			# print("Game: Restored environment object ", environment_id, " at ", obj_position)
 		else:
@@ -2978,13 +3018,14 @@ func _execute_save() -> bool:
 	var environment_objects_data = []
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
-			# Check if it's an environment object (mountain or tree)
-			if child.name.begins_with("mountain_") or child.name.begins_with("tree_"):
+			# Check if it's an environment object (mountain, tree, or fish)
+			if child.name.begins_with("mountain_") or child.name.begins_with("tree_") or child.name.begins_with("fish_"):
+				var object_type = "mountain" if child.name.begins_with("mountain_") else ("tree" if child.name.begins_with("tree_") else "fish")
 				var env_obj_info = {
 					"name": child.name,
 					"position": child.position,
 					"environment_id": child.get_meta("environment_id", child.name),
-					"object_type": "mountain" if child.name.begins_with("mountain_") else "tree"
+					"object_type": object_type
 				}
 				environment_objects_data.append(env_obj_info)
 	
