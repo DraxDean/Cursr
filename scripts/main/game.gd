@@ -60,6 +60,9 @@ var building_counter: Dictionary = {}  # Track building counts for unique IDs
 var unit_counter: int = 0  # Track unit counts for unique IDs
 var buildings_connections_cache: Dictionary = {}  # Cache for building-to-building connections with paths (no recalculation)
 
+# Name System - for generating unique unit names by race
+var race_names: Dictionary = {}  # Caches loaded names: {"human": {"given": [], "surnames": []}, "elf": {...}}
+
 # --- Variables ---
 var world_data: Dictionary = {}
 var loaded_buildings_data: Array = []
@@ -1361,6 +1364,9 @@ func _ready():
 	# --- Setup Game Header ---
 	_setup_game_header()
 
+	# --- Load Name System ---
+	_load_race_names()
+
 	# --- Initialize Map ---
 	initialize_map()
 	print("game.gd: _ready finished.")
@@ -1560,11 +1566,16 @@ func _create_initial_units():
 		loaded_units_data = []  # Clear after restoration
 		print("Game: Restored ", loaded_units_data.size(), " units from save data")
 		
+		# Restore missing names for backward compatibility with old saves
+		_restore_missing_unit_names()
+		
 		# Restore sprites for units that should be visible
 		_restore_unit_sprites_on_load()
 	else:
 		# If loading from save (units exist in players_data), restore their sprites
 		if GameManager.start_mode == "load":
+			# Restore missing names for backward compatibility with old saves
+			_restore_missing_unit_names()
 			_restore_unit_sprites_on_load()
 		else:
 			print("Game: Starting with no sprites - they will be created when buildings gain capacity")
@@ -1706,6 +1717,107 @@ func _update_unit_counter_from_existing_units():
 	# Set counter to the next number after the highest found
 	unit_counter = max_unit_num
 	print("Game: Updated unit_counter to %d (next unit will be unit_%d)" % [unit_counter, unit_counter + 1])
+
+func _load_race_names():
+	"""Load name lists for each race from asset files"""
+	print("Game: ===== STARTING NAME LOADING =====")
+	var races = ["human", "elf"]
+	
+	for race in races:
+		race_names[race] = {"given": [], "surnames": []}
+		
+		# Load given names - use direct file path without ResourceLoader
+		var given_names_path = "res://assets/names/%ss/given_names.txt" % race
+		print("Game: Attempting to load given names from: %s" % given_names_path)
+		
+		var given_file = FileAccess.open(given_names_path, FileAccess.READ)
+		if given_file:
+			var content = given_file.get_as_text().strip_edges()
+			print("Game: File content length for given names: %d" % content.length())
+			var names_array = content.split("\n")
+			# Filter out empty strings
+			var filtered_names = []
+			for name in names_array:
+				var trimmed = name.strip_edges()
+				if not trimmed.is_empty():
+					filtered_names.append(trimmed)
+			race_names[race]["given"] = filtered_names
+			print("Game: Loaded %d given names for %s (filtered from %d)" % [filtered_names.size(), race, names_array.size()])
+			if filtered_names.size() > 0:
+				print("Game: First given name: %s, Last given name: %s" % [filtered_names[0], filtered_names[filtered_names.size()-1]])
+		else:
+			push_error("Game: Failed to open given names file: %s" % given_names_path)
+			print("Game: FileAccess error: %d" % FileAccess.get_open_error())
+		
+		# Load surnames - use direct file path without ResourceLoader
+		var surnames_path = "res://assets/names/%ss/surnames.txt" % race
+		print("Game: Attempting to load surnames from: %s" % surnames_path)
+		
+		var surnames_file = FileAccess.open(surnames_path, FileAccess.READ)
+		if surnames_file:
+			var content = surnames_file.get_as_text().strip_edges()
+			print("Game: File content length for surnames: %d" % content.length())
+			var surnames_array = content.split("\n")
+			# Filter out empty strings
+			var filtered_surnames = []
+			for surname in surnames_array:
+				var trimmed = surname.strip_edges()
+				if not trimmed.is_empty():
+					filtered_surnames.append(trimmed)
+			race_names[race]["surnames"] = filtered_surnames
+			print("Game: Loaded %d surnames for %s (filtered from %d)" % [filtered_surnames.size(), race, surnames_array.size()])
+			if filtered_surnames.size() > 0:
+				print("Game: First surname: %s, Last surname: %s" % [filtered_surnames[0], filtered_surnames[filtered_surnames.size()-1]])
+		else:
+			push_error("Game: Failed to open surnames file: %s" % surnames_path)
+			print("Game: FileAccess error: %d" % FileAccess.get_open_error())
+	
+	print("Game: ===== NAME LOADING COMPLETE =====")
+
+func _generate_random_name(race: String) -> String:
+	"""Generate a random name for a unit of the given race"""
+	if not race_names.has(race):
+		push_error("Game: Race '%s' not found in race_names" % race)
+		return "Unit " + str(unit_counter)
+	
+	if race_names[race]["given"].is_empty():
+		push_error("Game: No given names loaded for race '%s'" % race)
+		return "Unit " + str(unit_counter)
+	
+	if race_names[race]["surnames"].is_empty():
+		push_error("Game: No surnames loaded for race '%s'" % race)
+		return "Unit " + str(unit_counter)
+	
+	var given_names = race_names[race]["given"]
+	var surnames = race_names[race]["surnames"]
+	
+	var random_given = given_names[randi() % given_names.size()]
+	var random_surname = surnames[randi() % surnames.size()]
+	
+	return random_given + " " + random_surname
+
+func _restore_missing_unit_names():
+	"""Restore names for units that don't have them (backward compatibility for old saves)"""
+	var units_without_names = 0
+	
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		
+		var player_data = players_data[player_id]
+		if not player_data.has("units"):
+			continue
+		
+		var race = player_data.get("race", "human")
+		
+		for unit in player_data["units"]:
+			if not unit.has("name") or unit.get("name", "").is_empty():
+				unit["name"] = _generate_random_name(race)
+				units_without_names += 1
+				print("Game: Assigned name '%s' to unit %s" % [unit["name"], unit.get("unique_id", "unknown")])
+	
+	if units_without_names > 0:
+		print("Game: Restored names for %d units from old save" % units_without_names)
 
 func _cache_job_connections_for_unit(unit: Dictionary):
 	"""Cache or recache the job connections for a unit after a new building is placed.
@@ -1934,11 +2046,12 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 		# Create unit near the building that triggered the capacity increase
 		var spawn_position = _get_unit_spawn_position_near_building(building_node)
 		
+		var player_race = players_data.get(owner_player, {}).get("race", "human")
 		var unit_data = {
 			"unique_id": _get_next_unit_id(),
-			"name": "Peasant " + str(unit_counter),
+			"name": _generate_random_name(player_race),
 			"type": "peasant",
-			"race": "human",
+			"race": player_race,
 			"player_id": owner_player,
 			"position": spawn_position,
 			"living_quarters": null,
@@ -1953,6 +2066,8 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			"movement_speed": 25.0,
 			"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
 		}
+		
+		print("Game: Created unit %s with name '%s'" % [unit_data["unique_id"], unit_data["name"]])
 		
 		# Assign to the appropriate capacity immediately
 		if capacity_type == "living":
@@ -2039,6 +2154,7 @@ func _create_initial_units_from_population():
 		var player_data = players_data[player_id]
 		var pop_data = player_data.get("population", {})
 		var total_population = pop_data.get("total", 10)
+		var player_race = player_data.get("race", "human")
 		
 		# Clear existing units array and create new ones based on population
 		player_data["units"] = []
@@ -2049,9 +2165,9 @@ func _create_initial_units_from_population():
 		for i in range(total_population):
 			var unit_data = {
 				"unique_id": _get_next_unit_id(),
-				"name": "Peasant " + str(unit_counter),
+				"name": _generate_random_name(player_race),
 				"type": "peasant",
-				"race": "human",
+				"race": player_race,
 				"player_id": player_id,
 				"position": Vector2(200 + (i * 15), 200 + (i * 10)),  # Spread them out slightly
 				"living_quarters": null,
@@ -2067,6 +2183,7 @@ func _create_initial_units_from_population():
 				"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
 			}
 			
+			print("Game: Created unit %s with name '%s' for player %d" % [unit_data["unique_id"], unit_data["name"], player_id])
 			player_data["units"].append(unit_data)
 		
 		print("Created ", total_population, " unassigned units for player ", player_id)

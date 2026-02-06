@@ -2,6 +2,7 @@
 extends "res://scripts/ui/info_modal.gd"
 
 var game_ref: Node
+var unit_view_modal: Control = null
 
 func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
 	game_ref = game_reference
@@ -39,8 +40,7 @@ func refresh_content():
 	var header_container = HBoxContainer.new()
 	add_content_child(header_container)
 	
-	_add_header_cell(header_container, "ID", 70)
-	_add_header_cell(header_container, "Name", 90)
+	_add_header_cell(header_container, "Name", 100)
 	_add_header_cell(header_container, "Type", 70)
 	_add_header_cell(header_container, "Living", 90)
 	_add_header_cell(header_container, "Job", 70)
@@ -55,8 +55,8 @@ func refresh_content():
 		var row_container = HBoxContainer.new()
 		add_content_child(row_container)
 		
-		_add_unit_cell(row_container, unit.get("unique_id", "unknown"), 70)
-		_add_unit_cell(row_container, unit.get("name", "unnamed"), 90)
+		# Make unit name clickable
+		_add_clickable_unit_cell(row_container, unit.get("name", "unnamed"), unit, 100)
 		_add_unit_cell(row_container, unit.get("type", "unknown"), 70)
 		
 		var living_quarters = unit.get("living_quarters", null)
@@ -92,7 +92,50 @@ func _add_header_cell(container: HBoxContainer, text: String, min_width: int):
 	label.add_theme_font_size_override("font_size", 12)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	container.add_child(label)
+func _add_clickable_unit_cell(container: HBoxContainer, text: String, unit: Dictionary, min_width: int):
+	"""Add a clickable unit name cell that opens the unit view modal"""
+	var button = Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(min_width, 20)
+	button.add_theme_color_override("font_color", Color.CYAN)
+	button.add_theme_font_size_override("font_size", 11)
+	button.flat = true
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	
+	# Store the unit data in the button's metadata
+	button.set_meta("unit_data", unit)
+	button.pressed.connect(_on_unit_name_clicked.bindv([unit]))
+	
+	container.add_child(button)
 
+func _on_unit_name_clicked(unit: Dictionary):
+	"""Handle unit name click - open unit view modal"""
+	print("Units Modal: Unit name clicked: %s" % unit.get("name", "unknown"))
+	
+	if not unit_view_modal:
+		print("Units Modal: Creating new unit view modal...")
+		unit_view_modal = preload("res://scripts/ui/unit_view_modal.gd").new(game_ref, position + Vector2(100, 100))
+		print("Units Modal: Unit view modal created successfully")
+		
+		# Add to parent's parent (UI layer) so it's alongside other modals
+		var parent = get_parent()
+		if parent:
+			parent.add_child(unit_view_modal)
+			print("Units Modal: Unit view modal added to parent: %s" % parent.name)
+		else:
+			print("Units Modal: ERROR - No parent found!")
+			return
+	
+	# Update the modal with the selected unit and show it
+	if unit_view_modal.has_method("display_unit"):
+		unit_view_modal.display_unit(unit)
+		print("Units Modal: Unit details displayed for: %s" % unit.get("name", "unknown"))
+	else:
+		print("Units Modal: ERROR - unit_view_modal has no display_unit method!")
+		return
+	
+	unit_view_modal.show()
+	print("Units Modal: Unit view modal shown")
 func _add_unit_cell(container: HBoxContainer, text: String, min_width: int):
 	var label = Label.new()
 	label.text = text
