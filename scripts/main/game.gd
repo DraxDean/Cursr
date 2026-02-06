@@ -78,14 +78,16 @@ var players_data: Dictionary = {
 			"gold": 100,
 			"food": 50,
 			"wood": 25,
-			"stone": 0
+			"stone": 0,
+			"science": 0
 		},
 		"resource_rates": {
 			# Per-day production/consumption rates
 			"gold": 0,
 			"food": 0,
 			"wood": 0,
-			"stone": 0
+			"stone": 0,
+			"science": 0
 		},
 		"population": {
 			"total": 10,  # Base starting population
@@ -346,7 +348,8 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 		"gold": 0,
 		"food": 0,
 		"wood": 0,
-		"stone": 0
+		"stone": 0,
+		"science": 0
 	}
 	
 	if not map_objects_holder:
@@ -372,6 +375,8 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 				rates["stone"] += worker_count * 1  # +1 stone per worker
 			"fishing_hut":
 				rates["food"] += worker_count * 5  # +5 food per worker
+			"town_center":
+				rates["science"] += worker_count * 3  # +3 science per scientist
 			"farm":
 				# Farms are special - will implement later
 				pass
@@ -380,9 +385,6 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 				pass
 			"house", "farmhouse":
 				# Housing doesn't produce resources
-				pass
-			"town_center":
-				# Town center doesn't produce resources
 				pass
 	
 	# Update player data
@@ -398,9 +400,10 @@ func get_resource_rates(player_id: int) -> Dictionary:
 			"gold": 0,
 			"food": 0,
 			"wood": 0,
-			"stone": 0
+			"stone": 0,
+			"science": 0
 		})
-	return {"gold": 0, "food": 0, "wood": 0, "stone": 0}
+	return {"gold": 0, "food": 0, "wood": 0, "stone": 0, "science": 0}
 
 func apply_resource_production(player_id: int):
 	"""Apply resource production based on current rates"""

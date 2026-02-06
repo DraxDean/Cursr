@@ -142,5 +142,8 @@ func _get_building_production_text(building_type: String, worker_count: int) -> 
 		"stoneworker":
 			var stone = worker_count * 1
 			return "Produces: +" + str(stone) + " Stone/day"
+		"town_center":
+			var science = worker_count * 3
+			return "Produces: +" + str(science) + " Science/day"
 		_:
 			return ""

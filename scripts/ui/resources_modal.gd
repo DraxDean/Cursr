@@ -33,6 +33,7 @@ func refresh_content():
 		{"key": "food", "name": "Food", "color": Color.YELLOW},
 		{"key": "wood", "name": "Wood", "color": Color.GREEN},
 		{"key": "stone", "name": "Stone", "color": Color.GRAY},
+		{"key": "science", "name": "Science", "color": Color.CYAN},
 		{"key": "gold", "name": "Gold", "color": Color.GOLD}
 	]
 	

@@ -1190,7 +1190,8 @@ func _get_building_production() -> String:
 		"house":
 			return "Housing (no production)"
 		"town_center":
-			return "Town Center (no production)"
+			var science_production = worker_occupancy * 3  # +3 science per scientist
+			return "+" + str(science_production) + " Science/day (" + str(worker_occupancy) + " scientists)"
 		"barracks":
 			return "Barracks (no production)"
 		"farm":
@@ -1260,6 +1261,8 @@ func _get_living_capacity(building_type: String) -> int:
 
 func _get_worker_capacity(building_type: String) -> int:
 	match building_type:
+		"town_center":
+			return 2  # 2 scientist slots
 		"stoneworker":
 			return 10  # Most work stations employ up to 10
 		"lumberjack":
