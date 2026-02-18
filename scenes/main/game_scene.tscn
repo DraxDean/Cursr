@@ -69,18 +69,6 @@ tile_set = SubResource("TileSet_mixcd")
 
 [node name="UI_Layer" type="CanvasLayer" parent="."]
 
-[node name="MenuButtonContainer" type="MarginContainer" parent="UI_Layer"]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -40.0
-offset_bottom = 40.0
-grow_horizontal = 0
-
-[node name="OpenMenuButton" type="Button" parent="UI_Layer/MenuButtonContainer"]
-layout_mode = 2
-text = "Menu"
-
 [node name="ModalMenuPanel" type="PanelContainer" parent="UI_Layer"]
 visible = false
 anchors_preset = 8

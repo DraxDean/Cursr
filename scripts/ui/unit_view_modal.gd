@@ -6,11 +6,13 @@ var current_unit: Dictionary = {}
 
 func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
 	game_ref = game_reference
-	super("unit_view", "Unit Details", start_position)
+	super("unit_view", "Unit Details: ", start_position)
 
 func display_unit(unit: Dictionary):
 	"""Display details for a specific unit"""
 	current_unit = unit
+	# Update the title with the unit name
+	title_label.text = "Unit Details: " + current_unit.get("name", "Unknown")
 	refresh_content()
 
 func refresh_content():
@@ -24,91 +26,41 @@ func refresh_content():
 		fit_to_content()
 		return
 	
-	# Title - Unit Name
-	var name_label = Label.new()
-	name_label.text = current_unit.get("name", "Unknown")
-	name_label.add_theme_color_override("font_color", Color.CYAN)
-	name_label.add_theme_font_size_override("font_size", 18)
-	add_content_child(name_label)
+	# Title - Unit Details: (name)
+	var title_label = Label.new()
+	title_label.text = "Unit Details: " + current_unit.get("name", "Unknown")
+	title_label.add_theme_color_override("font_color", Color.CYAN)
+	title_label.add_theme_font_size_override("font_size", 18)
+	add_content_child(title_label)
 	
-	# Separator
-	var separator1 = HSeparator.new()
-	add_content_child(separator1)
+	# Type and Race on one line
+	var type_race_label = Label.new()
+	var race = current_unit.get("race", "unknown").to_lower()
+	var unit_type = current_unit.get("type", "unknown").to_lower()
+	type_race_label.text = "%s %s" % [race, unit_type]
+	type_race_label.add_theme_color_override("font_color", Color.YELLOW)
+	type_race_label.add_theme_font_size_override("font_size", 14)
+	add_content_child(type_race_label)
 	
-	# Basic Information
-	var basic_title = Label.new()
-	basic_title.text = "Basic Information"
-	basic_title.add_theme_color_override("font_color", Color.YELLOW)
-	basic_title.add_theme_font_size_override("font_size", 14)
-	add_content_child(basic_title)
+	# Portrait and data container (horizontal layout)
+	var main_container = HBoxContainer.new()
+	add_content_child(main_container)
 	
-	# Unit ID
-	var id_container = HBoxContainer.new()
-	add_content_child(id_container)
-	var id_label = Label.new()
-	id_label.text = "ID: "
-	id_label.add_theme_color_override("font_color", Color.WHITE)
-	id_label.custom_minimum_size = Vector2(80, 20)
-	id_container.add_child(id_label)
-	var id_value = Label.new()
-	id_value.text = current_unit.get("unique_id", "unknown")
-	id_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
-	id_container.add_child(id_value)
+	# Character Portrait
+	var portrait = TextureRect.new()
+	portrait.texture = load("res://assets/portraits/human-portrait-male-peasant-brownhair.png")
+	portrait.expand_mode = TextureRect.EXPAND_FIT_WIDTH
+	portrait.custom_minimum_size = Vector2(120, 150)
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_container.add_child(portrait)
 	
-	# Type
-	var type_container = HBoxContainer.new()
-	add_content_child(type_container)
-	var type_label = Label.new()
-	type_label.text = "Type: "
-	type_label.add_theme_color_override("font_color", Color.WHITE)
-	type_label.custom_minimum_size = Vector2(80, 20)
-	type_container.add_child(type_label)
-	var type_value = Label.new()
-	type_value.text = current_unit.get("type", "unknown")
-	type_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
-	type_container.add_child(type_value)
-	
-	# Race
-	var race_container = HBoxContainer.new()
-	add_content_child(race_container)
-	var race_label = Label.new()
-	race_label.text = "Race: "
-	race_label.add_theme_color_override("font_color", Color.WHITE)
-	race_label.custom_minimum_size = Vector2(80, 20)
-	race_container.add_child(race_label)
-	var race_value = Label.new()
-	race_value.text = current_unit.get("race", "unknown")
-	race_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
-	race_container.add_child(race_value)
-	
-	# Separator
-	var separator2 = HSeparator.new()
-	add_content_child(separator2)
-	
-	# Assignment Information
-	var assignment_title = Label.new()
-	assignment_title.text = "Assignments"
-	assignment_title.add_theme_color_override("font_color", Color.YELLOW)
-	assignment_title.add_theme_font_size_override("font_size", 14)
-	add_content_child(assignment_title)
-	
-	# Living Quarters
-	var living_container = HBoxContainer.new()
-	add_content_child(living_container)
-	var living_label = Label.new()
-	living_label.text = "Living: "
-	living_label.add_theme_color_override("font_color", Color.WHITE)
-	living_label.custom_minimum_size = Vector2(80, 20)
-	living_container.add_child(living_label)
-	var living_value = Label.new()
-	var living_quarters = current_unit.get("living_quarters", null)
-	living_value.text = "None" if living_quarters == null else str(living_quarters)
-	living_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
-	living_container.add_child(living_value)
+	# Data fields container (right side)
+	var data_container = VBoxContainer.new()
+	main_container.add_child(data_container)
 	
 	# Job
 	var job_container = HBoxContainer.new()
-	add_content_child(job_container)
+	data_container.add_child(job_container)
 	var job_label = Label.new()
 	job_label.text = "Job: "
 	job_label.add_theme_color_override("font_color", Color.WHITE)
@@ -120,20 +72,23 @@ func refresh_content():
 	job_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 	job_container.add_child(job_value)
 	
-	# Separator
-	var separator3 = HSeparator.new()
-	add_content_child(separator3)
-	
-	# Movement Information
-	var movement_title = Label.new()
-	movement_title.text = "Movement"
-	movement_title.add_theme_color_override("font_color", Color.YELLOW)
-	movement_title.add_theme_font_size_override("font_size", 14)
-	add_content_child(movement_title)
+	# Living Quarters
+	var living_container = HBoxContainer.new()
+	data_container.add_child(living_container)
+	var living_label = Label.new()
+	living_label.text = "Living: "
+	living_label.add_theme_color_override("font_color", Color.WHITE)
+	living_label.custom_minimum_size = Vector2(80, 20)
+	living_container.add_child(living_label)
+	var living_value = Label.new()
+	var living_quarters = current_unit.get("living_quarters", null)
+	living_value.text = "None" if living_quarters == null else str(living_quarters)
+	living_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+	living_container.add_child(living_value)
 	
 	# Speed Multiplier
 	var speed_container = HBoxContainer.new()
-	add_content_child(speed_container)
+	data_container.add_child(speed_container)
 	var speed_label = Label.new()
 	speed_label.text = "Speed: "
 	speed_label.add_theme_color_override("font_color", Color.WHITE)
@@ -146,18 +101,17 @@ func refresh_content():
 	speed_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 	speed_container.add_child(speed_value)
 	
-	# Position
-	var pos_container = HBoxContainer.new()
-	add_content_child(pos_container)
-	var pos_label = Label.new()
-	pos_label.text = "Position: "
-	pos_label.add_theme_color_override("font_color", Color.WHITE)
-	pos_label.custom_minimum_size = Vector2(80, 20)
-	pos_container.add_child(pos_label)
-	var pos_value = Label.new()
-	var position = current_unit.get("position", Vector2.ZERO)
-	pos_value.text = "%.0f, %.0f" % [position.x, position.y]
-	pos_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
-	pos_container.add_child(pos_value)
+	# Unit ID (underneath everything)
+	var id_container = HBoxContainer.new()
+	add_content_child(id_container)
+	var id_label = Label.new()
+	id_label.text = "ID: "
+	id_label.add_theme_color_override("font_color", Color.WHITE)
+	id_label.custom_minimum_size = Vector2(60, 20)
+	id_container.add_child(id_label)
+	var id_value = Label.new()
+	id_value.text = current_unit.get("unique_id", "unknown")
+	id_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+	id_container.add_child(id_value)
 	
 	fit_to_content()

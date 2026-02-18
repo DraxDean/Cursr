@@ -60,12 +60,16 @@ func refresh_content():
 		_add_unit_cell(row_container, unit.get("type", "unknown"), 70)
 		
 		var living_quarters = unit.get("living_quarters", null)
-		var living_text = "None" if living_quarters == null else str(living_quarters)
-		_add_unit_cell(row_container, living_text, 90)
+		if living_quarters == null:
+			_add_unit_cell(row_container, "None", 90)
+		else:
+			_add_clickable_building_cell(row_container, str(living_quarters), 90)
 		
 		var job = unit.get("job", null)
-		var job_text = "Unemployed" if job == null else str(job)
-		_add_unit_cell(row_container, job_text, 70)
+		if job == null:
+			_add_unit_cell(row_container, "Unemployed", 70)
+		else:
+			_add_clickable_building_cell(row_container, str(job), 70)
 		
 		var speed_mult = unit.get("speed_multiplier", 1.0)
 		var speed_percent = int(speed_mult * 100)
@@ -144,3 +148,89 @@ func _add_unit_cell(container: HBoxContainer, text: String, min_width: int):
 	label.add_theme_font_size_override("font_size", 11)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	container.add_child(label)
+
+func _add_clickable_building_cell(container: HBoxContainer, building_name: String, min_width: int):
+	"""Add a clickable building cell with icon"""
+	# Create a sub-container for icon + name
+	var building_container = HBoxContainer.new()
+	building_container.custom_minimum_size = Vector2(min_width, 20)
+	container.add_child(building_container)
+	
+	# Get building type and icon
+	var building_type = _get_building_type_from_name(building_name)
+	var icon = _get_building_icon(building_type)
+	
+	# Add icon
+	var icon_label = Label.new()
+	icon_label.text = icon
+	icon_label.custom_minimum_size = Vector2(20, 20)
+	icon_label.add_theme_color_override("font_color", Color.WHITE)
+	building_container.add_child(icon_label)
+	
+	# Add clickable building name
+	var button = Button.new()
+	button.text = building_name
+	button.custom_minimum_size = Vector2(50, 20)
+	button.add_theme_color_override("font_color", Color.CYAN)
+	button.add_theme_font_size_override("font_size", 11)
+	button.flat = true
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	
+	# Store building name in metadata for the click handler
+	button.set_meta("building_name", building_name)
+	button.pressed.connect(_on_building_clicked.bindv([building_name]))
+	
+	building_container.add_child(button)
+
+func _on_building_clicked(building_name: String):
+	"""Handle building click - open building details modal"""
+	print("Units Modal: Building clicked: %s" % building_name)
+	
+	# Find the building node in the map
+	if game_ref and game_ref.has_node("MapObjects"):
+		var map_objects_holder = game_ref.get_node("MapObjects")
+		var building = map_objects_holder.get_node_or_null(building_name)
+		
+		if building and game_ref.has_method("_open_building_details_modal"):
+			game_ref._open_building_details_modal(building)
+			print("Units Modal: Opened building details for: %s" % building_name)
+		else:
+			print("Units Modal: Could not find building '%s' or method not available" % building_name)
+	else:
+		print("Units Modal: Could not access map objects")
+
+func _get_building_type_from_name(building_name: String) -> String:
+	"""Extract the building type from the building name - use game_ref method if available"""
+	if game_ref and game_ref.has_method("_extract_building_type_from_name"):
+		return game_ref._extract_building_type_from_name(building_name)
+	
+	# Fallback implementation
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "house", "barracks", "farm", "farmhouse"]
+	for building_type in building_types:
+		if building_name.contains(building_type):
+			return building_type
+	return "unknown_building"
+
+func _get_building_icon(building_type: String) -> String:
+	"""Get emoji icon for building type"""
+	match building_type:
+		"town_center":
+			return "🏛️"
+		"house":
+			return "🏠"
+		"barracks":
+			return "⚔️"
+		"fishing_hut":
+			return "🎣"
+		"farmhouse":
+			return "🏘️"
+		"farm":
+			return "🌾"
+		"lumberjack":
+			return "🌲"
+		"lumber_mill":
+			return "🏭"
+		"stoneworker":
+			return "⛏️"
+		_:
+			return "🏗️"

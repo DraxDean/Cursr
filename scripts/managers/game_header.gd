@@ -58,16 +58,16 @@ func _setup_header_ui():
 	
 	# Info buttons
 	players_button = _create_info_button("Players")
-	units_button = _create_info_button("Units")
 	resources_button = _create_info_button("Resources")
 	buildings_button = _create_info_button("Buildings")
+	units_button = _create_info_button("Units")
 	population_button = _create_info_button("Population")
 	army_button = _create_info_button("Army")
 	
 	left_container.add_child(players_button)
-	left_container.add_child(units_button)
 	left_container.add_child(resources_button)
 	left_container.add_child(buildings_button)
+	left_container.add_child(units_button)
 	left_container.add_child(population_button)
 	left_container.add_child(army_button)
 	

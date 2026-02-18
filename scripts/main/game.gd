@@ -1270,7 +1270,6 @@ func _ready():
 
 	print("Game: Setting up UIManager...")
 	var ui_nodes = { # Verify these paths carefully!
-		"open_menu_button": $UI_Layer/MenuButtonContainer/OpenMenuButton,
 		"modal_menu_panel": $UI_Layer/ModalMenuPanel,
 		"world_creation_panel": $UI_Layer/WorldCreationPanel,
 		"load_button": $UI_Layer/ModalMenuPanel/ModalButtonsVBox/LoadButton,
@@ -1311,9 +1310,6 @@ func _ready():
 	print("Game: Connecting signals...")
 	# Connect UI buttons to UIManager requests / TurnManager
 	# Using get_node for safety in case @onready vars haven't resolved (unlikely but safe)
-	var open_btn = get_node_or_null("UI_Layer/MenuButtonContainer/OpenMenuButton")
-	if open_btn: open_btn.pressed.connect(ui_manager.open_main_modal)
-	else: push_error("Game: OpenMenuButton not found for connection.")
 
 	var return_btn = get_node_or_null("UI_Layer/ModalMenuPanel/ModalButtonsVBox/ReturnButton")
 	if return_btn: return_btn.pressed.connect(ui_manager.close_main_modal)
@@ -2592,7 +2588,6 @@ func _start_world_creation_mode():
 	add_child(world_creator)
 	
 	# Hide normal UI elements
-	$UI_Layer/MenuButtonContainer.hide()
 	$UI_Layer/TurnControlsContainer.hide()
 	
 	# Setup world creator with direct UI control
