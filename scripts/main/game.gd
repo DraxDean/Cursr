@@ -60,6 +60,7 @@ var building_counter: Dictionary = {}  # Track building counts for unique IDs
 var unit_counter: int = 0  # Track unit counts for unique IDs
 var buildings_connections_cache: Dictionary = {}  # Cache for building-to-building connections with paths (no recalculation)
 var unit_movement_paused: bool = false  # Pause unit movement paths
+var unit_movement_speed: float = 1.0  # Speed multiplier for unit movement (0.5 = half speed, 2.0 = double speed)
 
 # Name System - for generating unique unit names by race
 var race_names: Dictionary = {}  # Caches loaded names: {"human": {"given": [], "surnames": []}, "elf": {...}}
@@ -2217,6 +2218,9 @@ func _update_unit_movements(delta: float):
 	if unit_movement_paused:
 		return
 	
+	# Apply speed multiplier to delta
+	var adjusted_delta = delta * unit_movement_speed
+	
 	for player_id in players_data:
 		if str(player_id) == "environment":
 			continue
@@ -2234,7 +2238,7 @@ func _update_unit_movements(delta: float):
 			if not unit_sprite:
 				continue
 			
-			_process_unit_movement(unit, unit_sprite, delta)
+			_process_unit_movement(unit, unit_sprite, adjusted_delta)
 
 func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 	"""Process movement for a single unit"""
@@ -2908,7 +2912,9 @@ func _setup_game_footer():
 	
 	# Connect footer signals
 	game_footer.build_pressed.connect(_on_build_pressed)
+	game_footer.slow_pressed.connect(_on_slow_pressed)
 	game_footer.pause_pressed.connect(_on_pause_pressed)
+	game_footer.speedup_pressed.connect(_on_speedup_pressed)
 	game_footer.end_day_pressed.connect(_on_end_day_pressed)
 	
 	# Set initial day label
@@ -2983,11 +2989,21 @@ func _on_build_pressed():
 func _on_pause_pressed():
 	unit_movement_paused = !unit_movement_paused
 	if unit_movement_paused:
-		game_footer.pause_button.text = "▶ Resume"
+		game_footer.pause_button.text = "▶"
 		print("Game: Unit movement paused")
 	else:
-		game_footer.pause_button.text = "⏸ Pause"
+		game_footer.pause_button.text = "II"
 		print("Game: Unit movement resumed")
+
+func _on_slow_pressed():
+	# Decrease speed by 0.25x, minimum 0.25x
+	unit_movement_speed = maxf(unit_movement_speed - 0.25, 0.25)
+	print("Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed)
+
+func _on_speedup_pressed():
+	# Increase speed by 0.25x, maximum 4.0x
+	unit_movement_speed = minf(unit_movement_speed + 0.25, 4.0)
+	print("Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed)
 
 func _open_build_selection_modal():
 	# Create build selection modal if it doesn't exist

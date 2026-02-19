@@ -3,13 +3,17 @@ extends Control
 
 # UI Components
 var build_button: Button
+var slow_button: Button
 var pause_button: Button
+var speedup_button: Button
 var end_day_button: Button
 var day_label: Label
 
 # Signals for button presses
 signal build_pressed
+signal slow_pressed
 signal pause_pressed
+signal speedup_pressed
 signal end_day_pressed
 
 func _init():
@@ -82,13 +86,37 @@ func _setup_footer():
 	day_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	right_container.add_child(day_label)
 	
-	# Pause button
+	# Speed control buttons container
+	var speed_controls = HBoxContainer.new()
+	speed_controls.add_theme_constant_override("separation", 5)
+	right_container.add_child(speed_controls)
+	
+	# Slow button
+	slow_button = Button.new()
+	slow_button.text = "<<"
+	slow_button.custom_minimum_size = Vector2(40, 30)
+	slow_button.flat = false
+	slow_button.tooltip_text = "Slow Down"
+	slow_button.pressed.connect(_on_slow_pressed)
+	speed_controls.add_child(slow_button)
+	
+	# Pause/Resume button
 	pause_button = Button.new()
-	pause_button.text = "⏸ Pause"
-	pause_button.custom_minimum_size = Vector2(100, 30)
+	pause_button.text = "II"
+	pause_button.custom_minimum_size = Vector2(40, 30)
 	pause_button.flat = false
+	pause_button.tooltip_text = "Pause"
 	pause_button.pressed.connect(_on_pause_pressed)
-	right_container.add_child(pause_button)
+	speed_controls.add_child(pause_button)
+	
+	# Speed up button
+	speedup_button = Button.new()
+	speedup_button.text = ">>"
+	speedup_button.custom_minimum_size = Vector2(40, 30)
+	speedup_button.flat = false
+	speedup_button.tooltip_text = "Speed Up"
+	speedup_button.pressed.connect(_on_speedup_pressed)
+	speed_controls.add_child(speedup_button)
 	
 	# End day button
 	end_day_button = Button.new()
@@ -101,8 +129,14 @@ func _setup_footer():
 func _on_build_pressed():
 	build_pressed.emit()
 
+func _on_slow_pressed():
+	slow_pressed.emit()
+
 func _on_pause_pressed():
 	pause_pressed.emit()
+
+func _on_speedup_pressed():
+	speedup_pressed.emit()
 
 func _on_end_day_pressed():
 	end_day_pressed.emit()
