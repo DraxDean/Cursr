@@ -3,11 +3,13 @@ extends Control
 signal close_requested
 signal demolish_confirmed(building_data: Dictionary)
 
+var modal_type: String = "building_details"
 var building_node: Node2D
 var building_data: Dictionary
 var is_dragging: bool = false
 var drag_offset: Vector2
 var title_label: Label
+var _registered_with_ui_manager: bool = false  # Track registration state
 var connection_lines: Array = []  # Store Line2D nodes for visual connections
 var is_showing_connections: bool = false
 var camera_controller: Node
@@ -20,7 +22,12 @@ func _ready():
 	print("Building Details Modal: _setup_modal() completed")
 	
 	# Connect visibility changes to clear lines when hidden
+	# This will also trigger the parent's _on_modal_visibility_changed
 	visibility_changed.connect(_on_visibility_changed)
+	
+	# Manually register since visibility = true during _ready() may not trigger the signal
+	print("BuildingDetailsModal: Manually registering in _ready()")
+	_register_with_ui_manager()
 
 func _process(_delta):
 	# Only check for redraw needs, don't update every frame
@@ -30,6 +37,15 @@ func _process(_delta):
 			_redraw_connections()
 
 func _on_visibility_changed():
+	# Handle modal stack registration/unregistration
+	if visible:
+		print("BuildingDetailsModal: Visibility changed to true, registering with UI manager")
+		_register_with_ui_manager()
+	else:
+		print("BuildingDetailsModal: Visibility changed to false, unregistering from UI manager")
+		_unregister_from_ui_manager()
+	
+	# Handle connection lines visibility
 	if not visible:
 		is_showing_connections = false
 		_clear_connection_lines()
@@ -1299,6 +1315,53 @@ func _on_close_pressed():
 	_clear_connection_lines()
 	close_requested.emit()
 	queue_free()
+
+func _register_with_ui_manager():
+	"""Register this modal with the UI manager's modal stack"""
+	if _registered_with_ui_manager:
+		print("BuildingDetailsModal: Already registered with UI manager")
+		return  # Already registered
+	var ui_manager = _get_ui_manager()
+	if ui_manager and ui_manager.has_method("push_modal"):
+		ui_manager.push_modal(self)
+		_registered_with_ui_manager = true
+		print("BuildingDetailsModal: Successfully registered with UI manager")
+	else:
+		print("BuildingDetailsModal: Failed to register - UI manager not found or no push_modal method")
+
+func _unregister_from_ui_manager():
+	"""Unregister this modal from the UI manager's modal stack"""
+	if not _registered_with_ui_manager:
+		print("BuildingDetailsModal: Not registered, skipping unregister")
+		return  # Not registered
+	var ui_manager = _get_ui_manager()
+	if ui_manager and ui_manager.has_method("pop_modal"):
+		ui_manager.pop_modal(self)
+		_registered_with_ui_manager = false
+		print("BuildingDetailsModal: Successfully unregistered from UI manager")
+	else:
+		print("BuildingDetailsModal: Failed to unregister - UI manager not found")
+
+func _get_ui_manager():
+	"""Get reference to UI manager from game node"""
+	# Try to get from game node's meta
+	var current = get_parent()
+	while current:
+		if current.has_meta("ui_manager"):
+			print("BuildingDetailsModal: Found UI manager via metadata")
+			return current.get_meta("ui_manager")
+		current = current.get_parent()
+	
+	# Fallback: try to find UIManager node
+	if get_parent():
+		var ui_mgr = get_parent().get_node_or_null("UIManager")
+		if ui_mgr:
+			print("BuildingDetailsModal: Found UI manager via node lookup")
+			return ui_mgr
+	
+	print("BuildingDetailsModal: Failed to find UI manager")
+	return null
+	return null
 
 func _on_upgrade_pressed():
 	var building_name = building_data.get("name", "Unknown")

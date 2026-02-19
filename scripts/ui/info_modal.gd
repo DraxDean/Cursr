@@ -7,6 +7,7 @@ var modal_type: String = ""
 var is_open: bool = false
 var is_dragging: bool = false
 var drag_offset: Vector2 = Vector2.ZERO
+var _registered_with_ui_manager: bool = false  # Track registration state
 
 # UI Components
 var background_panel: Panel
@@ -42,6 +43,9 @@ func _ready():
 		if modal_type == "build_selection":
 			custom_minimum_size = Vector2(viewport_size.x * 0.35, viewport_size.y * 0.5)
 			size = custom_minimum_size
+	
+	# Connect to visibility changes to manage modal stack
+	visibility_changed.connect(_on_modal_visibility_changed)
 
 func _setup_ui(title: String):
 	# Semi-transparent background panel - fill the entire control
@@ -142,6 +146,48 @@ func close_modal():
 	is_open = false
 	visible = false
 	modal_closed.emit(modal_type)
+
+func _register_with_ui_manager():
+	"""Register this modal with the UI manager's modal stack"""
+	if _registered_with_ui_manager:
+		return  # Already registered
+	var ui_manager = _get_ui_manager()
+	if ui_manager and ui_manager.has_method("push_modal"):
+		ui_manager.push_modal(self)
+		_registered_with_ui_manager = true
+
+func _unregister_from_ui_manager():
+	"""Unregister this modal from the UI manager's modal stack"""
+	if not _registered_with_ui_manager:
+		return  # Not registered
+	var ui_manager = _get_ui_manager()
+	if ui_manager and ui_manager.has_method("pop_modal"):
+		ui_manager.pop_modal(self)
+	_registered_with_ui_manager = false
+
+func _on_modal_visibility_changed():
+	"""Handle visibility changes - register/unregister based on visibility"""
+	if visible:
+		_register_with_ui_manager()
+	else:
+		_unregister_from_ui_manager()
+
+func _get_ui_manager():
+	"""Get reference to UI manager from game node"""
+	# Try to get from game node's meta
+	var current = get_parent()
+	while current:
+		if current.has_meta("ui_manager"):
+			return current.get_meta("ui_manager")
+		current = current.get_parent()
+	
+	# Fallback: try to find UIManager node
+	if get_parent():
+		var ui_mgr = get_parent().get_node_or_null("UIManager")
+		if ui_mgr:
+			return ui_mgr
+	
+	return null
 
 func _on_close_pressed():
 	close_modal()

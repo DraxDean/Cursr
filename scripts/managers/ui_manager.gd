@@ -14,6 +14,7 @@ var confirm_cancel_button: Button
 
 # State
 var _pending_action: String = "" # "quit", "main_menu"
+var modal_stack: Array = [] # Stack of open modals (LIFO)
 
 # Constants
 const MAIN_MENU_SCENE_PATH = "res://scenes/main/main_menu_scene.tscn" # Keep consistent
@@ -203,16 +204,68 @@ func _perform_action(action_name: String):
 		push_warning("UIManager: Tried to perform unknown pending action: %s" % action_to_perform)
 
 
-# Handle Esc key presses to toggle menu
+# Handle Esc key presses to close modals in stack or toggle menu
 func handle_escape():
+	# If there are modals in the stack, close the top one
+	if modal_stack.size() > 0:
+		var top_modal = modal_stack[modal_stack.size() - 1]
+		if is_instance_valid(top_modal):
+			var modal_type = top_modal.get("modal_type") if top_modal.has_meta("modal_type") or "modal_type" in top_modal else "unknown"
+			var script_name = top_modal.get_script().get_path().get_file().trim_suffix(".gd") if top_modal.get_script() else "no_script"
+			print("UIManager: ESC pressed - Closing modal. Type: %s | Script: %s" % [modal_type, script_name])
+			
+			# Try to close the modal using a close method
+			if top_modal.has_method("close_modal"):
+				top_modal.close_modal()
+			elif top_modal.has_method("toggle"):
+				top_modal.toggle()
+			elif "visible" in top_modal:
+				top_modal.visible = false
+			# Note: The visibility change signal will handle the actual stack removal
+			return
+	
+	# Fall back to default behavior for main modal/confirmation
 	var modal_visible = is_instance_valid(modal_menu_panel) and (modal_menu_panel.visible or modal_menu_panel.is_visible_in_tree())
 	var confirm_visible = is_instance_valid(confirmation_panel) and (confirmation_panel.visible or confirmation_panel.is_visible_in_tree())
 	if confirm_visible:
+		print("UIManager: ESC pressed - Closing confirmation panel")
 		_on_confirm_cancel()
 	elif modal_visible:
+		print("UIManager: ESC pressed - Closing main modal")
 		close_main_modal()
 	else: # If no modals are open, open the main one
+		print("UIManager: ESC pressed - Opening main modal")
 		open_main_modal()
+
+# Register a modal with the modal stack
+func push_modal(modal: Control):
+	"""Add a modal to the stack. Call this when a modal opens."""
+	if modal and not modal in modal_stack:
+		modal_stack.append(modal)
+		var modal_type = modal.get("modal_type") if modal.has_meta("modal_type") or "modal_type" in modal else "unknown"
+		var script_name = modal.get_script().get_path().get_file().trim_suffix(".gd") if modal.get_script() else "no_script"
+		var node_name = modal.name if modal.name else "unnamed"
+		print("UIManager: Modal added to stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()])
+
+# Unregister a modal from the modal stack
+func pop_modal(modal: Control = null):
+	"""Remove a modal from the stack. Call this when a modal closes."""
+	if modal:
+		# Remove specific modal
+		if modal in modal_stack:
+			var modal_type = modal.get("modal_type") if modal.has_meta("modal_type") or "modal_type" in modal else "unknown"
+			var script_name = modal.get_script().get_path().get_file().trim_suffix(".gd") if modal.get_script() else "no_script"
+			var node_name = modal.name if modal.name else "unnamed"
+			modal_stack.erase(modal)
+			print("UIManager: Modal removed from stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()])
+	elif modal_stack.size() > 0:
+		# Remove top modal
+		var top_modal = modal_stack.back()
+		var modal_type = top_modal.get("modal_type") if top_modal.has_meta("modal_type") or "modal_type" in top_modal else "unknown"
+		var script_name = top_modal.get_script().get_path().get_file().trim_suffix(".gd") if top_modal.get_script() else "no_script"
+		var node_name = top_modal.name if top_modal.name else "unnamed"
+		modal_stack.pop_back()
+		print("UIManager: Top modal removed from stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()])
 
 # Handle GUI input on modal panel (for direct ESC key handling)
 func _on_modal_gui_input(event: InputEvent):

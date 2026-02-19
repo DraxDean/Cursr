@@ -59,6 +59,7 @@ var building_outline_material: ShaderMaterial
 var building_counter: Dictionary = {}  # Track building counts for unique IDs
 var unit_counter: int = 0  # Track unit counts for unique IDs
 var buildings_connections_cache: Dictionary = {}  # Cache for building-to-building connections with paths (no recalculation)
+var unit_movement_paused: bool = false  # Pause unit movement paths
 
 # Name System - for generating unique unit names by race
 var race_names: Dictionary = {}  # Caches loaded names: {"human": {"given": [], "surnames": []}, "elf": {...}}
@@ -1280,6 +1281,8 @@ func _ready():
 		"confirm_cancel_button": $UI_Layer/ConfirmationPanel/VBoxContainer/HBoxContainer/ConfirmCancelButton,
 	}
 	ui_manager.setup(ui_nodes)
+	# Store ui_manager reference for modals to access
+	set_meta("ui_manager", ui_manager)
 
 	print("Game: Setting up MapObjectManager...")
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3); var ocean_coords = Vector2i(0, 2) # Corrected coords
@@ -1297,9 +1300,6 @@ func _ready():
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
 	if not is_instance_valid(day_label): push_error("Game: Day counter label node not found!")
 	turn_manager.setup(day_label)
-	
-	# Hide the old turn controls container since controls are now in resources modal footer
-	$UI_Layer/TurnControlsContainer.hide()
 	
 	# Load preview textures for building placement
 	# Create simple colored rectangles for overlays since we don't have overlay assets
@@ -2211,6 +2211,10 @@ func _get_building_max_capacity(building_type: String, capacity_type: String) ->
 
 func _update_unit_movements(delta: float):
 	"""Update all unit movements each frame"""
+	# Skip if unit movement is paused
+	if unit_movement_paused:
+		return
+	
 	for player_id in players_data:
 		if str(player_id) == "environment":
 			continue
@@ -2902,6 +2906,7 @@ func _setup_game_footer():
 	
 	# Connect footer signals
 	game_footer.build_pressed.connect(_on_build_pressed)
+	game_footer.pause_pressed.connect(_on_pause_pressed)
 	game_footer.end_day_pressed.connect(_on_end_day_pressed)
 	
 	# Set initial day label
@@ -2972,6 +2977,15 @@ func _on_end_day_pressed():
 func _on_build_pressed():
 	print("Game: Build button pressed")
 	_open_build_selection_modal()
+
+func _on_pause_pressed():
+	unit_movement_paused = !unit_movement_paused
+	if unit_movement_paused:
+		game_footer.pause_button.text = "▶ Resume"
+		print("Game: Unit movement paused")
+	else:
+		game_footer.pause_button.text = "⏸ Pause"
+		print("Game: Unit movement resumed")
 
 func _open_build_selection_modal():
 	# Create build selection modal if it doesn't exist

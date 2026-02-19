@@ -3,11 +3,13 @@ extends Control
 
 # UI Components
 var build_button: Button
+var pause_button: Button
 var end_day_button: Button
 var day_label: Label
 
 # Signals for button presses
 signal build_pressed
+signal pause_pressed
 signal end_day_pressed
 
 func _init():
@@ -80,6 +82,14 @@ func _setup_footer():
 	day_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	right_container.add_child(day_label)
 	
+	# Pause button
+	pause_button = Button.new()
+	pause_button.text = "⏸ Pause"
+	pause_button.custom_minimum_size = Vector2(100, 30)
+	pause_button.flat = false
+	pause_button.pressed.connect(_on_pause_pressed)
+	right_container.add_child(pause_button)
+	
 	# End day button
 	end_day_button = Button.new()
 	end_day_button.text = "End Day"
@@ -90,6 +100,9 @@ func _setup_footer():
 
 func _on_build_pressed():
 	build_pressed.emit()
+
+func _on_pause_pressed():
+	pause_pressed.emit()
 
 func _on_end_day_pressed():
 	end_day_pressed.emit()
