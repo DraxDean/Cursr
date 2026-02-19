@@ -1736,8 +1736,8 @@ func _load_race_names():
 			var names_array = content.split("\n")
 			# Filter out empty strings
 			var filtered_names = []
-			for name in names_array:
-				var trimmed = name.strip_edges()
+			for name_item in names_array:
+				var trimmed = name_item.strip_edges()
 				if not trimmed.is_empty():
 					filtered_names.append(trimmed)
 			race_names[race]["given"] = filtered_names
@@ -2020,6 +2020,26 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		
 		# Track bidirectional mapping
 		unit_sprite.set_meta("unit_id", unit_id)  # Sprite knows which unit it belongs to
+		unit_sprite.set_meta("unit_data", unit)  # Store reference to unit data dictionary
+		
+		# Create clickable area for the unit sprite using a Control node for proper input detection
+		var click_control = Control.new()
+		click_control.name = unit_id + "_clickable"
+		click_control.set_meta("unit_id", unit_id)
+		click_control.set_meta("unit_data", unit)
+		click_control.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow mouse to pass through when not hovering
+		
+		# Set size and centered position relative to sprite
+		click_control.size = Vector2(40, 40)
+		click_control.position = Vector2(-20, -20)  # Center on sprite position
+		
+		# Connect mouse input detection
+		click_control.gui_input.connect(_on_unit_control_gui_input.bindv([unit]))
+		click_control.mouse_entered.connect(_on_unit_mouse_entered.bindv([unit]))
+		click_control.mouse_exited.connect(_on_unit_mouse_exited.bindv([unit]))
+		
+
+		unit_sprite.add_child(click_control)
 		
 		if map_objects_holder:
 			map_objects_holder.add_child(unit_sprite)
@@ -3004,6 +3024,67 @@ func _on_speedup_pressed():
 	# Increase speed by 0.25x, maximum 4.0x
 	unit_movement_speed = minf(unit_movement_speed + 0.25, 4.0)
 	print("Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed)
+
+func _on_unit_control_gui_input(event: InputEvent, unit: Dictionary):
+	"""Handle unit control GUI input - open unit details modal on left click"""
+	# Only handle mouse button click events
+	if not event is InputEventMouseButton:
+		return
+	
+	if not event.pressed or event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	
+	_open_unit_details_modal(unit)
+	get_tree().root.set_input_as_handled()
+
+func _on_unit_mouse_entered(unit: Dictionary):
+	"""Visual feedback when mouse enters unit clickable area"""
+	pass
+
+func _on_unit_mouse_exited(unit: Dictionary):
+	"""Visual feedback when mouse leaves unit clickable area"""
+	pass
+
+func _on_unit_sprite_input(event: InputEvent, unit: Dictionary):
+	"""Handle unit sprite input - open unit details modal on left click"""
+	print("DEBUG: Unit sprite input event detected for %s: %s" % [unit.get("name", "unknown"), event])
+	
+	# Only handle mouse button click events
+	if not event is InputEventMouseButton:
+		print("DEBUG: Event is not a mouse button event, ignoring")
+		return
+	
+	print("DEBUG: Mouse button event detected for %s - button: %d, pressed: %s" % [unit.get("name", "unknown"), event.button_index, event.pressed])
+	
+	if not event.pressed or event.button_index != MOUSE_BUTTON_LEFT:
+		print("DEBUG: Not a left mouse button press, ignoring")
+		return
+	
+	print("Game: Unit sprite clicked: %s" % unit.get("name", "unknown"))
+	_open_unit_details_modal(unit)
+	get_tree().root.set_input_as_handled()
+
+func _open_unit_details_modal(unit: Dictionary):
+	"""Open the unit details modal for the specified unit"""
+	print("Game: Opening unit details modal for: %s" % unit.get("name", "unknown"))
+	
+	# Create unit view modal if it doesn't exist yet
+	var unit_view_modal
+	if not has_meta("unit_view_modal"):
+		unit_view_modal = preload("res://scripts/ui/unit_view_modal.gd").new(self, Vector2(200, 100))
+		set_meta("unit_view_modal", unit_view_modal)
+		ui_layer.add_child(unit_view_modal)
+		print("Game: Unit view modal created")
+	else:
+		unit_view_modal = get_meta("unit_view_modal")
+	
+	# Update modal with unit data and display it
+	if unit_view_modal.has_method("display_unit"):
+		unit_view_modal.display_unit(unit)
+		unit_view_modal.show()
+		print("Game: Unit details modal displayed for: %s" % unit.get("name", "unknown"))
+	else:
+		print("Game: ERROR - unit_view_modal has no display_unit method!")
 
 func _open_build_selection_modal():
 	# Create build selection modal if it doesn't exist
