@@ -289,6 +289,7 @@ func _create_connections_section() -> Control:
 	return section
 
 func setup_building_details(building: Node2D):
+	print("BuildingDetailsModal: setup_building_details() called for building: %s" % building.name)
 	building_node = building
 	building_data = _extract_building_data(building)
 	
@@ -318,9 +319,11 @@ func setup_building_details(building: Node2D):
 	title_label.text = "Building Details: " + building_id
 	
 	# Draw connection lines on the map
+	print("BuildingDetailsModal: Calling _draw_connection_lines()")
 	_draw_connection_lines()
 	
 	_populate_building_info()
+	print("BuildingDetailsModal: setup_building_details() completed")
 
 func _extract_building_data(building: Node2D) -> Dictionary:
 	var data = {}
@@ -800,24 +803,32 @@ func _update_line_positions():
 
 func _draw_connection_lines():
 	# Clear existing connection lines first
+	print("BuildingDetailsModal: _draw_connection_lines() called. Clearing %d existing lines" % connection_lines.size())
 	_clear_connection_lines()
 	
 	if not building_node:
+		print("BuildingDetailsModal: No building_node, skipping connection lines")
 		return
-		
+	
+	print("BuildingDetailsModal: Setting is_showing_connections = true and calling _redraw_connections()")
 	is_showing_connections = true
 	_redraw_connections()
 
 func _redraw_connections():
 	if not building_node or not is_showing_connections:
+		print("BuildingDetailsModal: _redraw_connections() skipped - building_node exists: %s, is_showing_connections: %s" % [building_node != null, is_showing_connections])
 		return
-		
+	
+	print("BuildingDetailsModal: _redraw_connections() called. Current lines on screen: %d" % connection_lines.size())
+	
 	var game_node = building_node.get_parent().get_parent()
 	var tilemap = game_node.get_node_or_null("TileMapLayer")
 	if not tilemap:
+		print("BuildingDetailsModal: TileMapLayer not found!")
 		return
-		
+	
 	var connections = building_data.get("connections", [])
+	print("BuildingDetailsModal: Redrawing %d connections" % connections.size())
 	var building_tile_coords = tilemap.local_to_map(building_node.position)
 	
 	# Colors for different connection types (more visible colors)
@@ -923,11 +934,13 @@ func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
 		"color": color,
 		"line": line
 	})
+	print("BuildingDetailsModal: Drew path on tilemap. Total lines: %d | Path length: %d" % [connection_lines.size(), path.size()])
 	
 	print("Drew connection line with ", path.size(), " points in ", color)
 
 func _clear_connection_lines():
 	# Remove all Line2D nodes from the scene
+	print("BuildingDetailsModal: Clearing %d connection lines" % connection_lines.size())
 	for line in connection_lines:
 		if is_instance_valid(line):
 			line.queue_free()
@@ -935,7 +948,7 @@ func _clear_connection_lines():
 	connection_lines.clear()
 	connection_paths.clear()
 	is_showing_connections = false
-	print("Cleared connection lines")
+	print("BuildingDetailsModal: Cleared all connection lines")
 
 func clear_all_connections():
 	# Public function to clear connections from outside
@@ -1328,6 +1341,12 @@ func _register_with_ui_manager():
 		print("BuildingDetailsModal: Successfully registered with UI manager")
 	else:
 		print("BuildingDetailsModal: Failed to register - UI manager not found or no push_modal method")
+
+func close_modal():
+	"""Close the modal and clear all visual elements"""
+	print("BuildingDetailsModal: close_modal() called - clearing connection lines")
+	_clear_connection_lines()
+	visible = false
 
 func _unregister_from_ui_manager():
 	"""Unregister this modal from the UI manager's modal stack"""

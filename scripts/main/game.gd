@@ -1105,8 +1105,10 @@ func _clear_building_selection():
 	selected_building = null
 
 func _open_building_details_modal(building: Node2D):
-	# Close existing modal if open
+	# Close and cleanup existing modal if open
 	if building_details_modal:
+		print("Game: Closing old building details modal before opening new one")
+		building_details_modal.close_modal()  # This clears lines and unregisters from stack
 		building_details_modal.queue_free()
 	
 	# Create new building details modal properly
