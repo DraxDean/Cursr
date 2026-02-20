@@ -368,9 +368,13 @@ func _extract_building_data(building: Node2D) -> Dictionary:
 	data["building_type"] = building.get_meta("building_type", "unknown")
 	data["construction_day"] = building.get_meta("construction_day", 0)
 	
-	# Get occupancy data
-	data["living_occupancy"] = building.get_meta("living_occupancy", 0)
-	data["worker_occupancy"] = building.get_meta("worker_occupancy", 0)
+	# Get occupancy data based on building type
+	if data["building_type"] == "barracks":
+		data["station_occupancy"] = building.get_meta("station_occupancy", 0)
+		data["training_occupancy"] = building.get_meta("training_occupancy", 0)
+	else:
+		data["living_occupancy"] = building.get_meta("living_occupancy", 0)
+		data["worker_occupancy"] = building.get_meta("worker_occupancy", 0)
 	
 	# Get texture from sprite child if available
 	if building.has_node("Sprite2D"):
@@ -1210,16 +1214,23 @@ func _populate_building_info():
 			child.queue_free()
 		
 		var building_type = building_data.get("building_type", "unknown")
+		print("UI DEBUG: Populating capacity section for building_type: ", building_type)
 		
-		# Living capacity controls
-		var living_capacity = _get_living_capacity(building_type)
-		if living_capacity > 0:
-			_create_capacity_control(capacity_container, "Living Capacity:", living_capacity, "living")
-		
-		# Worker capacity controls
-		var worker_capacity = _get_worker_capacity(building_type)
-		if worker_capacity > 0:
-			_create_capacity_control(capacity_container, "Worker Capacity:", worker_capacity, "worker")
+		# Barracks uses station and training job types
+		if building_type == "barracks":
+			print("UI DEBUG: Creating barracks capacity controls")
+			_create_capacity_control(capacity_container, "Station:", 5, "station")
+			_create_capacity_control(capacity_container, "Training:", 5, "training")
+		else:
+			# Living capacity controls
+			var living_capacity = _get_living_capacity(building_type)
+			if living_capacity > 0:
+				_create_capacity_control(capacity_container, "Living Capacity:", living_capacity, "living")
+			
+			# Worker capacity controls
+			var worker_capacity = _get_worker_capacity(building_type)
+			if worker_capacity > 0:
+				_create_capacity_control(capacity_container, "Worker Capacity:", worker_capacity, "worker")
 	
 	# Populate connections section
 	if connections_container:
@@ -1386,7 +1397,7 @@ func _get_living_capacity(building_type: String) -> int:
 		"farmhouse":
 			return 2  # Small farmhouse living quarters
 		"barracks":
-			return 5  # 5 soldiers per barracks
+			return 0  # Barracks uses station/training job types instead
 		_:
 			return 0
 
@@ -1561,6 +1572,8 @@ func _find_node_recursive(node: Node, target_name: String) -> Node:
 
 func _create_capacity_control(parent: Container, label_text: String, max_capacity: int, capacity_type: String):
 	# Create horizontal container for the capacity control
+	print("UI DEBUG: Creating capacity control - label: ", label_text, " type: ", capacity_type, " max: ", max_capacity)
+	
 	var control_row = HBoxContainer.new()
 	control_row.add_theme_constant_override("separation", 10)
 	parent.add_child(control_row)
@@ -1601,19 +1614,26 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 	capacity_label.set_meta("max_value", max_capacity)
 	capacity_label.set_meta("capacity_type", capacity_type)
 	
+	print("UI DEBUG: Stored metadata - type: ", capacity_label.get_meta("capacity_type"), " current: ", capacity_label.get_meta("current_value"))
+	
 	# Connect button signals
 	plus_btn.pressed.connect(_on_capacity_plus_pressed.bind(capacity_label))
 	minus_btn.pressed.connect(_on_capacity_minus_pressed.bind(capacity_label))
+	
+	print("UI DEBUG: Connected button signals for capacity_type: ", capacity_type)
 
 func _on_capacity_plus_pressed(capacity_label: Label):
 	var current_value = capacity_label.get_meta("current_value", 0)
 	var max_value = capacity_label.get_meta("max_value", 0)
 	var capacity_type = capacity_label.get_meta("capacity_type", "")
 	
+	print("UI DEBUG: _on_capacity_plus_pressed - capacity_type: ", capacity_type, " current: ", current_value, " max: ", max_value)
+	
 	if current_value < max_value:
 		# Try to update building occupancy through game validation
 		var game_node = _get_game_node()
 		if game_node and game_node.has_method("update_building_occupancy"):
+			print("UI DEBUG: Calling update_building_occupancy with capacity_type: ", capacity_type)
 			if game_node.update_building_occupancy(building_node, capacity_type, current_value + 1):
 				# Success - update UI
 				current_value += 1
@@ -1630,6 +1650,8 @@ func _on_capacity_plus_pressed(capacity_label: Label):
 				print("Increased ", capacity_type, " occupancy to ", current_value, "/", max_value)
 			else:
 				print("Cannot increase capacity - not enough available population")
+		else:
+			print("UI DEBUG: game_node not found or no update_building_occupancy method")
 
 
 func _on_capacity_minus_pressed(capacity_label: Label):

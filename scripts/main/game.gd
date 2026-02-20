@@ -211,12 +211,22 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		if building_type == "farm":
 			setup_data["farm_state"] = "tilled"  # Start in tilled state
 		
+		# Add barracks-specific occupancy types
+		if building_type == "barracks":
+			setup_data["station_occupancy"] = 0
+			setup_data["training_occupancy"] = 0
+		
 		if building_scene.has_method("setup"):
 			building_scene.setup(setup_data)
 		
 		# Set initial occupancy metadata on the building node
 		building_scene.set_meta("living_occupancy", 0)
 		building_scene.set_meta("worker_occupancy", 0)
+		
+		# Set barracks-specific occupancy types
+		if building_type == "barracks":
+			building_scene.set_meta("station_occupancy", 0)
+			building_scene.set_meta("training_occupancy", 0)
 		
 		print("Game: Placing building at tile ", tile_coords, " world pos ", world_pos)
 		
@@ -271,6 +281,20 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_farm_tilled.png"  # Start with tilled state
 		_:
 			return "res://assets/buildings/human_towncentre-export.png"
+
+func _get_living_capacity(building_type: String) -> int:
+	"""Get the living capacity for a building type"""
+	match building_type:
+		"house":
+			return 7
+		"town_center":
+			return 20
+		"farmhouse":
+			return 2
+		"barracks":
+			return 0
+		_:
+			return 0
 
 func _get_next_building_id(building_type: String) -> int:
 	# Initialize counter for this building type if it doesn't exist
@@ -585,6 +609,11 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 			available = pop_data.get("unhoused", 0)
 		elif capacity_type == "worker":
 			available = pop_data.get("unemployed", 0)
+		elif capacity_type == "station" or capacity_type == "training":
+			# For barracks jobs, check unemployed population (same as worker jobs)
+			available = pop_data.get("unemployed", 0)
+		
+		print("DEBUG: Capacity check for ", capacity_type, " - need ", difference, ", available ", available, " (total unemployed: ", pop_data.get("unemployed", 0), ")")
 		
 		if available < difference:
 			print("Not enough ", capacity_type, " population available. Need ", difference, ", have ", available)
@@ -621,21 +650,28 @@ func update_player_population(player_id: int):
 
 	# Calculate housed and working population from actual building data
 	var total_housed = 0
-	var total_working = 0	# Get all buildings for this player and sum their occupancy
+	var total_working = 0
+	# Get all buildings for this player and sum their occupancy
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
 			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
 				# Get building occupancy from metadata
 				var building_living_occupancy = child.get_meta("living_occupancy", 0)
 				var building_worker_occupancy = child.get_meta("worker_occupancy", 0)
+				var building_station_occupancy = child.get_meta("station_occupancy", 0)
+				var building_training_occupancy = child.get_meta("training_occupancy", 0)
+				
 				total_housed += building_living_occupancy
-				total_working += building_worker_occupancy
+				# Count worker, station, and training as "working" people
+				total_working += building_worker_occupancy + building_station_occupancy + building_training_occupancy
 	
 	# Update population data
 	pop_data["housed"] = total_housed
 	pop_data["working"] = total_working
 	pop_data["unhoused"] = pop_data.get("total", 10) - total_housed
 	pop_data["unemployed"] = pop_data.get("total", 10) - total_working
+	
+	print("DEBUG: Population update - Total: ", pop_data.get("total", 10), " | Housed: ", pop_data["housed"], " (unhoused: ", pop_data["unhoused"], ") | Working: ", pop_data["working"], " (unemployed: ", pop_data["unemployed"], ")")
 	
 	player_data["population"] = pop_data
 	
@@ -686,24 +722,48 @@ func _check_and_create_missing_sprites(player_id: int):
 	var player_data = players_data[player_id]
 	var player_units = player_data.get("units", [])
 	
+	print("DEBUG: _check_and_create_missing_sprites for player ", player_id, " - checking ", player_units.size(), " units")
+	
 	for unit in player_units:
+		var unit_id = unit["unique_id"]
 		var living_quarters = unit.get("living_quarters", null)
 		var job = unit.get("job", null)
 		
+		print("DEBUG SPRITE CHECK: Unit ", unit_id, " - living_quarters: ", living_quarters, " job: ", job, " station: ", unit.get("station_assignment"), " training: ", unit.get("training_assignment"))
+		
 		# CRITICAL: Only create sprites for units with BOTH assignments
 		if living_quarters != null and job != null:
-			var unit_id = unit["unique_id"]
 			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 			
 			if not existing_sprite:
 				print("Creating missing sprite for fully assigned unit: ", unit_id, " (living: ", living_quarters, ", job: ", job, ")")
 				_create_unit_sprite_and_start_cycle(unit)
 			else:
-				# Sprite exists, ensure it's tracked in sprite_id
+				# Sprite exists - check if job changed and update connections
+				print("DEBUG: Sprite exists for unit ", unit_id, " - updating connections for job: ", job)
+				if not unit.has("job_connections") or unit.get("job_connections", []).is_empty():
+					print("DEBUG: Updating stale job connections for unit ", unit_id)
+					var job_building_node = map_objects_holder.get_node_or_null(NodePath(job))
+					if job_building_node:
+						unit["job_connections"] = _find_building_connections_for_unit(job_building_node)
+						print("DEBUG: Updated job connections for unit ", unit_id)
+				
+				# Ensure sprite_id is tracked
 				if not unit.has("sprite_id") or unit.get("sprite_id") == "":
 					unit["sprite_id"] = unit_id
 					unit_sprite_map[unit_id] = existing_sprite
 					print("Unit %s: Sprite already existed, added to tracking" % unit_id)
+				
+				# Always reset movement to restart from home when job changes
+				print("DEBUG: Resetting movement state for unit ", unit_id, " (was: ", unit.get("movement_state", "idle"), ")")
+				unit["movement_state"] = "idle"
+				unit["current_path"] = []
+				unit["path_index"] = 0
+				unit["movement_cycle_step"] = 0
+				print("DEBUG: Restarting movement cycle for unit ", unit_id)
+				_start_unit_movement_cycle(unit)
+		else:
+			print("DEBUG: Unit ", unit_id, " incomplete - not creating sprite")
 
 func _cleanup_unassigned_unit_sprites(player_id: int):
 	"""Remove sprites for units that lost housing or work assignments"""
@@ -786,6 +846,10 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			should_remove = true
 		elif capacity_type == "worker" and unit.get("job", null) == building_name:
 			should_remove = true
+		elif capacity_type == "station" and unit.get("station_assignment", null) == building_name:
+			should_remove = true
+		elif capacity_type == "training" and unit.get("training_assignment", null) == building_name:
+			should_remove = true
 		
 		if should_remove:
 			# Remove the specific assignment
@@ -793,6 +857,10 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 				unit["living_quarters"] = null
 			elif capacity_type == "worker":
 				unit["job"] = null
+			elif capacity_type == "station":
+				unit["station_assignment"] = null
+			elif capacity_type == "training":
+				unit["training_assignment"] = null
 			
 			assignments_removed += 1
 			print("Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name)
@@ -1928,6 +1996,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 	print("Player ", owner_player, " has ", player_units.size(), " total units")
 	
 	# First, try to assign existing unassigned units
+	print("\n=== START AUTO-ASSIGN LOOP capacity_type=", capacity_type, " slots_to_fill=", slots_to_fill)
 	for unit in player_units:
 		if units_assigned >= slots_to_fill:
 			break
@@ -1936,11 +2005,27 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 		var can_assign = false
 		var living_quarters = unit.get("living_quarters", null)
 		var job = unit.get("job", null)
+		var station_assignment = unit.get("station_assignment", null)
+		var training_assignment = unit.get("training_assignment", null)
+		
+		print("DEBUG AUTO-ASSIGN CHECK: unit: ", unit["unique_id"], " station: ", station_assignment, " training: ", training_assignment, " job: ", job)
 		
 		if capacity_type == "living" and living_quarters == null:
 			can_assign = true
+			print("  → Can assign to LIVING (living_quarters is null)")
 		elif capacity_type == "worker" and job == null:
 			can_assign = true
+			print("  → Can assign to WORKER (job is null)")
+		elif capacity_type == "station" and station_assignment == null and training_assignment == null:
+			can_assign = true
+			print("  → Can assign to STATION (station_assignment is null AND training_assignment is null)")
+		elif capacity_type == "training" and training_assignment == null and station_assignment == null:
+			can_assign = true
+			print("  → Can assign to TRAINING (training_assignment is null AND station_assignment is null)")
+		else:
+			print("  → CANNOT ASSIGN to ", capacity_type, " (station: ", station_assignment, " training: ", training_assignment, ")")
+		
+		print("DEBUG: capacity_type: ", capacity_type, " can_assign: ", can_assign)
 		
 		if can_assign:
 			# Assign unit to this building
@@ -1957,11 +2042,47 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections  # Cache for future
+			elif capacity_type == "station":
+				print("DEBUG: ASSIGNING TO STATION - unit: ", unit["unique_id"], " old_job: ", unit.get("job"), " new_building: ", building_id)
+				unit["station_assignment"] = building_id
+				# Also set job to barracks so they walk there
+				unit["job"] = building_id
+				print("DEBUG: AFTER ASSIGNMENT - unit job is now: ", unit.get("job"))
+				# Always update job connections for this unit
+				if buildings_connections_cache.has(building_id):
+					unit["job_connections"] = buildings_connections_cache[building_id]
+				else:
+					var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
+					if job_building_node:
+						var connections = _find_building_connections_for_unit(job_building_node)
+						unit["job_connections"] = connections
+						buildings_connections_cache[building_id] = connections
+			elif capacity_type == "training":
+				print("DEBUG: ASSIGNING TO TRAINING - unit: ", unit["unique_id"], " old_job: ", unit.get("job"), " new_building: ", building_id)
+				unit["training_assignment"] = building_id
+				# Also set job to barracks so they walk there
+				unit["job"] = building_id
+				print("DEBUG: AFTER ASSIGNMENT - unit job is now: ", unit.get("job"))
+				# Always update job connections for this unit
+				if buildings_connections_cache.has(building_id):
+					unit["job_connections"] = buildings_connections_cache[building_id]
+				else:
+					var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
+					if job_building_node:
+						var connections = _find_building_connections_for_unit(job_building_node)
+						unit["job_connections"] = connections
+						buildings_connections_cache[building_id] = connections
 			
 			units_assigned += 1
 			print("Auto-assigned existing unit ", unit["unique_id"], " to ", capacity_type, " at building ", building_id)
 	
-	# If we still need more units, create new ones
+	# DEBUG: Print all units' assignments after loop
+	print("\n=== END AUTO-ASSIGN LOOP ===")
+	print("Assigned ", units_assigned, " out of ", slots_to_fill, " slots")
+	print("=== DEBUG: ALL UNIT ASSIGNMENTS AFTER AUTO-ASSIGN LOOP ===")
+	for u in player_units:
+		print("Unit ", u["unique_id"], " - living: ", u.get("living_quarters"), " job: ", u.get("job"), " station: ", u.get("station_assignment"), " training: ", u.get("training_assignment"))
+	print("=== END DEBUG ===\n")
 	var remaining_slots = slots_to_fill - units_assigned
 	if remaining_slots > 0:
 		print("Creating ", remaining_slots, " new units for ", capacity_type, " capacity")
@@ -2082,6 +2203,8 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			"position": spawn_position,
 			"living_quarters": null,
 			"job": null,
+			"station_assignment": null,
+			"training_assignment": null,
 			# Movement properties
 			"current_path": [],
 			"path_index": 0,
@@ -2100,16 +2223,73 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			unit_data["living_quarters"] = building_node.name
 		elif capacity_type == "worker":
 			unit_data["job"] = building_node.name
+		elif capacity_type == "station":
+			unit_data["station_assignment"] = building_node.name
+			# Set job to barracks so they walk there
+			unit_data["job"] = building_node.name
+			# Find a house to live in or create housing requirement
+			_assign_unit_to_living_quarters(unit_data, owner_player)
+		elif capacity_type == "training":
+			unit_data["training_assignment"] = building_node.name
+			# Set job to barracks so they walk there
+			unit_data["job"] = building_node.name
+			# Find a house to live in or create housing requirement
+			_assign_unit_to_living_quarters(unit_data, owner_player)
 		
 		# Add unit to player data
 		if not players_data[owner_player].has("units"):
 			players_data[owner_player]["units"] = []
 		players_data[owner_player]["units"].append(unit_data)
 		
-		# Note: Unit will only get sprite when it has both living quarters AND job
-		# No automatic assignment completion - units must be manually assigned to both types
+		# For barracks assignments with living quarters, create sprite immediately
+		print("DEBUG: Barracks unit creation check - capacity_type:", capacity_type, " living_quarters:", unit_data.get("living_quarters"), " job:", unit_data.get("job"))
+		if (capacity_type == "station" or capacity_type == "training") and unit_data.get("living_quarters"):
+			print("DEBUG: Creating sprite for barracks unit", unit_data["unique_id"])
+			_create_unit_sprite_and_start_cycle(unit_data)
+		else:
+			print("DEBUG: Not creating sprite yet - station/training=", (capacity_type == "station" or capacity_type == "training"), " living_quarters=", unit_data.get("living_quarters"))
 		
 		print("Created new unit: ", unit_data["unique_id"], " assigned to ", capacity_type, " at ", building_node.name)
+
+func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
+	"""Assign a unit to living quarters if available"""
+	print("DEBUG: Assigning living quarters for unit ", unit_data["unique_id"])
+	# Find a house with available space
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if _is_building_node(child) and child.get_meta("owner_player", 1) == owner_player:
+				var building_type = child.get_meta("building_type", "unknown")
+				if building_type == "house":
+					var living_occupancy = child.get_meta("living_occupancy", 0)
+					var living_capacity = _get_living_capacity(building_type)
+					print("DEBUG: Found house ", child.name, " - occupancy:", living_occupancy, " capacity:", living_capacity)
+					if living_occupancy < living_capacity:
+						unit_data["living_quarters"] = child.name
+						# Update building occupancy
+						child.set_meta("living_occupancy", living_occupancy + 1)
+						update_player_population(owner_player)
+						print("DEBUG: Assigned unit ", unit_data["unique_id"], " to living quarters at ", child.name)
+						return
+	
+	print("DEBUG: No house with space found")
+	# If no house space, try farmhouse
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if _is_building_node(child) and child.get_meta("owner_player", 1) == owner_player:
+				var building_type = child.get_meta("building_type", "unknown")
+				if building_type == "farmhouse":
+					var living_occupancy = child.get_meta("living_occupancy", 0)
+					var living_capacity = _get_living_capacity(building_type)
+					print("DEBUG: Found farmhouse ", child.name, " - occupancy:", living_occupancy, " capacity:", living_capacity)
+					if living_occupancy < living_capacity:
+						unit_data["living_quarters"] = child.name
+						# Update building occupancy
+						child.set_meta("living_occupancy", living_occupancy + 1)
+						update_player_population(owner_player)
+						print("DEBUG: Assigned unit ", unit_data["unique_id"], " to farmhouse at ", child.name)
+						return
+	
+	print("DEBUG: No housing available for unit ", unit_data["unique_id"])
 
 func _get_unit_spawn_position_near_building(building_node: Node2D) -> Vector2:
 	"""Get a spawn position near a building"""
@@ -2369,7 +2549,10 @@ func _on_unit_reached_destination(unit: Dictionary):
 
 func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: int):
 	"""Move unit to a specific building using pre-calculated paths from connections"""
+	print("DEBUG: _move_unit_to_building called - unit: ", unit["unique_id"], " to building: ", building_name, " next_step: ", next_step)
+	
 	if building_name == null:
+		print("DEBUG: Building name is null, returning")
 		return
 	
 	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
@@ -2381,14 +2564,18 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 	var connections = unit.get("job_connections", [])
 	var path = []
 	
+	print("DEBUG: Looking for path in job_connections (", connections.size(), " connections available)")
+	
 	# Look for a connection to this building
 	for connection in connections:
 		if connection.get("name") == building_name and connection.has("path"):
 			path = connection.get("path", [])
+			print("DEBUG: Found path in job_connections to ", building_name, " with ", path.size(), " waypoints")
 			break
 	
 	# Fallback: if no pre-calculated path found, calculate it
 	if path.is_empty():
+		print("DEBUG: No path found in job_connections, calculating...")
 		var unit_pos = unit["position"]
 		var target_pos = building_node.position
 		
@@ -2397,8 +2584,17 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 		if path.is_empty():
 			# Fallback to direct path if pathfinding fails
 			path = [target_pos]
+			print("DEBUG: Calculated path empty, using direct path to ", target_pos)
+		else:
+			print("DEBUG: Calculated path with ", path.size(), " waypoints")
 	
 	unit["current_path"] = path
+	unit["path_index"] = 0
+	unit["movement_state"] = "moving"
+	unit["movement_target"] = building_name
+	unit["movement_cycle_step"] = next_step
+	
+	print("DEBUG: Unit ", unit["unique_id"], " starting path with ", path.size(), " waypoints to ", building_name)
 	unit["path_index"] = 0
 	unit["movement_state"] = "moving"
 	unit["movement_target"] = building_name
@@ -3042,12 +3238,22 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 				"worker_occupancy": building_info.get("worker_occupancy", 0)
 			}
 			
+			# Add barracks-specific occupancy types if present
+			if building_type == "barracks":
+				setup_data["station_occupancy"] = building_info.get("station_occupancy", 0)
+				setup_data["training_occupancy"] = building_info.get("training_occupancy", 0)
+			
 			if building_scene.has_method("setup"):
 				building_scene.setup(setup_data)
 			
 			# Set occupancy metadata on the building node
 			building_scene.set_meta("living_occupancy", building_info.get("living_occupancy", 0))
 			building_scene.set_meta("worker_occupancy", building_info.get("worker_occupancy", 0))
+			
+			# Set barracks-specific occupancy types if present
+			if building_type == "barracks":
+				building_scene.set_meta("station_occupancy", building_info.get("station_occupancy", 0))
+				building_scene.set_meta("training_occupancy", building_info.get("training_occupancy", 0))
 			
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
@@ -3404,6 +3610,12 @@ func _execute_save() -> bool:
 					"living_occupancy": child.get_meta("living_occupancy", 0),
 					"worker_occupancy": child.get_meta("worker_occupancy", 0)
 				}
+				
+				# Add barracks-specific occupancy types
+				if building_info["building_type"] == "barracks":
+					building_info["station_occupancy"] = child.get_meta("station_occupancy", 0)
+					building_info["training_occupancy"] = child.get_meta("training_occupancy", 0)
+				
 				buildings_data.append(building_info)
 
 	# Collect environment objects data
