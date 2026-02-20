@@ -592,6 +592,31 @@ func get_player_population_data(player_id: int) -> Dictionary:
 		return pop_data
 	return {}
 
+func _count_actual_occupancy(building_name: String, capacity_type: String, owner_player: int) -> int:
+	"""Count actual number of units assigned to a building for a specific capacity type"""
+	if not players_data.has(owner_player):
+		return 0
+	
+	var player_units = players_data[owner_player].get("units", [])
+	var count = 0
+	
+	for unit in player_units:
+		var job = unit.get("job", null)
+		var living_quarters = unit.get("living_quarters", null)
+		
+		# Count based on capacity type
+		if capacity_type == "living" and living_quarters == building_name:
+			count += 1
+		elif capacity_type == "worker" and job == building_name:
+			count += 1
+		elif (capacity_type == "station" or capacity_type == "training"):
+			# For barracks jobs, check the job naming convention
+			var expected_job = building_name + "_" + capacity_type
+			if job == expected_job:
+				count += 1
+	
+	return count
+
 func update_building_occupancy(building_node: Node2D, capacity_type: String, new_value: int) -> bool:
 	# Update building occupancy and validate against available population
 	if not building_node:
@@ -729,8 +754,6 @@ func _check_and_create_missing_sprites(player_id: int):
 		var living_quarters = unit.get("living_quarters", null)
 		var job = unit.get("job", null)
 		
-		print("DEBUG SPRITE CHECK: Unit ", unit_id, " - living_quarters: ", living_quarters, " job: ", job, " station: ", unit.get("station_assignment"), " training: ", unit.get("training_assignment"))
-		
 		# CRITICAL: Only create sprites for units with BOTH assignments
 		if living_quarters != null and job != null:
 			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
@@ -740,30 +763,27 @@ func _check_and_create_missing_sprites(player_id: int):
 				_create_unit_sprite_and_start_cycle(unit)
 			else:
 				# Sprite exists - check if job changed and update connections
-				print("DEBUG: Sprite exists for unit ", unit_id, " - updating connections for job: ", job)
 				if not unit.has("job_connections") or unit.get("job_connections", []).is_empty():
-					print("DEBUG: Updating stale job connections for unit ", unit_id)
-					var job_building_node = map_objects_holder.get_node_or_null(NodePath(job))
+					# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+					var job_building = job
+					if job.contains("_station") or job.contains("_training"):
+						job_building = job.substr(0, job.rfind("_"))
+					
+					var job_building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 					if job_building_node:
 						unit["job_connections"] = _find_building_connections_for_unit(job_building_node)
-						print("DEBUG: Updated job connections for unit ", unit_id)
 				
 				# Ensure sprite_id is tracked
 				if not unit.has("sprite_id") or unit.get("sprite_id") == "":
 					unit["sprite_id"] = unit_id
 					unit_sprite_map[unit_id] = existing_sprite
-					print("Unit %s: Sprite already existed, added to tracking" % unit_id)
 				
 				# Always reset movement to restart from home when job changes
-				print("DEBUG: Resetting movement state for unit ", unit_id, " (was: ", unit.get("movement_state", "idle"), ")")
 				unit["movement_state"] = "idle"
 				unit["current_path"] = []
 				unit["path_index"] = 0
 				unit["movement_cycle_step"] = 0
-				print("DEBUG: Restarting movement cycle for unit ", unit_id)
 				_start_unit_movement_cycle(unit)
-		else:
-			print("DEBUG: Unit ", unit_id, " incomplete - not creating sprite")
 
 func _cleanup_unassigned_unit_sprites(player_id: int):
 	"""Remove sprites for units that lost housing or work assignments"""
@@ -846,10 +866,11 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			should_remove = true
 		elif capacity_type == "worker" and unit.get("job", null) == building_name:
 			should_remove = true
-		elif capacity_type == "station" and unit.get("station_assignment", null) == building_name:
-			should_remove = true
-		elif capacity_type == "training" and unit.get("training_assignment", null) == building_name:
-			should_remove = true
+		elif (capacity_type == "station" or capacity_type == "training"):
+			# For barracks jobs, look for the specific job name pattern
+			var expected_job = building_name + "_" + capacity_type
+			if unit.get("job", null) == expected_job:
+				should_remove = true
 		
 		if should_remove:
 			# Remove the specific assignment
@@ -857,10 +878,8 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 				unit["living_quarters"] = null
 			elif capacity_type == "worker":
 				unit["job"] = null
-			elif capacity_type == "station":
-				unit["station_assignment"] = null
-			elif capacity_type == "training":
-				unit["training_assignment"] = null
+			elif capacity_type == "station" or capacity_type == "training":
+				unit["job"] = null
 			
 			assignments_removed += 1
 			print("Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name)
@@ -1900,18 +1919,23 @@ func _cache_job_connections_for_unit(unit: Dictionary):
 	if not job:
 		return  # Unit doesn't have a job, nothing to do
 	
+	# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+	var job_building = job
+	if job.contains("_station") or job.contains("_training"):
+		job_building = job.substr(0, job.rfind("_"))
+	
 	# Check if job building's connections are already cached
-	if buildings_connections_cache.has(job):
-		unit["job_connections"] = buildings_connections_cache[job]
+	if buildings_connections_cache.has(job_building):
+		unit["job_connections"] = buildings_connections_cache[job_building]
 		print("Game: Used cached connections for unit ", unit.get("unique_id"), " at job ", job)
 	else:
-		var job_building_node = map_objects_holder.get_node_or_null(NodePath(job))
+		var job_building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 		if job_building_node:
 			# Fallback: calculate if not cached (shouldn't happen in normal flow)
 			var connections = _find_building_connections_for_unit(job_building_node)
 			unit["job_connections"] = connections
 			# Also cache it for future use
-			buildings_connections_cache[job] = connections
+			buildings_connections_cache[job_building] = connections
 			print("Game: Calculated and cached connections for unit ", unit.get("unique_id"), " at job ", job)
 		else:
 			print("Game: Warning - could not find job building node: ", job)
@@ -1996,7 +2020,6 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 	print("Player ", owner_player, " has ", player_units.size(), " total units")
 	
 	# First, try to assign existing unassigned units
-	print("\n=== START AUTO-ASSIGN LOOP capacity_type=", capacity_type, " slots_to_fill=", slots_to_fill)
 	for unit in player_units:
 		if units_assigned >= slots_to_fill:
 			break
@@ -2005,27 +2028,13 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 		var can_assign = false
 		var living_quarters = unit.get("living_quarters", null)
 		var job = unit.get("job", null)
-		var station_assignment = unit.get("station_assignment", null)
-		var training_assignment = unit.get("training_assignment", null)
-		
-		print("DEBUG AUTO-ASSIGN CHECK: unit: ", unit["unique_id"], " station: ", station_assignment, " training: ", training_assignment, " job: ", job)
 		
 		if capacity_type == "living" and living_quarters == null:
 			can_assign = true
-			print("  → Can assign to LIVING (living_quarters is null)")
 		elif capacity_type == "worker" and job == null:
 			can_assign = true
-			print("  → Can assign to WORKER (job is null)")
-		elif capacity_type == "station" and station_assignment == null and training_assignment == null:
+		elif (capacity_type == "station" or capacity_type == "training") and job == null:
 			can_assign = true
-			print("  → Can assign to STATION (station_assignment is null AND training_assignment is null)")
-		elif capacity_type == "training" and training_assignment == null and station_assignment == null:
-			can_assign = true
-			print("  → Can assign to TRAINING (training_assignment is null AND station_assignment is null)")
-		else:
-			print("  → CANNOT ASSIGN to ", capacity_type, " (station: ", station_assignment, " training: ", training_assignment, ")")
-		
-		print("DEBUG: capacity_type: ", capacity_type, " can_assign: ", can_assign)
 		
 		if can_assign:
 			# Assign unit to this building
@@ -2041,28 +2050,11 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 					if job_building_node:
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
-						buildings_connections_cache[building_id] = connections  # Cache for future
-			elif capacity_type == "station":
-				print("DEBUG: ASSIGNING TO STATION - unit: ", unit["unique_id"], " old_job: ", unit.get("job"), " new_building: ", building_id)
-				unit["station_assignment"] = building_id
-				# Also set job to barracks so they walk there
-				unit["job"] = building_id
-				print("DEBUG: AFTER ASSIGNMENT - unit job is now: ", unit.get("job"))
-				# Always update job connections for this unit
-				if buildings_connections_cache.has(building_id):
-					unit["job_connections"] = buildings_connections_cache[building_id]
-				else:
-					var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
-					if job_building_node:
-						var connections = _find_building_connections_for_unit(job_building_node)
-						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections
-			elif capacity_type == "training":
-				print("DEBUG: ASSIGNING TO TRAINING - unit: ", unit["unique_id"], " old_job: ", unit.get("job"), " new_building: ", building_id)
-				unit["training_assignment"] = building_id
-				# Also set job to barracks so they walk there
-				unit["job"] = building_id
-				print("DEBUG: AFTER ASSIGNMENT - unit job is now: ", unit.get("job"))
+			elif capacity_type == "station" or capacity_type == "training":
+				# For barracks jobs, use naming convention: building_id_capacity_type
+				var barracks_job_name = building_id + "_" + capacity_type
+				unit["job"] = barracks_job_name
 				# Always update job connections for this unit
 				if buildings_connections_cache.has(building_id):
 					unit["job_connections"] = buildings_connections_cache[building_id]
@@ -2074,15 +2066,8 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						buildings_connections_cache[building_id] = connections
 			
 			units_assigned += 1
-			print("Auto-assigned existing unit ", unit["unique_id"], " to ", capacity_type, " at building ", building_id)
+			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
 	
-	# DEBUG: Print all units' assignments after loop
-	print("\n=== END AUTO-ASSIGN LOOP ===")
-	print("Assigned ", units_assigned, " out of ", slots_to_fill, " slots")
-	print("=== DEBUG: ALL UNIT ASSIGNMENTS AFTER AUTO-ASSIGN LOOP ===")
-	for u in player_units:
-		print("Unit ", u["unique_id"], " - living: ", u.get("living_quarters"), " job: ", u.get("job"), " station: ", u.get("station_assignment"), " training: ", u.get("training_assignment"))
-	print("=== END DEBUG ===\n")
 	var remaining_slots = slots_to_fill - units_assigned
 	if remaining_slots > 0:
 		print("Creating ", remaining_slots, " new units for ", capacity_type, " capacity")
@@ -2091,7 +2076,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 	# After all assignments, check for units that now have both living quarters and jobs
 	_check_and_create_missing_sprites(owner_player)
 	
-	print("Auto-assigned ", units_assigned, " existing units and created ", remaining_slots, " new units for ", capacity_type, " capacity at ", building_id)
+	print("Auto-assigned ", units_assigned, " units and created ", (slots_to_fill - units_assigned), " new units for ", capacity_type, " capacity")
 
 func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 	"""Create sprite for a fully assigned unit and start its movement cycle"""
@@ -2099,8 +2084,13 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 	var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 	
 	# Cache building connections if unit has a job (calculate once, reuse in cycle)
-	var job_building = unit.get("job", null)
-	if job_building and not unit.has("job_connections"):
+	var job = unit.get("job", null)
+	if job and not unit.has("job_connections"):
+		# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+		var job_building = job
+		if job.contains("_station") or job.contains("_training"):
+			job_building = job.substr(0, job.rfind("_"))
+		
 		var building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 		if building_node:
 			unit["job_connections"] = _find_building_connections_for_unit(building_node)
@@ -2203,8 +2193,6 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			"position": spawn_position,
 			"living_quarters": null,
 			"job": null,
-			"station_assignment": null,
-			"training_assignment": null,
 			# Movement properties
 			"current_path": [],
 			"path_index": 0,
@@ -2223,16 +2211,9 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			unit_data["living_quarters"] = building_node.name
 		elif capacity_type == "worker":
 			unit_data["job"] = building_node.name
-		elif capacity_type == "station":
-			unit_data["station_assignment"] = building_node.name
-			# Set job to barracks so they walk there
-			unit_data["job"] = building_node.name
-			# Find a house to live in or create housing requirement
-			_assign_unit_to_living_quarters(unit_data, owner_player)
-		elif capacity_type == "training":
-			unit_data["training_assignment"] = building_node.name
-			# Set job to barracks so they walk there
-			unit_data["job"] = building_node.name
+		elif capacity_type == "station" or capacity_type == "training":
+			# For barracks jobs, use naming convention: building_id_capacity_type
+			unit_data["job"] = building_node.name + "_" + capacity_type
 			# Find a house to live in or create housing requirement
 			_assign_unit_to_living_quarters(unit_data, owner_player)
 		
@@ -2513,15 +2494,20 @@ func _start_unit_movement_cycle(unit: Dictionary):
 	if unit.get("movement_state", "idle") == "moving":
 		return
 	
-	print("Starting movement cycle for unit ", unit["unique_id"], " step: ", cycle_step)
+	# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+	var job_building = job
+	if job.contains("_station") or job.contains("_training"):
+		job_building = job.substr(0, job.rfind("_"))
+	
+	print("Starting movement cycle for unit ", unit["unique_id"], " step: ", cycle_step, " (job: ", job, " -> building: ", job_building, ")")
 	
 	match cycle_step:
 		0:  # At home - go to work
-			_move_unit_to_building(unit, job, 1)
+			_move_unit_to_building(unit, job_building, 1)
 		1:  # At work - find resource connection and go there
 			_move_unit_to_resource(unit, 2)
 		2:  # At resource - go back to work
-			_move_unit_to_building(unit, job, 3)
+			_move_unit_to_building(unit, job_building, 3)
 		3:  # Back at work - go home
 			_move_unit_to_building(unit, living_quarters, 4)
 		4:  # Back home - cycle complete, start over
@@ -2604,13 +2590,18 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 
 func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	"""Move unit to a resource connected to their workplace"""
-	var job_building = unit.get("job", null)
-	if job_building == null:
-		print("Unit has no job building, skipping resource step")
+	var job = unit.get("job", null)
+	if job == null:
+		print("Unit has no job, skipping resource step")
 		# Skip to next step if no job
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
+	
+	# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+	var job_building = job
+	if job.contains("_station") or job.contains("_training"):
+		job_building = job.substr(0, job.rfind("_"))
 	
 	var building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 	if not building_node:

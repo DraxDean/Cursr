@@ -144,11 +144,17 @@ func _draw_unit_paths():
 	
 	# Draw path to job (work)
 	var job = current_unit.get("job", null)
-	if job and game_ref.map_objects_holder.has_node(NodePath(job)):
-		var job_building = game_ref.map_objects_holder.get_node(NodePath(job))
-		var path_to_job = game_ref._get_path_between_positions(unit_pos, job_building.position)
-		if not path_to_job.is_empty():
-			_draw_path_on_tilemap(path_to_job, Color.GREEN, tilemap_ref)
+	if job:
+		# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+		var job_building_name = job
+		if job.contains("_station") or job.contains("_training"):
+			job_building_name = job.substr(0, job.rfind("_"))
+		
+		if game_ref.map_objects_holder.has_node(NodePath(job_building_name)):
+			var job_building = game_ref.map_objects_holder.get_node(NodePath(job_building_name))
+			var path_to_job = game_ref._get_path_between_positions(unit_pos, job_building.position)
+			if not path_to_job.is_empty():
+				_draw_path_on_tilemap(path_to_job, Color.GREEN, tilemap_ref)
 	
 	# Draw path to home (living quarters)
 	var living_quarters = current_unit.get("living_quarters", null)
