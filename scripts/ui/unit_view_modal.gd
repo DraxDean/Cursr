@@ -2,10 +2,17 @@
 extends "res://scripts/ui/info_modal.gd"
 
 var game_ref: Node
+var tilemap_ref: TileMapLayer
 var current_unit: Dictionary = {}
+var connection_lines: Array = []  # Store Line2D nodes for path visualization
 
 func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
 	game_ref = game_reference
+	# Get tilemap reference from game object
+	if game_ref and game_ref.has_meta("tilemap_layer"):
+		tilemap_ref = game_ref.get_meta("tilemap_layer")
+	elif game_ref and "tilemap_layer" in game_ref:
+		tilemap_ref = game_ref.tilemap_layer
 	super("unit_view", "Unit Details: ", start_position)
 
 func display_unit(unit: Dictionary):
@@ -14,6 +21,9 @@ func display_unit(unit: Dictionary):
 	# Update the title with the unit name
 	title_label.text = "Unit Details: " + current_unit.get("name", "Unknown")
 	refresh_content()
+	
+	# Draw unit paths on the tilemap
+	_draw_unit_paths()
 
 func refresh_content():
 	clear_content()
@@ -115,3 +125,90 @@ func refresh_content():
 	id_container.add_child(id_value)
 	
 	fit_to_content()
+func _draw_unit_paths():
+	"""Draw unit's paths: current movement, home, job, and resource"""
+	if not tilemap_ref or current_unit.is_empty():
+		return
+	
+	# Clear existing paths
+	_clear_connection_lines()
+	
+	var unit_pos = current_unit.get("position", Vector2.ZERO)
+	
+	# Draw current movement path (if unit is moving)
+	var movement_state = current_unit.get("movement_state", "idle")
+	var current_path = current_unit.get("current_path", [])
+	if movement_state == "moving" and not current_path.is_empty():
+		# Draw current path in red (active movement)
+		_draw_path_on_tilemap(current_path, Color.RED, tilemap_ref)
+	
+	# Draw path to job (work)
+	var job = current_unit.get("job", null)
+	if job and game_ref.map_objects_holder.has_node(NodePath(job)):
+		var job_building = game_ref.map_objects_holder.get_node(NodePath(job))
+		var path_to_job = game_ref._get_path_between_positions(unit_pos, job_building.position)
+		if not path_to_job.is_empty():
+			_draw_path_on_tilemap(path_to_job, Color.GREEN, tilemap_ref)
+	
+	# Draw path to home (living quarters)
+	var living_quarters = current_unit.get("living_quarters", null)
+	if living_quarters and game_ref.map_objects_holder.has_node(NodePath(living_quarters)):
+		var home_building = game_ref.map_objects_holder.get_node(NodePath(living_quarters))
+		var path_to_home = game_ref._get_path_between_positions(unit_pos, home_building.position)
+		if not path_to_home.is_empty():
+			_draw_path_on_tilemap(path_to_home, Color.BLUE, tilemap_ref)
+	
+	# Draw path to job's resource (if available in cached connections)
+	var job_connections = current_unit.get("job_connections", [])
+	if not job_connections.is_empty():
+		# Find closest resource connection
+		var closest_resource = null
+		var shortest_distance = INF
+		
+		for connection in job_connections:
+			var conn_type = connection.get("type", "")
+			if conn_type in ["tree", "mountain", "fish"]:
+				var distance = connection.get("distance", INF)
+				if distance < shortest_distance:
+					shortest_distance = distance
+					closest_resource = connection
+		
+		if closest_resource:
+			var resource_path = closest_resource.get("path", [])
+			if not resource_path.is_empty():
+				_draw_path_on_tilemap(resource_path, Color.ORANGE, tilemap_ref)
+
+func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
+	"""Draw a path as a Line2D on the tilemap"""
+	var line = Line2D.new()
+	line.width = 4.0
+	line.default_color = color
+	line.z_index = 100  # Draw above everything else
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	
+	# Convert positions to points (they're already world positions from _get_path_between_positions)
+	for world_pos in path:
+		if world_pos is Vector2:
+			line.add_point(world_pos)
+		else:
+			# It's a tile coordinate, convert to world position
+			var world_position = tilemap.map_to_local(world_pos)
+			line.add_point(world_position)
+	
+	# Add line to the tilemap layer
+	tilemap.add_child(line)
+	connection_lines.append(line)
+
+func _clear_connection_lines():
+	"""Clear all drawn paths"""
+	for line in connection_lines:
+		if is_instance_valid(line):
+			line.queue_free()
+	connection_lines.clear()
+
+func close_modal():
+	"""Close the modal and clean up paths"""
+	_clear_connection_lines()
+	visible = false

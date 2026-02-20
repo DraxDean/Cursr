@@ -88,6 +88,8 @@ func get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_lumberjack.png"
 		"stoneworker":
 			return "res://assets/buildings/human_stoneworker.png"
+		"research":
+			return "res://assets/buildings/human_research.png"
 		"town_center":
 			return "res://assets/buildings/human_towncentre-export.png"
 		"farmhouse":
@@ -104,7 +106,7 @@ func get_next_building_id(building_type: String) -> int:
 	return building_counter[building_type]
 
 func is_building_node(node: Node) -> bool:
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true

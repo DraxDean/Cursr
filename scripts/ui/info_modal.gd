@@ -41,7 +41,7 @@ func _ready():
 		
 		# For build selection modal, make it larger to fit content
 		if modal_type == "build_selection":
-			custom_minimum_size = Vector2(viewport_size.x * 0.35, viewport_size.y * 0.5)
+			custom_minimum_size = Vector2(viewport_size.x * 0.528, viewport_size.y * 0.60)
 			size = custom_minimum_size
 	
 	# Connect to visibility changes to manage modal stack

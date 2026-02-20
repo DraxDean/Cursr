@@ -127,6 +127,8 @@ func _get_building_icon(building_type: String) -> String:
 			return "🏘️"
 		"farm":
 			return "🌾"
+		"research":
+			return "🔬"
 		_:
 			return "🏗️"
 
@@ -143,6 +145,9 @@ func _get_building_production_text(building_type: String, worker_count: int) -> 
 			var stone = worker_count * 1
 			return "Produces: +" + str(stone) + " Stone/day"
 		"town_center":
+			var science = worker_count * 3
+			return "Produces: +" + str(science) + " Science/day"
+		"research":
 			var science = worker_count * 3
 			return "Produces: +" + str(science) + " Science/day"
 		_:

@@ -122,6 +122,7 @@ func _get_building_costs(btype: String) -> Dictionary:
 		"fishing_hut": {"Wood": 12, "Stone": 3, "Labor": 60},
 		"lumberjack": {"Wood": 15, "Stone": 8, "Labor": 80},
 		"stoneworker": {"Wood": 8, "Stone": 15, "Labor": 150},
+		"research": {"Wood": 20, "Stone": 10, "Labor": 120},
 		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15, "Labor": 300},
 		"farmhouse": {"Wood": 15},
 		"farm": {"Wood": 10}
@@ -137,6 +138,7 @@ func _get_building_icon(building_type: String) -> String:
 		"fishing_hut": "res://assets/buildings/human_finshinghut.png",
 		"lumberjack": "res://assets/buildings/human_lumberjack.png",
 		"stoneworker": "res://assets/buildings/human_stoneworker.png",
+		"research": "res://assets/buildings/human_research.png",
 		"town_center": "res://assets/buildings/human_towncentre-export.png",
 		"farmhouse": "res://assets/buildings/human_farmhouse.png",
 		"farm": "res://assets/buildings/human_farm_tilled.png"  # Default farm state
@@ -144,16 +146,22 @@ func _get_building_icon(building_type: String) -> String:
 	return building_icons.get(building_type, "")
 
 func _get_available_resources(resource: String) -> int:
-	# Placeholder resource amounts (would connect to actual resource system)
-	var resources = {
-		"Wood": 15,
-		"Stone": 15, 
-		"Gold": 7,
-		"Food": 20,
-		"Labor": 200  # Available labor days
-	}
+	# Get actual resources from game
+	if not game_ref or not game_ref.players_data:
+		return 0
 	
-	return resources.get(resource, 0)
+	var player_id = 1  # Assuming player 1
+	var player_data = game_ref.players_data.get(player_id, {})
+	var current_resources = player_data.get("resources", {})
+	
+	# Normalize resource name to lowercase for lookup
+	var resource_key = resource.to_lower()
+	
+	# Special case for "labor" which might not be in resources
+	if resource_key == "labor":
+		return 200  # Placeholder for labor
+	
+	return current_resources.get(resource_key, 0)
 
 func _can_afford_building(btype: String) -> bool:
 	var costs = _get_building_costs(btype)

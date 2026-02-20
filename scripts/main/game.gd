@@ -80,11 +80,11 @@ var players_data: Dictionary = {
 		"buildings": [],  # Array of building names owned by this player
 		"units": [],  # Array of unit data owned by this player
 		"resources": {
-			"gold": 100,
-			"food": 50,
-			"wood": 25,
-			"stone": 0,
-			"science": 0
+			"gold": 500,
+			"food": 500,
+			"wood": 500,
+			"stone": 500,
+			"science": 500
 		},
 		"resource_rates": {
 			# Per-day production/consumption rates
@@ -261,6 +261,8 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_lumberjack.png"
 		"stoneworker":
 			return "res://assets/buildings/human_stoneworker.png"
+		"research":
+			return "res://assets/buildings/human_research.png"
 		"town_center":
 			return "res://assets/buildings/human_towncentre-export.png"
 		"farmhouse":
@@ -281,7 +283,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "lumber_mill"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -289,7 +291,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "house", "barracks", "farm", "farmhouse"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "house", "barracks", "farm"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type
@@ -376,12 +378,16 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 		match building_type:
 			"lumberjack":
 				rates["wood"] += worker_count * 1  # +1 wood per worker
+			"lumber_mill":
+				rates["wood"] += worker_count * 1  # +1 wood per worker
 			"stoneworker":
 				rates["stone"] += worker_count * 1  # +1 stone per worker
 			"fishing_hut":
 				rates["food"] += worker_count * 5  # +5 food per worker
 			"town_center":
 				rates["science"] += worker_count * 3  # +3 science per scientist
+			"research":
+				rates["science"] += worker_count * 3  # +3 science per researcher
 			"farm":
 				# Farms are special - will implement later
 				pass
@@ -441,6 +447,7 @@ func _deduct_building_cost(player_id: int, building_type: String):
 		"fishing_hut": {"wood": 12, "stone": 3},
 		"lumberjack": {"wood": 15, "stone": 8},
 		"stoneworker": {"wood": 8, "stone": 15},
+		"research": {"wood": 20, "stone": 10},
 		"town_center": {"wood": 30, "stone": 25, "gold": 15},
 		"farmhouse": {"wood": 15},
 		"farm": {"wood": 10},
@@ -890,7 +897,7 @@ func _migrate_players_data_structure():
 			if not player_data.has("buildings"):
 				player_data["buildings"] = []
 			if not player_data.has("resources"):
-				player_data["resources"] = {"gold": 100, "food": 50, "wood": 25, "stone": 0}
+				player_data["resources"] = {"gold": 500, "food": 500, "wood": 500, "stone": 500, "science": 500}
 			# Don't reset population if it already exists in new format
 			if not player_data.has("population"):
 				player_data["population"] = {
@@ -2213,7 +2220,7 @@ func _building_provides_capacity(building_type: String, capacity_type: String) -
 		"living":
 			return building_type in ["house", "town_center", "farmhouse"]
 		"worker":
-			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"]
+			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "research", "lumber_mill", "lumberjack"]
 	return false
 
 func _get_building_max_capacity(building_type: String, capacity_type: String) -> int:
@@ -2226,6 +2233,7 @@ func _get_building_max_capacity(building_type: String, capacity_type: String) ->
 		"barracks": {"living": 0, "worker": 8},
 		"fishing_hut": {"living": 0, "worker": 5},
 		"stoneworker": {"living": 0, "worker": 10},
+		"research": {"living": 0, "worker": 8},
 		"lumber_mill": {"living": 0, "worker": 10},
 		"lumberjack": {"living": 0, "worker": 10}
 	}
@@ -2422,6 +2430,20 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 		# Fallback: calculate if not cached
 		connections = _find_building_connections_for_unit(building_node)
 		unit["job_connections"] = connections  # Cache for future use
+	else:
+		# Check if any mountains are missing paths (old cached data)
+		# If so, recalculate to get fresh paths
+		var has_mountains_without_paths = false
+		for connection in connections:
+			if connection.get("type") == "mountain" and connection.get("path", []).is_empty():
+				has_mountains_without_paths = true
+				break
+		
+		if has_mountains_without_paths:
+			# Recalculate connections to get fresh pathfinding for mountains
+			print("Unit ", unit["unique_id"], " has cached connections with mountains missing paths - recalculating...")
+			connections = _find_building_connections_for_unit(building_node)
+			unit["job_connections"] = connections  # Update cache
 	
 	var resource_connections = []
 	
@@ -2555,16 +2577,167 @@ func _find_nearest_farm(from_position: Vector2) -> Dictionary:
 	return nearest
 
 func _find_building_connections_for_unit(building: Node2D) -> Array:
-	"""Get building connections using the exact same system as building details modal"""
-	# Create a temporary building details modal to access its connection finding
-	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
-	var temp_modal = BuildingDetailsModalScript.new()
+	"""Get building connections - ensures mountains are included with full pathfinding"""
+	# Use direct calculation to ensure all resources are found
+	return _calculate_building_connections_directly(building)
+
+func _calculate_building_connections_directly(building: Node2D) -> Array:
+	"""Direct calculation of building connections with guaranteed resource detection"""
+	var connections = []
+	var building_type = building.get_meta("building_type", "unknown")
 	
-	# Use the modal's connection finding system
-	var connections = temp_modal._find_building_connections(building, self)
-	temp_modal.queue_free()  # Clean up temp modal
+	print("Finding connections for building type: ", building_type)
+	
+	# Define connection rules
+	var connection_rules = {
+		"house": ["town_center", "barracks", "stoneworker"],
+		"barracks": ["town_center", "house"],
+		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
+		"fishing_hut": ["town_center", "fish"],
+		"farmhouse": ["town_center", "house", "farm"],
+		"stoneworker": ["house", "town_center", "mountain"],
+		"lumberjack": ["house", "town_center", "tree"],
+		"lumber_mill": ["town_center", "tree"]
+	}
+	
+	var allowed_connections = connection_rules.get(building_type, [])
+	if allowed_connections.is_empty():
+		return connections
+	
+	var tilemap = tilemap_layer
+	if not tilemap:
+		return connections
+	
+	var building_tile_coords = tilemap.local_to_map(building.position)
+	var connection_range_tiles = 50
+	
+	# Get buildings first
+	if has_method("get_player_buildings"):
+		var all_buildings = get_player_buildings(1)
+		print("Checking connections for ", building.name, " at tile ", building_tile_coords, " - found ", all_buildings.size(), " total buildings")
+		
+		for building_name in all_buildings:
+			if building_name == building.name:
+				continue
+			
+			var buildings_layer = building.get_parent()
+			if buildings_layer and buildings_layer.has_node(NodePath(building_name)):
+				var other_building = buildings_layer.get_node(NodePath(building_name))
+				var other_type = other_building.get_meta("building_type", "unknown")
+				var other_tile_coords = tilemap.local_to_map(other_building.position)
+				
+				var tile_distance = _hex_distance(building_tile_coords, other_tile_coords)
+				
+				if other_type in allowed_connections and tile_distance <= connection_range_tiles:
+					connections.append({
+						"name": other_building.name,
+						"type": other_type,
+						"distance": tile_distance,
+						"object_type": "building"
+					})
+					print("Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away")
+	
+	# Add resource connections with pathfinding
+	if "mountain" in allowed_connections:
+		print("Looking for mountain connections for ", building_type)
+		
+		if has_method("get_environment_objects"):
+			var mountains = get_environment_objects("mountains")
+			print("Found ", mountains.size(), " mountains in environment system")
+			
+			var nearby_mountains = []
+			for mountain_id in mountains:
+				var mountain_data = mountains[mountain_id]
+				var mountain_tile_coords = mountain_data["tile_coords"]
+				var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
+				
+				if tile_distance <= connection_range_tiles:
+					nearby_mountains.append({
+						"id": mountain_id,
+						"tile_coords": mountain_tile_coords,
+						"distance": tile_distance
+					})
+			
+			nearby_mountains.sort_custom(func(a, b): return a.distance < b.distance)
+			print("Found ", nearby_mountains.size(), " nearby mountains, limiting to 3 if needed")
+			if nearby_mountains.size() > 3:
+				nearby_mountains = nearby_mountains.slice(0, 3)
+			
+			# Calculate paths for mountains
+			for mountain in nearby_mountains:
+				var path = _astar_pathfind_for_game(building_tile_coords, mountain["tile_coords"])
+				var world_path = []
+				for tile_pos in path:
+					world_path.append(tilemap.map_to_local(tile_pos))
+				
+				connections.append({
+					"name": mountain["id"],
+					"type": "mountain",
+					"distance": mountain["distance"],
+					"object_type": "mountain",
+					"path": world_path
+				})
+				print("Added mountain connection: ", mountain["id"], " at ", mountain["distance"], " tiles away")
+	
+	if "tree" in allowed_connections:
+		print("Looking for tree connections for ", building_type)
+		
+		if has_method("get_environment_objects"):
+			var trees = get_environment_objects("trees")
+			var nearby_trees = []
+			for tree_id in trees:
+				var tree_data = trees[tree_id]
+				var tree_tile_coords = tree_data["tile_coords"]
+				var tile_distance = _hex_distance(building_tile_coords, tree_tile_coords)
+				
+				if tile_distance <= connection_range_tiles:
+					nearby_trees.append({
+						"id": tree_id,
+						"tile_coords": tree_tile_coords,
+						"distance": tile_distance
+					})
+			
+			nearby_trees.sort_custom(func(a, b): return a.distance < b.distance)
+			if nearby_trees.size() > 3:
+				nearby_trees = nearby_trees.slice(0, 3)
+			
+			for tree in nearby_trees:
+				var path = _astar_pathfind_for_game(building_tile_coords, tree["tile_coords"])
+				var world_path = []
+				for tile_pos in path:
+					world_path.append(tilemap.map_to_local(tile_pos))
+				
+				connections.append({
+					"name": tree["id"],
+					"type": "tree",
+					"distance": tree["distance"],
+					"object_type": "tree",
+					"path": world_path
+				})
 	
 	return connections
+
+func _astar_pathfind_for_game(start: Vector2i, end: Vector2i) -> Array:
+	"""A* pathfinding wrapper using the modal's algorithm"""
+	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
+	var temp_modal = BuildingDetailsModalScript.new()
+	var path = temp_modal._astar_pathfind(start, end, tilemap_layer)
+	temp_modal.queue_free()
+	return path
+
+func _hex_distance(a: Vector2i, b: Vector2i) -> int:
+	"""Calculate hexagonal distance between two tile coordinates"""
+	# Convert offset coordinates to axial coordinates for distance calculation
+	var ax = a.x - (a.y - (a.y & 1)) / 2
+	var ay = a.y
+	var az = -ax - ay
+	
+	var bx = b.x - (b.y - (b.y & 1)) / 2  
+	var by = b.y
+	var bz = -bx - by
+	
+	# Hexagonal distance in axial coordinates
+	return (abs(ax - bx) + abs(ay - by) + abs(az - bz)) / 2
 
 func _get_resource_position_by_connection(connection: Dictionary) -> Vector2:
 	"""Get world position of a resource from connection data"""
@@ -3077,11 +3250,19 @@ func _open_unit_details_modal(unit: Dictionary):
 		print("Game: Unit view modal created")
 	else:
 		unit_view_modal = get_meta("unit_view_modal")
+		# Close the old modal to clear its paths before showing new unit
+		if unit_view_modal.has_method("close_modal"):
+			unit_view_modal.close_modal()
 	
 	# Update modal with unit data and display it
 	if unit_view_modal.has_method("display_unit"):
 		unit_view_modal.display_unit(unit)
 		unit_view_modal.show()
+		
+		# Register with UI manager for ESC key handling
+		if ui_manager and ui_manager.has_method("push_modal"):
+			ui_manager.push_modal(unit_view_modal)
+		
 		print("Game: Unit details modal displayed for: %s" % unit.get("name", "unknown"))
 	else:
 		print("Game: ERROR - unit_view_modal has no display_unit method!")
@@ -3092,31 +3273,11 @@ func _open_build_selection_modal():
 		var BuildSelectionScript = preload("res://scripts/ui/build_selection_modal.gd")
 		build_selection_modal = BuildSelectionScript.new(self, Vector2(200, 100))
 		ui_layer.add_child(build_selection_modal)
-		build_selection_modal.building_selected.connect(_on_building_selected_for_placement)
+		# Connect to the new unified signal that includes placement
+		build_selection_modal.place_building_confirmed.connect(_on_building_placement_confirmed_with_type)
 	
 	# Toggle the modal
 	build_selection_modal.toggle()
-
-func _on_building_selected_for_placement(building_type: String, building_name: String):
-	print("Game: Building selected for placement: ", building_name)
-	_open_building_placement_modal(building_type, building_name)
-
-func _open_building_placement_modal(building_type: String, building_name: String):
-	# Close existing placement modal if open
-	if building_placement_modal:
-		building_placement_modal.queue_free()
-	
-	# Create new placement modal
-	var PlacementScript = preload("res://scripts/ui/building_placement_modal.gd")
-	building_placement_modal = PlacementScript.new(self, building_type, building_name, Vector2(300, 150))
-	ui_layer.add_child(building_placement_modal)
-	
-	# Connect placement signals  
-	building_placement_modal.place_building_confirmed.connect(_on_building_placement_confirmed_with_type.bind(building_type))
-	building_placement_modal.placement_cancelled.connect(_on_building_placement_cancelled)
-	
-	# Show the modal
-	building_placement_modal.toggle()
 
 func _on_building_placement_confirmed_with_type(build_more: bool, building_type: String):
 	print("Game: Building placement confirmed for: ", building_type, " build_more: ", build_more)
@@ -3124,9 +3285,6 @@ func _on_building_placement_confirmed_with_type(build_more: bool, building_type:
 	building_placement_build_more = build_more
 	# Start building placement preview mode
 	_start_building_placement(building_type)
-
-func _on_building_placement_confirmed(building_type: String, build_more: bool = false):
-	print("Game: Building placement confirmed for: ", building_type, " build_more: ", build_more)
 	# Store the build_more state for use after placement
 	building_placement_build_more = build_more
 	# Start building placement preview mode

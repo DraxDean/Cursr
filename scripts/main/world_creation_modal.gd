@@ -161,10 +161,7 @@ func cleanup_ui():
 	if footer_component:
 		footer_component.queue_free()
 		footer_component = null
-	
-	# Show normal UI elements again
-	game_node.get_node("UI_Layer/MenuButtonContainer").show()
-	game_node.get_node("UI_Layer/TurnControlsContainer").show()
+
 
 func _on_tile_selected(tile_pos: Vector2):
 	# Store starting tile position

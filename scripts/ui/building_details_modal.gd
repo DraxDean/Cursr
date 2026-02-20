@@ -6,6 +6,7 @@ signal demolish_confirmed(building_data: Dictionary)
 var modal_type: String = "building_details"
 var building_node: Node2D
 var building_data: Dictionary
+var game_node: Node  # Reference to the game node
 var is_dragging: bool = false
 var drag_offset: Vector2
 var title_label: Label
@@ -15,6 +16,7 @@ var is_showing_connections: bool = false
 var camera_controller: Node
 var connection_paths: Array = []  # Store path data for redrawing
 var demolish_warning_modal: ConfirmationDialog
+var connection_lines_container: Node2D  # Dedicated container for connection line nodes
 
 func _ready():
 	print("Building Details Modal: _ready() called")
@@ -28,6 +30,37 @@ func _ready():
 	# Manually register since visibility = true during _ready() may not trigger the signal
 	print("BuildingDetailsModal: Manually registering in _ready()")
 	_register_with_ui_manager()
+
+func _ensure_connection_lines_container():
+	# First ensure game_node is set
+	if not game_node and building_node:
+		game_node = building_node.get_parent().get_parent()
+	
+	# Check if container exists and is valid
+	if connection_lines_container and is_instance_valid(connection_lines_container):
+		# Verify it's still in the scene tree
+		if connection_lines_container.get_parent() != null:
+			print("BuildingDetailsModal: Connection lines container already exists and is attached")
+			connection_lines_container.show()  # Ensure it's visible
+			return
+		else:
+			print("BuildingDetailsModal: Container exists but is orphaned, will recreate")
+			connection_lines_container = null
+	
+	# Create new container - add to tilemap layer, not game node
+	if game_node:
+		var tilemap = game_node.get_node_or_null("TileMapLayer")
+		if tilemap:
+			connection_lines_container = Node2D.new()
+			connection_lines_container.name = "ConnectionLinesContainer"
+			connection_lines_container.z_index = 1000  # Render above everything in the game world
+			tilemap.add_child(connection_lines_container)
+			connection_lines_container.show()
+			print("BuildingDetailsModal: Created new connection lines container as child of TileMapLayer")
+		else:
+			print("BuildingDetailsModal: ERROR - TileMapLayer not found, cannot create container")
+	else:
+		print("BuildingDetailsModal: ERROR - Cannot create connection lines container, game_node is null")
 
 func _process(_delta):
 	# Only check for redraw needs, don't update every frame
@@ -251,7 +284,7 @@ func _create_actions_section() -> Control:
 		train_button.text = "Train Units"
 		train_button.pressed.connect(_on_train_units_pressed)
 		actions_container.add_child(train_button)
-	elif building_type in ["fishing_hut", "stoneworker", "lumberjack", "lumber_mill"]:
+	elif building_type in ["research", "fishing_hut", "stoneworker", "lumberjack", "lumber_mill"]:
 		var collect_button = Button.new()
 		collect_button.text = "Collect Resources"
 		collect_button.pressed.connect(_on_collect_resources_pressed)
@@ -294,7 +327,7 @@ func setup_building_details(building: Node2D):
 	building_data = _extract_building_data(building)
 	
 	# Get game reference and ensure resource rates are calculated
-	var game_node = building_node.get_parent().get_parent()
+	game_node = building_node.get_parent().get_parent()
 	if game_node and game_node.has_method("calculate_resource_rates"):
 		var owner_player = building_data.get("owner_player", 1)
 		game_node.calculate_resource_rates(owner_player)
@@ -377,7 +410,8 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	var connection_rules = {
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
-		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
+		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack", "research"],
+		"research": ["town_center"],
 		"fishing_hut": ["town_center", "fish"],
 		"farmhouse": ["town_center", "house", "farm"],
 		"stoneworker": ["house", "town_center", "mountain"],
@@ -458,15 +492,24 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 			if nearby_mountains.size() > 3:
 				nearby_mountains = nearby_mountains.slice(0, 3)
 			
-			# Second pass: only add the 3 closest mountains
+			# Second pass: calculate paths for the 3 closest mountains
 			for mountain in nearby_mountains:
-				print("Added mountain connection: ", mountain.id, " at ", mountain.distance, " tiles away")
+				# Calculate path from building to mountain
+				var path = _astar_pathfind(building_tile_coords, mountain.tile_coords, tilemap_layer)
+				# Convert tile coordinates to world positions for the path
+				var world_path = []
+				for tile_pos in path:
+					world_path.append(tilemap_layer.map_to_local(tile_pos))
+				
 				connections.append({
 					"name": mountain.id,
 					"type": "mountain",
 					"distance": mountain.distance,
-					"object_type": "mountain"
+					"object_type": "mountain",
+					"path": world_path,
+					"tile_coords": mountain.tile_coords
 				})
+				print("Added mountain connection: ", mountain.id, " at ", mountain.distance, " tiles away")
 		else:
 			print("Environment system not available, falling back to old method")
 			# Fallback to old method
@@ -821,10 +864,21 @@ func _redraw_connections():
 	
 	print("BuildingDetailsModal: _redraw_connections() called. Current lines on screen: %d" % connection_lines.size())
 	
-	var game_node = building_node.get_parent().get_parent()
+	if not game_node:
+		game_node = building_node.get_parent().get_parent()
+		print("BuildingDetailsModal: Set game_node in _redraw_connections()")
+	
 	var tilemap = game_node.get_node_or_null("TileMapLayer")
 	if not tilemap:
 		print("BuildingDetailsModal: TileMapLayer not found!")
+		return
+	
+	# Ensure connection lines container exists
+	_ensure_connection_lines_container()
+	
+	# Verify container was created successfully
+	if not connection_lines_container or not is_instance_valid(connection_lines_container):
+		print("BuildingDetailsModal: ERROR - Failed to create or validate connection lines container")
 		return
 	
 	var connections = building_data.get("connections", [])
@@ -836,6 +890,7 @@ func _redraw_connections():
 		"house": Color.DEEP_SKY_BLUE,
 		"town_center": Color.ORANGE,
 		"barracks": Color.CRIMSON,
+		"research": Color.MAGENTA,
 		"fishing_hut": Color.AQUA,
 		"farm": Color.LIME_GREEN,
 		"farmhouse": Color.YELLOW_GREEN,
@@ -848,84 +903,123 @@ func _redraw_connections():
 	}
 	
 	for connection in connections:
+		# Re-validate container at start of each iteration
+		if not connection_lines_container or not is_instance_valid(connection_lines_container):
+			print("BuildingDetailsModal: Container became invalid mid-loop! Re-ensuring...")
+			_ensure_connection_lines_container()
+			if not connection_lines_container or not is_instance_valid(connection_lines_container):
+				print("BuildingDetailsModal: CRITICAL - Could not restore container, aborting redraw")
+				return
+		
 		var target_node = null
+		var path = []
+		var path_is_world_coords = false  # Track if path is already in world coordinates
 		
-		# Find the target object (building, mountain, or tree)
-		if connection.object_type == "building":
-			var buildings_layer = building_node.get_parent()
-			if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
-				target_node = buildings_layer.get_node(NodePath(connection.name))
-		elif connection.object_type == "mountain":
-			# For environment objects, try to find by position since names might not match exactly
-			if game_node.has_method("get_environment_objects"):
-				var mountains = game_node.get_environment_objects("mountains")
-				if mountains.has(connection.name):
-					var mountain_data = mountains[connection.name]
-					var mountain_pos = tilemap.map_to_local(mountain_data["tile_coords"])
-					# Find the actual node by position
-					var map_objects_holder = game_node.get_node_or_null("MapObjects")
-					if map_objects_holder:
-						for child in map_objects_holder.get_children():
-							if child.position.distance_to(mountain_pos) < 32:  # Within one tile
-								target_node = child
-								break
-		elif connection.object_type == "tree":
-			# For environment objects, try to find by position since names might not match exactly
-			if game_node.has_method("get_environment_objects"):
-				var trees = game_node.get_environment_objects("trees")
-				if trees.has(connection.name):
-					var tree_data = trees[connection.name]
-					var tree_pos = tilemap.map_to_local(tree_data["tile_coords"])
-					# Find the actual node by position
-					var map_objects_holder = game_node.get_node_or_null("MapObjects")
-					if map_objects_holder:
-						for child in map_objects_holder.get_children():
-							if child.position.distance_to(tree_pos) < 32:  # Within one tile
-								target_node = child
-								break
-		elif connection.object_type == "fish":
-			# For fish objects, try to find by position
-			if game_node.has_method("get_environment_objects"):
-				var fish = game_node.get_environment_objects("fish")
-				if fish.has(connection.name):
-					var fish_data = fish[connection.name]
-					var fish_pos = tilemap.map_to_local(fish_data["tile_coords"])
-					# Find the actual node by position
-					var map_objects_holder = game_node.get_node_or_null("MapObjects")
-					if map_objects_holder:
-						for child in map_objects_holder.get_children():
-							if child.position.distance_to(fish_pos) < 32:  # Within one tile
-								target_node = child
-								break
+		# First, try to use pre-calculated path if available
+		if connection.has("path") and not connection["path"].is_empty():
+			path = connection["path"]
+			path_is_world_coords = true  # Pre-calculated paths are stored as world coordinates
+			print("BuildingDetailsModal: Using pre-calculated path for ", connection.name, " (", connection.type, ")")
+		else:
+			# Otherwise, find the target object and recalculate path
+			# Find the target object (building, mountain, or tree)
+			if connection.object_type == "building":
+				var buildings_layer = building_node.get_parent()
+				if buildings_layer and buildings_layer.has_node(NodePath(connection.name)):
+					target_node = buildings_layer.get_node(NodePath(connection.name))
+			elif connection.object_type == "mountain":
+				# For environment objects, try to find by position since names might not match exactly
+				if game_node.has_method("get_environment_objects"):
+					var mountains = game_node.get_environment_objects("mountains")
+					if mountains.has(connection.name):
+						var mountain_data = mountains[connection.name]
+						var mountain_pos = tilemap.map_to_local(mountain_data["tile_coords"])
+						# Find the actual node by position
+						var map_objects_holder = game_node.get_node_or_null("MapObjects")
+						if map_objects_holder:
+							for child in map_objects_holder.get_children():
+								if child.position.distance_to(mountain_pos) < 32:  # Within one tile
+									target_node = child
+									break
+			elif connection.object_type == "tree":
+				# For environment objects, try to find by position since names might not match exactly
+				if game_node.has_method("get_environment_objects"):
+					var trees = game_node.get_environment_objects("trees")
+					if trees.has(connection.name):
+						var tree_data = trees[connection.name]
+						var tree_pos = tilemap.map_to_local(tree_data["tile_coords"])
+						# Find the actual node by position
+						var map_objects_holder = game_node.get_node_or_null("MapObjects")
+						if map_objects_holder:
+							for child in map_objects_holder.get_children():
+								if child.position.distance_to(tree_pos) < 32:  # Within one tile
+									target_node = child
+									break
+			elif connection.object_type == "fish":
+				# For fish objects, try to find by position
+				if game_node.has_method("get_environment_objects"):
+					var fish = game_node.get_environment_objects("fish")
+					if fish.has(connection.name):
+						var fish_data = fish[connection.name]
+						var fish_pos = tilemap.map_to_local(fish_data["tile_coords"])
+						# Find the actual node by position
+						var map_objects_holder = game_node.get_node_or_null("MapObjects")
+						if map_objects_holder:
+							for child in map_objects_holder.get_children():
+								if child.position.distance_to(fish_pos) < 32:  # Within one tile
+									target_node = child
+									break
+			
+			if target_node:
+				var target_tile_coords = tilemap.local_to_map(target_node.position)
+				
+				# Find path using A*
+				path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
+				path_is_world_coords = false  # Calculated paths are in tile coordinates
+				print("BuildingDetailsModal: Calculated path for ", connection.name, " (", connection.type, ") - ", path.size(), " tiles")
 		
-		if target_node:
-			var target_tile_coords = tilemap.local_to_map(target_node.position)
-			
-			# Find path using A*
-			var path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
-			
-			if path.size() > 1:  # Only draw if path exists and has multiple points
-				var color = connection_colors.get(connection.type, Color.WHITE)
-				_draw_path_on_tilemap(path, color, tilemap)
+		# Draw the path if we have one
+		if path.size() > 1:  # Only draw if path exists and has multiple points
+			var color = connection_colors.get(connection.type, Color.WHITE)
+			print("BuildingDetailsModal: Drawing path for %s | Container valid: %s | Parent: %s" % [connection.name, is_instance_valid(connection_lines_container), connection_lines_container.get_parent() if is_instance_valid(connection_lines_container) else "N/A"])
+			_draw_path_on_tilemap(path, color, tilemap, path_is_world_coords)
+		else:
+			print("BuildingDetailsModal: No path available for ", connection.name, " (", connection.type, ")")
 
-func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
+func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer, path_is_world_coords: bool = false):
 	# Create a Line2D node to draw the connection path
 	var line = Line2D.new()
 	line.width = 4.0
 	line.default_color = color
-	line.z_index = 100  # Draw above everything else
 	line.joint_mode = Line2D.LINE_JOINT_ROUND
 	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	line.end_cap_mode = Line2D.LINE_CAP_ROUND
 	
-	# Convert tile coordinates to world positions (tile centers)
-	for tile_coord in path:
-		# Calculate world position of tile center
-		var world_pos = tilemap.map_to_local(tile_coord)
+	# Convert path points to world positions
+	var first_point = Vector2.ZERO
+	var last_point = Vector2.ZERO
+	for point in path:
+		var world_pos: Vector2
+		if path_is_world_coords:
+			# Path is already in world coordinates (from pre-calculated connections)
+			world_pos = point
+		else:
+			# Path is in tile coordinates, convert to world positions
+			world_pos = tilemap.map_to_local(point)
+		
 		line.add_point(world_pos)
+		if line.get_point_count() == 1:
+			first_point = world_pos
+		last_point = world_pos
 	
-	# Add line to the tilemap layer so it moves with the world
-	tilemap.add_child(line)
+	# Add line to the connection lines container (renders above game world)
+	if connection_lines_container and is_instance_valid(connection_lines_container):
+		connection_lines_container.add_child(line)
+		print("BuildingDetailsModal: Added line to container. Container now has %d children. Parent: %s" % [connection_lines_container.get_child_count(), connection_lines_container.get_parent()])
+	else:
+		print("BuildingDetailsModal: ERROR - connection_lines_container is invalid at draw time!")
+		print("BuildingDetailsModal: Container check: exists=%s | valid=%s | parent=%s" % [connection_lines_container != null, connection_lines_container != null and is_instance_valid(connection_lines_container), connection_lines_container.get_parent() if connection_lines_container != null else "N/A"])
+		return  # Don't add line if container is invalid
 	
 	# Store both the line reference and the path data for updates
 	connection_lines.append(line)
@@ -934,7 +1028,7 @@ func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
 		"color": color,
 		"line": line
 	})
-	print("BuildingDetailsModal: Drew path on tilemap. Total lines: %d | Path length: %d" % [connection_lines.size(), path.size()])
+	print("BuildingDetailsModal: Drew path on tilemap. Total lines: %d | Path length: %d | From: %s To: %s | Color: %s" % [connection_lines.size(), path.size(), first_point, last_point, color])
 	
 	print("Drew connection line with ", path.size(), " points in ", color)
 
@@ -949,6 +1043,7 @@ func _clear_connection_lines():
 	connection_paths.clear()
 	is_showing_connections = false
 	print("BuildingDetailsModal: Cleared all connection lines")
+	# Note: We keep the container alive so it can be reused for subsequent drawings
 
 func clear_all_connections():
 	# Public function to clear connections from outside
@@ -1193,6 +1288,8 @@ func _get_building_display_name(building_type: String) -> String:
 			return "House"
 		"town_center":
 			return "Town Center"
+		"research":
+			return "Research"
 		"barracks":
 			return "Barracks"
 		"farm":
@@ -1221,6 +1318,9 @@ func _get_building_production() -> String:
 		"town_center":
 			var science_production = worker_occupancy * 3  # +3 science per scientist
 			return "+" + str(science_production) + " Science/day (" + str(worker_occupancy) + " scientists)"
+		"research":
+			var science_production = worker_occupancy * 3  # +3 science per researcher
+			return "+" + str(science_production) + " Science/day (" + str(worker_occupancy) + " researchers)"
 		"barracks":
 			return "Barracks (no production)"
 		"farm":
@@ -1248,6 +1348,8 @@ func _get_building_maintenance() -> String:
 		"house":
 			return "0.5 Gold/turn"
 		"town_center":
+			return "2 Gold/turn"
+		"research":
 			return "2 Gold/turn"
 		"barracks":
 			return "3 Gold/turn"
@@ -1292,6 +1394,8 @@ func _get_worker_capacity(building_type: String) -> int:
 	match building_type:
 		"town_center":
 			return 2  # 2 scientist slots
+		"research":
+			return 8  # Research team size
 		"stoneworker":
 			return 10  # Most work stations employ up to 10
 		"lumberjack":
@@ -1311,6 +1415,8 @@ func _get_special_effects(building_type: String) -> String:
 			return "Administrative center, enables other buildings"
 		"barracks":
 			return "Military training, +10% unit combat effectiveness"
+		"research":
+			return "Scientific research, generates science for tech advancement"
 		"fishing_hut":
 			return "Must be near water"
 		"farmhouse":
@@ -1346,6 +1452,11 @@ func close_modal():
 	"""Close the modal and clear all visual elements"""
 	print("BuildingDetailsModal: close_modal() called - clearing connection lines")
 	_clear_connection_lines()
+	# Clean up container when modal closes
+	if connection_lines_container and is_instance_valid(connection_lines_container):
+		connection_lines_container.queue_free()
+		connection_lines_container = null
+		print("BuildingDetailsModal: Freed connection lines container on close")
 	visible = false
 
 func _unregister_from_ui_manager():
@@ -1512,8 +1623,9 @@ func _on_capacity_plus_pressed(capacity_label: Label):
 				# Update building data
 				building_data[capacity_type + "_occupancy"] = current_value
 				
-				# Refresh population modal if it's open
+				# Refresh population and resources modals if they're open
 				_refresh_population_modal()
+				_refresh_resources_modal()
 				
 				print("Increased ", capacity_type, " occupancy to ", current_value, "/", max_value)
 			else:
@@ -1538,8 +1650,9 @@ func _on_capacity_minus_pressed(capacity_label: Label):
 				# Update building data
 				building_data[capacity_type + "_occupancy"] = current_value
 				
-				# Refresh population modal if it's open
+				# Refresh population and resources modals if they're open
 				_refresh_population_modal()
+				_refresh_resources_modal()
 				
 				print("Decreased ", capacity_type, " occupancy to ", current_value, "/", max_value)
 
@@ -1556,3 +1669,11 @@ func _refresh_population_modal():
 		if is_instance_valid(game_node.population_modal) and game_node.population_modal.visible:
 			if game_node.population_modal.has_method("refresh_content"):
 				game_node.population_modal.refresh_content()
+
+func _refresh_resources_modal():
+	# Refresh the resources modal if it's currently open
+	var game_node = _get_game_node()
+	if game_node and game_node.has_method("get") and game_node.resources_modal:
+		if is_instance_valid(game_node.resources_modal) and game_node.resources_modal.visible:
+			if game_node.resources_modal.has_method("refresh_content"):
+				game_node.resources_modal.refresh_content()
