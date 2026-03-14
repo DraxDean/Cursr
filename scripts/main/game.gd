@@ -743,18 +743,11 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	
 	# Auto-assign units to this building if capacity increased
 	if difference > 0:
-		# Create jobs for work capacity in work buildings FIRST (before auto-assign)
-		if capacity_type == "worker":
-			_create_jobs_for_worker_capacity(building_node, new_value)
-		
-		# Then assign units to the jobs
+		# Assign units to existing unassigned jobs (jobs exist at max capacity from creation)
 		_auto_assign_units_to_building(building_node, capacity_type, difference)
 	elif difference < 0:
-		# Capacity decreased - need to remove some unit assignments
+		# Capacity decreased - remove unit assignments from some jobs (keep job slots)
 		_remove_excess_unit_assignments(building_node, capacity_type, abs(difference), owner_player)
-		# Remove excess jobs for work capacity
-		if capacity_type == "worker":
-			_trim_jobs_for_worker_capacity(building_node, new_value)
 	
 	# Recalculate global population
 	update_player_population(owner_player)
@@ -864,7 +857,20 @@ func _check_and_create_missing_sprites(player_id: int):
 				print("Creating missing sprite for fully assigned unit: ", unit_id, " (living: ", living_quarters, ", job: ", job, ")")
 				_create_unit_sprite_and_start_cycle(unit)
 			else:
-				# Sprite exists - check if job changed and update connections
+				# Sprite exists - check if we need to update connections
+				var old_job = unit.get("previous_job", job)  # Track previous job to detect changes
+				
+				if old_job != job:
+					# Job changed - reset movement to restart from home
+					print("Unit ", unit_id, " job changed from ", old_job, " to ", job, " - resetting movement cycle")
+					unit["movement_state"] = "idle"
+					unit["current_path"] = []
+					unit["path_index"] = 0
+					unit["movement_cycle_step"] = 0
+					unit["work_timer"] = 0.0
+					unit["previous_job"] = job
+				
+				# Always ensure job_connections are available
 				if not unit.has("job_connections") or unit.get("job_connections", []).is_empty():
 					# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
 					var job_building = job
@@ -879,12 +885,6 @@ func _check_and_create_missing_sprites(player_id: int):
 				if not unit.has("sprite_id") or unit.get("sprite_id") == "":
 					unit["sprite_id"] = unit_id
 					unit_sprite_map[unit_id] = existing_sprite
-				
-				# Always reset movement to restart from home when job changes
-				unit["movement_state"] = "idle"
-				unit["current_path"] = []
-				unit["path_index"] = 0
-				unit["movement_cycle_step"] = 0
 				_start_unit_movement_cycle(unit)
 
 func _cleanup_unassigned_unit_sprites(player_id: int):
@@ -1112,31 +1112,6 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 	# Notify modal that jobs have been updated
 	building_jobs_updated.emit(building_node.name)
 	print("DEBUG: Initialized %d job paths for %s (building: %s). Total jobs: %d" % [resource_paths.size(), building_type, building_node.name, jobs.size()])
-
-func _trim_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
-	"""Remove excess job entries when worker capacity decreases"""
-	if not building_node:
-		return
-	
-	var jobs = building_node.get_meta("resource_jobs", [])
-	
-	# Remove jobs beyond new capacity
-	if jobs.size() > new_capacity:
-		# Clear resource assignments for removed jobs (conflict avoidance)
-		for i in range(new_capacity, jobs.size()):
-			var job = jobs[i]
-			var resource_id = job.get("resource_id")
-			var resource_type = job.get("resource_type")
-			
-			if resource_id and resource_type:
-				var objects = get_environment_objects(resource_type)
-				if resource_id in objects:
-					objects[resource_id]["job"] = null
-					print("Game: Cleared resource ", resource_id, " assignment from removed job")
-		
-		jobs.resize(new_capacity)
-		building_node.set_meta("resource_jobs", jobs)
-		print("Trimmed jobs for %s to %d capacity" % [building_node.name, new_capacity])
 
 func get_nearest_environment_objects(position: Vector2, object_type: String, max_count: int = -1) -> Array:
 	# Get environment objects sorted by distance from a position
@@ -1815,6 +1790,11 @@ func initialize_map():
 		# Create initial units (cosmetic)
 		_create_initial_units()
 		
+		# Update population data after units are created
+		for player_id in players_data.keys():
+			if str(player_id) != "environment":
+				update_player_population(player_id)
+		
 		# CRITICAL: Ensure unit sprites are restored after buildings
 		# This is especially important for loaded games where units exist but have no sprites yet
 		if GameManager.start_mode == "load":
@@ -1897,32 +1877,54 @@ func _fix_duplicate_unit_ids():
 		print("Game: No duplicate unit IDs found")
 
 func _create_initial_units():
-	print("Game: Skipping initial unit creation - units will be created dynamically when buildings get capacity")
+	"""Create initial unit population for new games, or restore sprites for loaded games"""
 	
-	# Don't create any initial units - let the dynamic system handle all unit creation
-	# This ensures unlimited unit generation based on building capacity
-	
-	# Only restore units if loading from save data
-	if not loaded_units_data.is_empty():
-		# Restore units from save data
-		for unit_data in loaded_units_data:
-			_spawn_unit(unit_data)
-		loaded_units_data = []  # Clear after restoration
-		print("Game: Restored ", loaded_units_data.size(), " units from save data")
+	if GameManager.start_mode == "new" or GameManager.start_mode == "new_with_data":
+		# NEW GAME: Create 10 units per player upfront
+		print("Game: Creating initial unit population for new game")
+		for player_id in players_data.keys():
+			if str(player_id) == "environment":
+				continue
+			
+			# Create 10 units per player
+			for i in range(10):
+				var unit_id = _get_next_unit_id()
+				var player_race = players_data[player_id].get("race", "human")
+				var unit_data = {
+					"unique_id": unit_id,
+					"name": _generate_random_name(player_race),
+					"type": "peasant",
+					"race": player_race,
+					"player_id": player_id,
+					"position": Vector2.ZERO,  # Will be updated when assigned housing
+					"living_quarters": null,
+					"job": null,
+					"assigned_job_index": -1,
+					"previous_job": null,
+					"job_connections": [],
+					# Movement properties
+					"current_path": [],
+					"path_index": 0,
+					"movement_state": "idle",
+					"movement_target": null,
+					"movement_cycle_step": 0,
+					"work_timer": 0.0,
+					"movement_speed": 25.0,
+					"speed_multiplier": randf_range(0.85, 1.15),
+					"sprite_id": ""
+				}
+				
+				if not players_data[player_id].has("units"):
+					players_data[player_id]["units"] = []
+				
+				players_data[player_id]["units"].append(unit_data)
 		
-		# Restore missing names for backward compatibility with old saves
-		_restore_missing_unit_names()
-		
-		# Restore sprites for units that should be visible
-		_restore_unit_sprites_on_load()
+		print("Game: Created 10 units per player for new game")
 	else:
-		# If loading from save (units exist in players_data), restore their sprites
-		if GameManager.start_mode == "load":
-			# Restore missing names for backward compatibility with old saves
-			_restore_missing_unit_names()
-			_restore_unit_sprites_on_load()
-		else:
-			print("Game: Starting with no sprites - they will be created when buildings gain capacity")
+		print("Game: Not a new game (mode: %s) - units loaded or will be restored from save" % GameManager.start_mode)
+	
+	# For both new and loaded games: restore sprites for units that meet conditions
+	_restore_unit_sprites_on_load()
 
 func _clear_existing_unit_sprites():
 	"""Clear any existing unit sprites before restoration"""
@@ -2302,30 +2304,52 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections
+			
+			# Also update the job metadata to track which unit is assigned
+			var jobs = building_node.get_meta("resource_jobs", [])
+			var assigned_job = null
+			var job_index = -1
+			for i in range(jobs.size()):
+				if jobs[i].get("unit_assigned") == null:
+					jobs[i]["unit_assigned"] = unit["unique_id"]
+					assigned_job = jobs[i]
+					job_index = i
+					break
+			
+			# Store building_id and job_index in unit (building ID is already stored as unit["job"])
+			if assigned_job:
+				# Store the index of the job within the building's resource_jobs array
+				unit["assigned_job_index"] = job_index
+				unit["previous_job"] = building_id  # Initialize previous_job when assigning
+				print("DEBUG: Assigned unit ", unit["unique_id"], " to job with path containing ", assigned_job.get("tile_path", []).size(), " tiles")
 				
-				# Also update the job metadata to track which unit is assigned
-				var jobs = building_node.get_meta("resource_jobs", [])
-				for job_entry in jobs:
-					if job_entry.get("unit_assigned") == null:
-						job_entry["unit_assigned"] = unit["unique_id"]
-						break
-				# CRITICAL: Save the updated jobs back to building metadata
-				building_node.set_meta("resource_jobs", jobs)
-				# Notify modal that jobs have been updated
-				building_jobs_updated.emit(building_node.name)
-			elif capacity_type == "station" or capacity_type == "training":
-				# For barracks jobs, use naming convention: building_id_capacity_type
-				var barracks_job_name = building_id + "_" + capacity_type
-				unit["job"] = barracks_job_name
-				# Always update job connections for this unit
-				if buildings_connections_cache.has(building_id):
-					unit["job_connections"] = buildings_connections_cache[building_id]
-				else:
-					var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
-					if job_building_node:
-						var connections = _find_building_connections_for_unit(job_building_node)
-						unit["job_connections"] = connections
-						buildings_connections_cache[building_id] = connections
+				# Update unit position to home if it now has both assignments
+				var current_living_quarters = unit.get("living_quarters", null)
+				if current_living_quarters:
+					var living_building = map_objects_holder.get_node_or_null(NodePath(current_living_quarters))
+					if living_building:
+						unit["position"] = living_building.position
+						print("DEBUG: Updated unit ", unit["unique_id"], " position to home at ", current_living_quarters)
+			
+			# CRITICAL: Save the updated jobs back to building metadata
+			building_node.set_meta("resource_jobs", jobs)
+			# Notify modal that jobs have been updated
+			building_jobs_updated.emit(building_node.name)
+			units_assigned += 1
+			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
+		elif capacity_type == "station" or capacity_type == "training":
+			# For barracks jobs, use naming convention: building_id_capacity_type
+			var barracks_job_name = building_id + "_" + capacity_type
+			unit["job"] = barracks_job_name
+			# Always update job connections for this unit
+			if buildings_connections_cache.has(building_id):
+				unit["job_connections"] = buildings_connections_cache[building_id]
+			else:
+				var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
+				if job_building_node:
+					var connections = _find_building_connections_for_unit(job_building_node)
+					unit["job_connections"] = connections
+					buildings_connections_cache[building_id] = connections
 			
 			units_assigned += 1
 			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
@@ -2440,69 +2464,11 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 	_start_unit_movement_cycle(unit)
 
 func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String, count: int, owner_player: int):
-	"""Create new units when capacity is added but no existing units are available"""
-	for i in range(count):
-		# Create unit near the building that triggered the capacity increase
-		var spawn_position = _get_unit_spawn_position_near_building(building_node)
-		
-		var player_race = players_data.get(owner_player, {}).get("race", "human")
-		var unit_data = {
-			"unique_id": _get_next_unit_id(),
-			"name": _generate_random_name(player_race),
-			"type": "peasant",
-			"race": player_race,
-			"player_id": owner_player,
-			"position": spawn_position,
-			"living_quarters": null,
-			"job": null,
-			# Movement properties
-			"current_path": [],
-			"path_index": 0,
-			"movement_state": "idle",
-			"movement_target": null,
-			"movement_cycle_step": 0,
-			"work_timer": 0.0,
-			"movement_speed": 25.0,
-			"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
-		}
-		
-		print("Game: Created unit %s with name '%s'" % [unit_data["unique_id"], unit_data["name"]])
-		
-		# Assign to the appropriate capacity immediately
-		if capacity_type == "living":
-			unit_data["living_quarters"] = building_node.name
-		elif capacity_type == "worker":
-			unit_data["job"] = building_node.name
-			# Update the job metadata to track which unit is assigned
-			var jobs = building_node.get_meta("resource_jobs", [])
-			for job_entry in jobs:
-				if job_entry.get("unit_assigned") == null:
-					job_entry["unit_assigned"] = unit_data["unique_id"]
-					break
-			# Save updated jobs back to building metadata
-			building_node.set_meta("resource_jobs", jobs)
-			# Notify modal that jobs have been updated
-			building_jobs_updated.emit(building_node.name)
-		elif capacity_type == "station" or capacity_type == "training":
-			# For barracks jobs, use naming convention: building_id_capacity_type
-			unit_data["job"] = building_node.name + "_" + capacity_type
-			# Find a house to live in or create housing requirement
-			_assign_unit_to_living_quarters(unit_data, owner_player)
-		
-		# Add unit to player data
-		if not players_data[owner_player].has("units"):
-			players_data[owner_player]["units"] = []
-		players_data[owner_player]["units"].append(unit_data)
-		
-		# For barracks assignments with living quarters, create sprite immediately
-		print("DEBUG: Barracks unit creation check - capacity_type:", capacity_type, " living_quarters:", unit_data.get("living_quarters"), " job:", unit_data.get("job"))
-		if (capacity_type == "station" or capacity_type == "training") and unit_data.get("living_quarters"):
-			print("DEBUG: Creating sprite for barracks unit", unit_data["unique_id"])
-			_create_unit_sprite_and_start_cycle(unit_data)
-		else:
-			print("DEBUG: Not creating sprite yet - station/training=", (capacity_type == "station" or capacity_type == "training"), " living_quarters=", unit_data.get("living_quarters"))
-		
-		print("Created new unit: ", unit_data["unique_id"], " assigned to ", capacity_type, " at ", building_node.name)
+	"""DEPRECATED: Units are now created upfront during game initialization and stored in players_data.
+	This function is kept for compatibility but does not create new units."""
+	print("Game: Note - Units created at game start, not when capacity increases. No new units created for remaining capacity slots.")
+	# Units exist from game initialization - they get assigned to buildings via _auto_assign_units_to_building()
+	# If there aren't enough unassigned units for the capacity increase, the capacity will simply be partially filled
 
 func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 	"""Assign a unit to living quarters if available"""
@@ -2518,6 +2484,7 @@ func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 					print("DEBUG: Found house ", child.name, " - occupancy:", living_occupancy, " capacity:", living_capacity)
 					if living_occupancy < living_capacity:
 						unit_data["living_quarters"] = child.name
+						unit_data["position"] = child.position  # Position unit at home
 						# Update building occupancy
 						child.set_meta("living_occupancy", living_occupancy + 1)
 						update_player_population(owner_player)
@@ -2536,6 +2503,7 @@ func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 					print("DEBUG: Found farmhouse ", child.name, " - occupancy:", living_occupancy, " capacity:", living_capacity)
 					if living_occupancy < living_capacity:
 						unit_data["living_quarters"] = child.name
+						unit_data["position"] = child.position  # Position unit at home
 						# Update building occupancy
 						child.set_meta("living_occupancy", living_occupancy + 1)
 						update_player_population(owner_player)
@@ -2713,6 +2681,14 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 				unit["work_timer"] = 0.0
 				_start_unit_movement_cycle(unit)
 		
+		"waiting":
+			# Unit is waiting at the resource/workplace
+			unit["work_timer"] += delta
+			if unit["work_timer"] >= 3.0:  # Wait 3 seconds at resource
+				unit["work_timer"] = 0.0
+				unit["movement_state"] = "idle"
+				_on_unit_reached_destination(unit)
+		
 		"moving":
 			# Follow current path
 			var current_path = unit.get("current_path", [])
@@ -2724,10 +2700,10 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			var path_index = unit.get("path_index", 0)
 			if path_index >= current_path.size():
 				# Reached end of path
-				unit["movement_state"] = "idle"
+				unit["movement_state"] = "waiting"  # Wait at destination
+				unit["work_timer"] = 0.0
 				unit["current_path"] = []
 				unit["path_index"] = 0
-				_on_unit_reached_destination(unit)
 				return
 			
 			# Move towards next waypoint
@@ -2818,159 +2794,138 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 		print("Building not found: ", building_name)
 		return
 	
-	# Try to find the pre-calculated path from job connections
-	var connections = unit.get("job_connections", [])
+	# Check if this is a return trip (next_step > current step would indicate return)
+	var is_return_trip = next_step > unit.get("movement_cycle_step", 0)
+	
+	# For return trips, reverse the appropriate path
 	var path = []
 	
-	print("DEBUG: Looking for path in job_connections (", connections.size(), " connections available)")
+	if is_return_trip and next_step == 3:
+		# Returning from resource to workplace - reverse the resource path
+		var resource_path = unit.get("resource_path", [])
+		if not resource_path.is_empty():
+			path = _reverse_path(resource_path)
+			print("DEBUG: Using reversed resource path for return to workplace (", path.size(), " waypoints)")
+	elif is_return_trip and next_step == 4:
+		# Returning from workplace to home - reverse the home path
+		var home_path = unit.get("home_path", [])
+		if not home_path.is_empty():
+			path = _reverse_path(home_path)
+			print("DEBUG: Using reversed home path for return to living quarters (", path.size(), " waypoints)")
 	
-	# Look for a connection to this building
-	for connection in connections:
-		if connection.get("name") == building_name and connection.has("path"):
-			path = connection.get("path", [])
-			print("DEBUG: Found path in job_connections to ", building_name, " with ", path.size(), " waypoints")
-			break
-	
-	# Fallback: if no pre-calculated path found, calculate it
+	# If we didn't get a reversed path, try connections
 	if path.is_empty():
-		print("DEBUG: No path found in job_connections, calculating...")
-		var unit_pos = unit["position"]
-		var target_pos = building_node.position
+		# Try to find the pre-calculated path from job connections
+		var connections = unit.get("job_connections", [])
 		
-		# Get actual path using existing pathfinding system
-		path = _get_path_between_positions(unit_pos, target_pos)
+		print("DEBUG: Looking for path in job_connections (", connections.size(), " connections available)")
+		
+		# Look for a connection to this building
+		for connection in connections:
+			if connection.get("name") == building_name and connection.has("path"):
+				path = connection.get("path", [])
+				print("DEBUG: Found path in job_connections to ", building_name, " with ", path.size(), " waypoints")
+				# Store this path for potential reversal later
+				if next_step == 1:
+					# This is the home to workplace path - store for reversal
+					unit["home_path"] = path
+				break
+		
+		# Fallback: if no pre-calculated path found, calculate it
 		if path.is_empty():
-			# Fallback to direct path if pathfinding fails
-			path = [target_pos]
-			print("DEBUG: Calculated path empty, using direct path to ", target_pos)
-		else:
-			print("DEBUG: Calculated path with ", path.size(), " waypoints")
+			print("DEBUG: No path found in job_connections, calculating...")
+			var unit_pos = unit["position"]
+			var target_pos = building_node.position
+			
+			# Get actual path using existing pathfinding system
+			path = _get_path_between_positions(unit_pos, target_pos)
+			if path.is_empty():
+				# Fallback to direct path if pathfinding fails
+				path = [target_pos]
+				print("DEBUG: Calculated path empty, using direct path to ", target_pos)
+			else:
+				print("DEBUG: Calculated path with ", path.size(), " waypoints")
+			
+			# Store for potential reversal
+			if next_step == 1:
+				unit["home_path"] = path
 	
 	unit["current_path"] = path
 	unit["path_index"] = 0
 	unit["movement_state"] = "moving"
 	unit["movement_target"] = building_name
-	unit["movement_cycle_step"] = next_step
-	
-	print("DEBUG: Unit ", unit["unique_id"], " starting path with ", path.size(), " waypoints to ", building_name)
-	unit["path_index"] = 0
-	unit["movement_state"] = "moving"
-	unit["movement_target"] = building_name
 	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
+	
+	print("Unit ", unit["unique_id"], " moving to ", building_name, " (", path.size(), " waypoints)")
 	
 	print("Unit ", unit["unique_id"], " moving to building: ", building_name, " with ", path.size(), " waypoints")
 
-func _move_unit_to_resource(unit: Dictionary, next_step: int):
-	"""Move unit to a resource connected to their workplace"""
-	var job = unit.get("job", null)
-	if job == null:
-		print("Unit has no job, skipping resource step")
-		# Skip to next step if no job
-		unit["movement_cycle_step"] = next_step
-		unit["movement_state"] = "idle"
-		return
+func _get_assigned_job(unit: Dictionary) -> Dictionary:
+	"""Retrieve the assigned job for a unit from the building's metadata"""
+	var job_building_id = unit.get("job", null)
+	var job_index = unit.get("assigned_job_index", -1)
 	
-	# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
-	var job_building = job
-	if job.contains("_station") or job.contains("_training"):
-		job_building = job.substr(0, job.rfind("_"))
+	if job_building_id == null or job_index < 0:
+		return {}
 	
-	var building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
+	var building_node = map_objects_holder.get_node_or_null(NodePath(job_building_id))
 	if not building_node:
-		print("Job building node not found: ", job_building)
-		# Skip to next step if building not found
+		return {}
+	
+	var jobs = building_node.get_meta("resource_jobs", [])
+	if job_index >= 0 and job_index < jobs.size():
+		return jobs[job_index]
+	
+	return {}
+
+func _move_unit_to_resource(unit: Dictionary, next_step: int):
+	"""Move unit to the resource specified in their assigned job using the job's pre-calculated tile_path"""
+	var assigned_job = _get_assigned_job(unit)
+	if assigned_job.is_empty():
+		print("Unit ", unit["unique_id"], " has no assigned job - skipping resource step")
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
-	# Get building connections using cached data if available
-	var connections = unit.get("job_connections", [])
-	if connections.is_empty():
-		# Fallback: calculate if not cached
-		connections = _find_building_connections_for_unit(building_node)
-		unit["job_connections"] = connections  # Cache for future use
-	else:
-		# Check if any mountains are missing paths (old cached data)
-		# If so, recalculate to get fresh paths
-		var has_mountains_without_paths = false
-		for connection in connections:
-			if connection.get("type") == "mountain" and connection.get("path", []).is_empty():
-				has_mountains_without_paths = true
-				break
-		
-		if has_mountains_without_paths:
-			# Recalculate connections to get fresh pathfinding for mountains
-			print("Unit ", unit["unique_id"], " has cached connections with mountains missing paths - recalculating...")
-			connections = _find_building_connections_for_unit(building_node)
-			unit["job_connections"] = connections  # Update cache
-	
-	var resource_connections = []
-	
-	# Filter for resource connections (trees, mountains, fish) from the pre-calculated connections
-	for connection in connections:
-		var conn_type = connection.get("type", "")
-		if conn_type in ["tree", "mountain", "fish"]:  # These are resource types with pre-calculated paths
-			resource_connections.append(connection)
-	
-	# Find nearest farm as a resource (farms don't have pre-calculated paths)
-	var farm_resource = _find_nearest_farm(unit["position"])
-	if farm_resource:
-		# Check if this farm is connected to the job building (within range and path-findable)
-		# For now, include all farms as potential resources
-		resource_connections.append(farm_resource)
-	
-	if resource_connections.is_empty():
-		# No resource connection - skip resource step and go to next part of cycle
+	# Use the tile_path from the assigned job
+	var tile_path = assigned_job.get("tile_path", [])
+	if tile_path.is_empty():
+		print("Unit ", unit["unique_id"], " has no resource path in job - skipping resource step")
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
-	# Find the closest resource connection (shortest distance)
-	var closest_connection = null
-	var shortest_distance = INF
-	
-	for connection in resource_connections:
-		var distance = connection.get("distance", INF)
-		if distance < shortest_distance:
-			shortest_distance = distance
-			closest_connection = connection
-	
-	if closest_connection == null:
-		# No valid resource found
+	# Convert tile coordinates to world coordinates
+	if not tilemap_layer:
+		print("ERROR: TileMapLayer not found")
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
-	# Use the existing path from the building connection, or calculate for farms and fish
-	var existing_path = closest_connection.get("path", [])
+	var world_path = []
+	for tile in tile_path:
+		world_path.append(tilemap_layer.map_to_local(tile))
 	
-	# For farms and fish, we need to calculate the path since it wasn't pre-calculated
-	if existing_path.is_empty() and closest_connection.get("type") == "farm":
-		var farm_node = map_objects_holder.get_node_or_null(NodePath(closest_connection.get("name")))
-		if farm_node:
-			# Calculate path from unit's current position to farm
-			existing_path = _get_path_between_positions(unit["position"], farm_node.position)
-	elif existing_path.is_empty() and closest_connection.get("type") == "fish":
-		# For fish, use the tile_coords stored in the connection
-		if closest_connection.has("tile_coords"):
-			var fish_world_pos = tilemap_layer.map_to_local(closest_connection.get("tile_coords"))
-			# Calculate path from unit's current position to fish
-			existing_path = _get_path_between_positions(unit["position"], fish_world_pos)
-	
-	if existing_path.is_empty():
-		# No path available - skip to next step
-		print("No path available to resource: ", closest_connection.get("name"))
-		unit["movement_cycle_step"] = next_step
-		unit["movement_state"] = "idle"
-		return
-	
-	unit["current_path"] = existing_path
+	# Set unit to move along this path
+	unit["current_path"] = world_path
 	unit["path_index"] = 0
 	unit["movement_state"] = "moving"
-	unit["movement_target"] = closest_connection.get("name", "unknown")
+	unit["resource_path"] = world_path  # Store for later reversal
+	unit["movement_target"] = assigned_job.get("resource_id", "unknown")
 	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
 	
-	print("Unit ", unit["unique_id"], " moving to resource: ", closest_connection.get("name"), " (", closest_connection.get("type"), ")")
+	print("Unit ", unit["unique_id"], " moving to resource ", assigned_job.get("resource_id"), " with path of ", world_path.size(), " waypoints")
+
+func _reverse_path(path: Array) -> Array:
+	"""Reverse a path array for return trips"""
+	if path.is_empty():
+		return []
+	
+	var reversed = []
+	for i in range(path.size() - 1, -1, -1):
+		reversed.append(path[i])
+	
+	return reversed
 
 func _find_nearest_farm(from_position: Vector2) -> Dictionary:
 	"""Find the nearest farm building and return connection data"""
@@ -3297,6 +3252,10 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	print("Game: Finishing world creation")
 	is_in_world_creation = false
 	
+	# Set start mode to new so units get created
+	GameManager.start_mode = "new"
+	unit_counter = 0  # Reset unit counter for new games
+	
 	# Use the generated world data
 	world_data = generated_world_data.duplicate()
 	current_save_path = ""
@@ -3322,6 +3281,14 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	
 	# Migrate any buildings with old naming (in case they were created during world creation)
 	migrate_old_building_names()
+	
+	# Create initial units for new game from world creation
+	_create_initial_units()
+	
+	# Update population data after units are created
+	for player_id in players_data.keys():
+		if str(player_id) != "environment":
+			update_player_population(player_id)
 	
 	# Show game header now that the game has started
 	if game_header:
@@ -3623,10 +3590,21 @@ func _auto_assign_jobs_on_load():
 				_create_jobs_for_worker_capacity(building_node, max_capacity)
 				jobs = building_node.get_meta("resource_jobs", [])
 		
-		# Initialize paths to resources for jobs on load
-		_initialize_job_paths_on_load(building_node)
+		# Initialize paths to resources for jobs on load - BUT ONLY if they don't already have paths
+		# This prevents recalculation on each reload which causes resources to shift
+		var needs_path_init = false
+		for job in jobs:
+			if job.get("tile_path", []).is_empty():
+				needs_path_init = true
+				break
 		
-		# Re-get jobs after path initialization
+		if needs_path_init:
+			print("DEBUG: Jobs missing paths - initializing paths on load")
+			_initialize_job_paths_on_load(building_node)
+		else:
+			print("DEBUG: Jobs already have paths - skipping path initialization")
+		
+		# Re-get jobs after potential path initialization
 		jobs = building_node.get_meta("resource_jobs", [])
 		
 		# Now auto-assign units to any unassigned job slots
@@ -3803,11 +3781,11 @@ func _on_unit_control_gui_input(event: InputEvent, unit: Dictionary):
 	_open_unit_details_modal(unit)
 	get_tree().root.set_input_as_handled()
 
-func _on_unit_mouse_entered(unit: Dictionary):
+func _on_unit_mouse_entered(_unit: Dictionary):
 	"""Visual feedback when mouse enters unit clickable area"""
 	pass
 
-func _on_unit_mouse_exited(unit: Dictionary):
+func _on_unit_mouse_exited(_unit: Dictionary):
 	"""Visual feedback when mouse leaves unit clickable area"""
 	pass
 

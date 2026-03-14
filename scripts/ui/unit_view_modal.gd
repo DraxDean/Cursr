@@ -164,25 +164,32 @@ func _draw_unit_paths():
 		if not path_to_home.is_empty():
 			_draw_path_on_tilemap(path_to_home, Color.BLUE, tilemap_ref)
 	
-	# Draw path to job's resource (if available in cached connections)
-	var job_connections = current_unit.get("job_connections", [])
-	if not job_connections.is_empty():
-		# Find closest resource connection
-		var closest_resource = null
-		var shortest_distance = INF
+	# Draw path to job's resource (if available in the job)
+	var job_assignment = current_unit.get("job", null)
+	if job_assignment:
+		# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
+		var job_building_name = job_assignment
+		if job_assignment.contains("_station") or job_assignment.contains("_training"):
+			job_building_name = job_assignment.substr(0, job_assignment.rfind("_"))
 		
-		for connection in job_connections:
-			var conn_type = connection.get("type", "")
-			if conn_type in ["tree", "mountain", "fish"]:
-				var distance = connection.get("distance", INF)
-				if distance < shortest_distance:
-					shortest_distance = distance
-					closest_resource = connection
-		
-		if closest_resource:
-			var resource_path = closest_resource.get("path", [])
-			if not resource_path.is_empty():
-				_draw_path_on_tilemap(resource_path, Color.ORANGE, tilemap_ref)
+		# Get the assigned job from building metadata
+		var assigned_job_index = current_unit.get("assigned_job_index", -1)
+		if assigned_job_index >= 0 and game_ref.map_objects_holder.has_node(NodePath(job_building_name)):
+			var job_building = game_ref.map_objects_holder.get_node(NodePath(job_building_name))
+			var jobs = job_building.get_meta("resource_jobs", [])
+			
+			if assigned_job_index < jobs.size():
+				var assigned_job = jobs[assigned_job_index]
+				var tile_path = assigned_job.get("tile_path", [])
+				
+				# Convert tile path to world coordinates and draw
+				if not tile_path.is_empty():
+					var world_resource_path = []
+					for tile_coord in tile_path:
+						world_resource_path.append(tilemap_ref.map_to_local(tile_coord))
+					
+					if not world_resource_path.is_empty():
+						_draw_path_on_tilemap(world_resource_path, Color.ORANGE, tilemap_ref)
 
 func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer):
 	"""Draw a path as a Line2D on the tilemap"""
