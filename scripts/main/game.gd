@@ -253,6 +253,24 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		# Calculate and cache connections for the new building (one-time, with bidirectional paths)
 		_calculate_and_cache_building_connections(building_scene)
 		
+		# Create jobs for work buildings
+		var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+		print("DEBUG: Checking if ", building_type, " is a work building. Is in list: ", building_type in work_buildings)
+		if building_type in work_buildings:
+			print("DEBUG: Creating jobs for work building ", building_type)
+			# Get the worker capacity for this building type
+			var worker_capacity = _get_worker_capacity(building_type)
+			print("DEBUG: Worker capacity for ", building_type, " is ", worker_capacity)
+			if worker_capacity > 0:
+				print("DEBUG: About to create ", worker_capacity, " jobs")
+				_create_jobs_for_worker_capacity(building_scene, worker_capacity)
+				_initialize_job_paths_on_load(building_scene)
+				print("DEBUG: Job creation completed")
+			else:
+				print("DEBUG: Worker capacity is 0, skipping job creation")
+		else:
+			print("DEBUG: Not a work building, skipping job creation")
+		
 		# Auto-save after placing building
 		print("Game: Auto-saving after building placement...")
 		if _execute_save():
@@ -296,6 +314,26 @@ func _get_living_capacity(building_type: String) -> int:
 			return 2
 		"barracks":
 			return 0
+		_:
+			return 0
+
+func _get_worker_capacity(building_type: String) -> int:
+	"""Get the worker capacity for a building type"""
+	match building_type:
+		"town_center":
+			return 2  # 2 scientist slots
+		"research":
+			return 8  # Research team size
+		"stoneworker":
+			return 10  # Most work stations employ up to 10
+		"lumberjack":
+			return 10
+		"lumber_mill":
+			return 10
+		"farmhouse":
+			return 6  # Agricultural workers
+		"fishing_hut":
+			return 5  # Fishing employs 5 labourers
 		_:
 			return 0
 
@@ -595,6 +633,38 @@ func get_player_population_data(player_id: int) -> Dictionary:
 		return pop_data
 	return {}
 
+func get_resource_on_tile(tile_coords: Vector2i) -> Dictionary:
+	"""Get the resource object on a specific tile.
+	Returns the resource data if found, or empty dict if none found.
+	Prints error if more than 1 resource is on the same tile."""
+	var found_resources = []
+	
+	# Check all resource types
+	var resource_types = ["mountains", "trees", "fish"]
+	
+	for resource_type in resource_types:
+		var objects = get_environment_objects(resource_type)
+		for obj_id in objects:
+			var obj_data = objects[obj_id]
+			if obj_data.get("tile_coords") == tile_coords:
+				found_resources.append({
+					"id": obj_id,
+					"type": resource_type,
+					"data": obj_data
+				})
+	
+	# Check for multiple resources on same tile (error condition)
+	if found_resources.size() > 1:
+		push_error("ERROR: Found ", found_resources.size(), " resources on tile ", tile_coords, "! Should only have 1.")
+		for res in found_resources:
+			push_error("  - ", res["type"], " (", res["id"], ")")
+	
+	# Return first (only) resource if found
+	if found_resources.size() == 1:
+		return found_resources[0]["data"]
+	
+	return {}
+
 func _count_actual_occupancy(building_name: String, capacity_type: String, owner_player: int) -> int:
 	"""Count actual number of units assigned to a building for a specific capacity type"""
 	if not players_data.has(owner_player):
@@ -652,10 +722,12 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	
 	# Auto-assign units to this building if capacity increased
 	if difference > 0:
-		_auto_assign_units_to_building(building_node, capacity_type, difference)
-		# Create jobs for work capacity in work buildings
+		# Create jobs for work capacity in work buildings FIRST (before auto-assign)
 		if capacity_type == "worker":
 			_create_jobs_for_worker_capacity(building_node, new_value)
+		
+		# Then assign units to the jobs
+		_auto_assign_units_to_building(building_node, capacity_type, difference)
 	elif difference < 0:
 		# Capacity decreased - need to remove some unit assignments
 		_remove_excess_unit_assignments(building_node, capacity_type, abs(difference), owner_player)
@@ -898,7 +970,7 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			unit["movement_cycle_step"] = 0
 
 func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
-	"""Create job entries when worker capacity increases"""
+	"""Create empty job entries when worker capacity increases (no pathfinding)"""
 	if not building_node:
 		return
 	
@@ -907,25 +979,103 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	# Only create jobs for work buildings
 	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
 	if not building_type in work_buildings:
+		print("DEBUG: Building type ", building_type, " is not a work building, skipping job creation")
 		return
 	
 	# Get existing jobs or create new array
 	var jobs = building_node.get_meta("resource_jobs", [])
 	var current_job_count = jobs.size()
+	var new_jobs_needed = new_capacity - current_job_count
 	
-	# Create job entries for new capacity slots
+	print("DEBUG: Creating jobs for ", building_type, " - capacity: ", new_capacity, ", current jobs: ", current_job_count, ", need: ", new_jobs_needed)
+	
+	if new_jobs_needed <= 0:
+		print("DEBUG: No new jobs needed (", new_jobs_needed, ")")
+		return  # No new jobs to create
+	
+	# Create simple job entries without pathfinding
 	for i in range(current_job_count, new_capacity):
 		var job = {
 			"job_id": "job_" + building_node.name + "_" + str(i),
-			"path_id": "placeholderpath" + str(i + 1),
+			"path_id": "",
+			"resource_id": "",
+			"resource_type": "",
+			"tile_path": [],
+			"world_path": [],
 			"unit_assigned": null,
-			"created_day": 0  # Will be updated with actual day
+			"created_day": 0
 		}
 		jobs.append(job)
 	
 	# Update building metadata with jobs
 	building_node.set_meta("resource_jobs", jobs)
-	print("Created %d jobs for %s (building: %s)" % [new_capacity - current_job_count, building_type, building_node.name])
+	print("DEBUG: Successfully created %d empty job slots for %s (building: %s). Total jobs now: %d" % [new_jobs_needed, building_type, building_node.name, jobs.size()])
+
+func _initialize_job_paths_on_load(building_node: Node2D):
+	"""Initialize paths for jobs on load by finding nearby resources"""
+	if not building_node:
+		return
+	
+	var building_type = building_node.get_meta("building_type", "unknown")
+	
+	print("DEBUG: Initializing job paths for ", building_type, " (", building_node.name, ")")
+	
+	# Only initialize paths for work buildings
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+	if not building_type in work_buildings:
+		print("DEBUG: Not a work building, skipping path init")
+		return
+	
+	var jobs = building_node.get_meta("resource_jobs", [])
+	print("DEBUG: Found ", jobs.size(), " jobs to initialize")
+	
+	if jobs.is_empty():
+		print("DEBUG: No jobs found, skipping path init")
+		return
+	
+	# Determine resource type based on building type
+	var resource_type = ""
+	match building_type:
+		"lumberjack", "lumber_mill":
+			resource_type = "trees"
+		"stoneworker":
+			resource_type = "mountains"
+		"fishing_hut":
+			resource_type = "fish"
+		"research":
+			# Research buildings don't target specific resources
+			print("DEBUG: Research building doesn't target resources, skipping")
+			return
+	
+	# Get building tile coordinates
+	var building_tile = tilemap_layer.local_to_map(building_node.position)
+	var job_count = jobs.size()
+	
+	print("DEBUG: Searching for ", job_count, " resources of type ", resource_type, " from tile ", building_tile)
+	
+	# Find nearby resources up to the job count
+	var nearby_resources = _find_nearby_resources(building_tile, resource_type, job_count)
+	
+	print("DEBUG: Found ", nearby_resources.size(), " nearby resources")
+	
+	# If we found resources, calculate paths to them
+	var resource_paths = []
+	if not nearby_resources.is_empty():
+		resource_paths = _calculate_paths_to_resources(building_node, nearby_resources)
+	
+	# Assign paths to jobs
+	for i in range(jobs.size()):
+		if i < resource_paths.size():
+			var path_data = resource_paths[i]
+			jobs[i]["path_id"] = path_data["path_id"]
+			jobs[i]["resource_id"] = path_data["resource_id"]
+			jobs[i]["resource_type"] = resource_type
+			jobs[i]["tile_path"] = path_data["tile_path"]
+			jobs[i]["world_path"] = path_data["world_path"]
+	
+	# Update building metadata
+	building_node.set_meta("resource_jobs", jobs)
+	print("DEBUG: Initialized %d job paths for %s (building: %s). Total jobs: %d" % [resource_paths.size(), building_type, building_node.name, jobs.size()])
 
 func _trim_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	"""Remove excess job entries when worker capacity decreases"""
@@ -2111,6 +2261,8 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 					if job_entry.get("unit_assigned") == null:
 						job_entry["unit_assigned"] = unit["unique_id"]
 						break
+				# CRITICAL: Save the updated jobs back to building metadata
+				building_node.set_meta("resource_jobs", jobs)
 			elif capacity_type == "station" or capacity_type == "training":
 				# For barracks jobs, use naming convention: building_id_capacity_type
 				var barracks_job_name = building_id + "_" + capacity_type
@@ -2271,6 +2423,14 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 			unit_data["living_quarters"] = building_node.name
 		elif capacity_type == "worker":
 			unit_data["job"] = building_node.name
+			# Update the job metadata to track which unit is assigned
+			var jobs = building_node.get_meta("resource_jobs", [])
+			for job_entry in jobs:
+				if job_entry.get("unit_assigned") == null:
+					job_entry["unit_assigned"] = unit_data["unique_id"]
+					break
+			# Save updated jobs back to building metadata
+			building_node.set_meta("resource_jobs", jobs)
 		elif capacity_type == "station" or capacity_type == "training":
 			# For barracks jobs, use naming convention: building_id_capacity_type
 			unit_data["job"] = building_node.name + "_" + capacity_type
@@ -3018,6 +3178,126 @@ func _get_path_between_positions(start_pos: Vector2, end_pos: Vector2) -> Array:
 	
 	return world_path
 
+func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_count: int) -> Array:
+	"""Find nearby resources using expanding search from building tile.
+	Uses BFS-like expansion to check nearby tiles efficiently instead of checking all objects.
+	Returns array of resource data (id, type, position, tile_coords) up to max_count."""
+	var found_resources = []
+	var visited = {}
+	var queue = [building_tile]
+	var max_radius = 20  # Maximum search radius in tiles
+	
+	print("Game: Searching for ", max_count, " nearby ", resource_type, " starting from tile ", building_tile)
+	
+	# Map building type to resource type if needed
+	var search_resource_type = resource_type  # "mountains", "trees", "fish"
+	
+	while queue.size() > 0 and found_resources.size() < max_count:
+		var current_tile = queue.pop_front()
+		
+		# Skip if already visited
+		if visited.has(current_tile):
+			continue
+		visited[current_tile] = true
+		
+		# Check distance to avoid infinite search
+		var dist = _hex_distance(building_tile, current_tile)
+		if dist > max_radius:
+			continue
+		
+		# Check if this tile has the requested resource
+		var resource_data = get_resource_on_tile(current_tile)
+		if not resource_data.is_empty():
+			# Find the resource ID by searching all resources of this type
+			var objects = get_environment_objects(search_resource_type)
+			for obj_id in objects:
+				var obj_data = objects[obj_id]
+				if obj_data.get("tile_coords") == current_tile:
+					found_resources.append({
+						"id": obj_id,
+						"type": search_resource_type,
+						"data": obj_data,
+						"position": obj_data.get("position"),
+						"tile_coords": current_tile
+					})
+					print("Game: Found ", search_resource_type, " resource at tile ", current_tile)
+					break
+		
+		# Add neighbors to queue for expansion (hex tiles have 6 neighbors)
+		var neighbors = _get_hex_neighbors(current_tile)
+		for neighbor in neighbors:
+			if not visited.has(neighbor):
+				queue.append(neighbor)
+	
+	print("Game: Found ", found_resources.size(), " resources of type ", search_resource_type)
+	return found_resources
+
+func _get_hex_neighbors(tile: Vector2i) -> Array:
+	"""Get the 6 neighboring hex tiles"""
+	var neighbors = []
+	
+	# Hex grid offset coordinates neighbors depend on whether row is odd or even
+	if tile.y % 2 == 0:  # Even rows
+		neighbors = [
+			Vector2i(tile.x + 1, tile.y),      # E
+			Vector2i(tile.x - 1, tile.y),      # W
+			Vector2i(tile.x, tile.y + 1),      # SE
+			Vector2i(tile.x - 1, tile.y + 1),  # SW
+			Vector2i(tile.x, tile.y - 1),      # NE
+			Vector2i(tile.x - 1, tile.y - 1)   # NW
+		]
+	else:  # Odd rows
+		neighbors = [
+			Vector2i(tile.x + 1, tile.y),      # E
+			Vector2i(tile.x - 1, tile.y),      # W
+			Vector2i(tile.x + 1, tile.y + 1),  # SE
+			Vector2i(tile.x, tile.y + 1),      # SW
+			Vector2i(tile.x + 1, tile.y - 1),  # NE
+			Vector2i(tile.x, tile.y - 1)       # NW
+		]
+	
+	return neighbors
+
+func _calculate_paths_to_resources(building_node: Node2D, resources: Array) -> Array:
+	"""Calculate A* paths from building to each resource and return array of path objects"""
+	var paths = []
+	
+	if not building_node or resources.is_empty():
+		return paths
+	
+	var building_tile = tilemap_layer.local_to_map(building_node.position)
+	
+	for i in range(resources.size()):
+		var resource = resources[i]
+		var resource_tile = resource.get("tile_coords")
+		
+		# Calculate A* path from building to resource
+		var path_tiles = _astar_pathfind_for_game(building_tile, resource_tile)
+		
+		if path_tiles.is_empty():
+			print("Game: WARNING - No path found to resource at ", resource_tile)
+			continue
+		
+		# Convert tile path to world coordinates
+		var path_world = []
+		for tile in path_tiles:
+			path_world.append(tilemap_layer.map_to_local(tile))
+		
+		# Create unique path ID
+		var path_id = "path_" + building_node.name + "_resource_" + str(i + 1)
+		
+		paths.append({
+			"path_id": path_id,
+			"resource_id": resource.get("id"),
+			"resource_type": resource.get("type"),
+			"tile_path": path_tiles,
+			"world_path": path_world,
+			"distance": path_tiles.size()
+		})
+		
+		print("Game: Calculated path ", path_id, " to resource ", resource.get("id"), " (", path_tiles.size(), " tiles)")
+	
+	return paths
 
 func _start_world_creation_mode():
 	print("Game: Starting world creation mode")
@@ -3310,10 +3590,21 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			var saved_jobs = building_info.get("resource_jobs", [])
 			building_scene.set_meta("resource_jobs", saved_jobs)
 			
-			# Auto-create jobs if worker occupancy > 0 and jobs are empty
-			var worker_occupancy = building_info.get("worker_occupancy", 0)
-			if worker_occupancy > 0 and saved_jobs.is_empty():
-				_create_jobs_for_worker_capacity(building_scene, worker_occupancy)
+			# Auto-create jobs if they're missing (use max capacity, not current occupancy)
+			if saved_jobs.is_empty():
+				var max_capacity = _get_worker_capacity(building_type)
+				if max_capacity > 0:
+					_create_jobs_for_worker_capacity(building_scene, max_capacity)
+					_initialize_job_paths_on_load(building_scene)
+			else:
+				# Jobs were saved - only reinitialize paths if they're missing
+				var jobs_need_paths = false
+				for job in saved_jobs:
+					if job.get("path_id", "").is_empty():
+						jobs_need_paths = true
+						break
+				if jobs_need_paths:
+					_initialize_job_paths_on_load(building_scene)
 			
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
@@ -3383,11 +3674,19 @@ func _auto_assign_jobs_on_load():
 		if worker_occupancy == 0:
 			continue
 		
-		# Get existing jobs or create them if missing
+		# Get existing jobs or create them if missing (use max capacity, not current occupancy)
 		var jobs = building_node.get_meta("resource_jobs", [])
-		if jobs.is_empty() and worker_occupancy > 0:
-			_create_jobs_for_worker_capacity(building_node, worker_occupancy)
-			jobs = building_node.get_meta("resource_jobs", [])
+		if jobs.is_empty():
+			var max_capacity = _get_worker_capacity(building_type)
+			if max_capacity > 0:
+				_create_jobs_for_worker_capacity(building_node, max_capacity)
+				jobs = building_node.get_meta("resource_jobs", [])
+		
+		# Initialize paths to resources for jobs on load
+		_initialize_job_paths_on_load(building_node)
+		
+		# Re-get jobs after path initialization
+		jobs = building_node.get_meta("resource_jobs", [])
 		
 		# Now auto-assign units to any unassigned job slots
 		var owner_player = building_node.get_meta("owner_player", 1)
@@ -3755,7 +4054,8 @@ func _execute_save() -> bool:
 					"building_type": child.get_meta("building_type", "unknown"),
 					"construction_day": child.get_meta("construction_day", 0),
 					"living_occupancy": child.get_meta("living_occupancy", 0),
-					"worker_occupancy": child.get_meta("worker_occupancy", 0)
+					"worker_occupancy": child.get_meta("worker_occupancy", 0),
+					"resource_jobs": child.get_meta("resource_jobs", [])
 				}
 				
 				# Add barracks-specific occupancy types
@@ -3764,7 +4064,6 @@ func _execute_save() -> bool:
 					building_info["training_occupancy"] = child.get_meta("training_occupancy", 0)
 				
 				buildings_data.append(building_info)
-
 	# Collect environment objects data
 	var environment_objects_data = []
 	if map_objects_holder:

@@ -345,6 +345,10 @@ func setup_building_details(building: Node2D):
 	building_node = building
 	building_data = _extract_building_data(building)
 	
+	# Debug: Check if building has jobs
+	var jobs_on_building = building_node.get_meta("resource_jobs", [])
+	print("BuildingDetailsModal: DEBUG - Building %s has %d jobs in metadata" % [building.name, jobs_on_building.size()])
+	
 	# Get game reference and ensure resource rates are calculated
 	game_node = building_node.get_parent().get_parent()
 	if game_node and game_node.has_method("calculate_resource_rates"):
@@ -1303,13 +1307,16 @@ func _populate_jobs_from_building():
 	
 	# Get jobs from building metadata
 	var jobs = building_node.get_meta("resource_jobs", [])
+	print("UI DEBUG: _populate_jobs_from_building - found ", jobs.size(), " jobs on building ", building_node.name)
 	
 	if jobs.is_empty():
+		print("UI DEBUG: No jobs found, showing 'No jobs configured' message")
 		var no_jobs_label = Label.new()
 		no_jobs_label.text = "No jobs configured"
 		no_jobs_label.add_theme_color_override("font_color", Color.GRAY)
 		jobs_container.add_child(no_jobs_label)
 	else:
+		print("UI DEBUG: Displaying ", jobs.size(), " jobs")
 		for job in jobs:
 			_add_job_row(jobs_container, job)
 
