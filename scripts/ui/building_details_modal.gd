@@ -19,6 +19,12 @@ var demolish_warning_modal: ConfirmationDialog
 var connection_lines_container: Node2D  # Dedicated container for connection line nodes
 var selected_job_path_line: Line2D = null  # Currently selected job's path visualization (white)
 var selected_job_index: int = -1  # Currently selected job index
+var selected_building_path_line: Line2D = null  # Currently selected building path visualization (white)
+var selected_building_path_index: int = -1  # Currently selected building connection path index
+var paths_toggle_checkbox: CheckBox = null  # Show/hide all paths checkbox
+var building_paths_visibility: Dictionary = {}  # Track whether paths shown per building (key: building_node.name)
+var all_job_path_lines: Array = []  # All drawn job path lines (for show/hide)
+var building_connections_data: Array = []  # Store building connections with indices for selection
 
 func _ready():
 	print("Building Details Modal: _ready() called")
@@ -236,6 +242,18 @@ func _create_image_capacity_section() -> Control:
 	capacity_container.name = "CapacityContainer"  # For easy access
 	capacity_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	capacity_container.add_theme_constant_override("separation", 5)
+	
+	# Add toggle checkbox for showing/hiding all paths at the top
+	var paths_toggle_hbox = HBoxContainer.new()
+	paths_toggle_hbox.add_theme_constant_override("separation", 10)
+	
+	paths_toggle_checkbox = CheckBox.new()
+	paths_toggle_checkbox.text = "Show Paths"
+	paths_toggle_checkbox.toggled.connect(_on_paths_toggle_toggled)
+	paths_toggle_hbox.add_child(paths_toggle_checkbox)
+	
+	capacity_container.add_child(paths_toggle_hbox)
+	
 	main_container.add_child(capacity_container)
 	
 	return section
@@ -382,11 +400,22 @@ func setup_building_details(building: Node2D):
 	var building_id = building_data.get("name", "Unknown")
 	title_label.text = "Building Details: " + building_id
 	
-	# Draw connection lines on the map
-	print("BuildingDetailsModal: Calling _draw_connection_lines()")
-	_draw_connection_lines()
+	# Clear previous paths and connections
+	_clear_all_job_path_lines()
+	_clear_connection_lines()
+	
+	# Restore paths toggle state for this building
+	var should_show_paths = building_paths_visibility.get(building_node.name, false)
+	if paths_toggle_checkbox:
+		paths_toggle_checkbox.set_pressed_no_signal(should_show_paths)
 	
 	_populate_building_info()
+	
+	# If paths should be shown, draw both job paths and building connections
+	if should_show_paths:
+		_draw_all_job_paths()
+		_draw_connection_lines()
+	
 	print("BuildingDetailsModal: setup_building_details() completed")
 
 func _extract_building_data(building: Node2D) -> Dictionary:
@@ -436,22 +465,23 @@ func _extract_building_data(building: Node2D) -> Dictionary:
 	return data
 
 func _find_building_connections(building: Node2D, game_node: Node) -> Array:
+	"""Find building-to-building connections only (resource connections now handled via job paths)"""
 	var connections = []
 	var building_type = building.get_meta("building_type", "unknown")
 	
 	print("Finding connections for building type: ", building_type)
 	
-	# Define connection rules for different building types
+	# Define building-to-building connection rules only
 	var connection_rules = {
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
 		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack", "research"],
 		"research": ["town_center"],
-		"fishing_hut": ["town_center", "fish"],
-		"farmhouse": ["town_center", "house", "farm"],
-		"stoneworker": ["house", "town_center", "mountain"],
-		"lumberjack": ["house", "town_center", "tree"],
-		"lumber_mill": ["town_center", "tree"]
+		"fishing_hut": ["town_center"],
+		"farmhouse": ["town_center", "house"],
+		"stoneworker": ["house", "town_center"],
+		"lumberjack": ["house", "town_center"],
+		"lumber_mill": ["town_center"]
 	}
 	
 	# Get connection range (max 50 tiles)
@@ -470,10 +500,10 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 		
 	var building_tile_coords = tilemap_layer.local_to_map(building.position)
 	
-	# Get buildings from game's player data instead of searching the scene tree
+	# Get buildings from game's player data
 	if game_node.has_method("get_player_buildings"):
 		var all_buildings = game_node.get_player_buildings(1)  # Assuming player 1
-		print("Checking connections for ", building.name, " at tile ", building_tile_coords, " - found ", all_buildings.size(), " total buildings")
+		print("Checking connections for ", building.name, " - found ", all_buildings.size(), " total buildings")
 		
 		for building_name in all_buildings:
 			if building_name == building.name:
@@ -494,257 +524,13 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 						"name": other_building.name,
 						"type": other_type,
 						"distance": tile_distance,
-						"object_type": "building"
+						"object_type": "building",
+						"tile_coords": other_tile_coords
 					})
-					print("Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away")
-	
-	# Also search for mountains if they're in allowed connections
-	if "mountain" in allowed_connections:
-		print("Looking for mountain connections for ", building_type)
-		
-		# Use the new environment system to get mountains
-		if game_node.has_method("get_environment_objects"):
-			var mountains = game_node.get_environment_objects("mountains")
-			print("Found ", mountains.size(), " mountains in environment system")
-			
-			# First pass: collect mountains within range with distances (no pathfinding yet)
-			var nearby_mountains = []
-			for mountain_id in mountains:
-				var mountain_data = mountains[mountain_id]
-				var mountain_tile_coords = mountain_data["tile_coords"]
-				var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
-				
-				if tile_distance <= connection_range_tiles:
-					nearby_mountains.append({
-						"id": mountain_id,
-						"tile_coords": mountain_tile_coords,
-						"distance": tile_distance
-					})
-			
-			# Sort by distance and take only the 3 closest
-			nearby_mountains.sort_custom(func(a, b): return a.distance < b.distance)
-			print("Found ", nearby_mountains.size(), " nearby mountains, limiting to 3 if needed")
-			if nearby_mountains.size() > 3:
-				nearby_mountains = nearby_mountains.slice(0, 3)
-			
-			# Second pass: calculate paths for the 3 closest mountains
-			for mountain in nearby_mountains:
-				# Calculate path from building to mountain
-				var path = _astar_pathfind(building_tile_coords, mountain.tile_coords, tilemap_layer)
-				# Convert tile coordinates to world positions for the path
-				var world_path = []
-				for tile_pos in path:
-					world_path.append(tilemap_layer.map_to_local(tile_pos))
-				
-				connections.append({
-					"name": mountain.id,
-					"type": "mountain",
-					"distance": mountain.distance,
-					"object_type": "mountain",
-					"path": world_path,
-					"tile_coords": mountain.tile_coords
-				})
-				print("Added mountain connection: ", mountain.id, " at ", mountain.distance, " tiles away")
-		else:
-			print("Environment system not available, falling back to old method")
-			# Fallback to old method
-			var map_objects_holder = game_node.get_node_or_null("MapObjects")
-			if map_objects_holder:
-				print("Found MapObjects holder with ", map_objects_holder.get_child_count(), " children")
-				
-				# First pass: collect nearby mountains
-				var nearby_mountains = []
-				for child in map_objects_holder.get_children():
-					print("Checking child: ", child.name, " type: ", child.get_class())
-					if child.name.begins_with("Mountain") or child.name.begins_with("mountain_"):
-						var mountain_tile_coords = tilemap_layer.local_to_map(child.position)
-						var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
-						
-						if tile_distance <= connection_range_tiles:
-							nearby_mountains.append({
-								"node": child,
-								"tile_coords": mountain_tile_coords,
-								"distance": tile_distance
-							})
-				
-				# Sort and limit to 3 closest
-				nearby_mountains.sort_custom(func(a, b): return a.distance < b.distance)
-				print("Found ", nearby_mountains.size(), " nearby mountains, limiting to 3 if needed")
-				if nearby_mountains.size() > 3:
-					nearby_mountains = nearby_mountains.slice(0, 3)
-				
-				# Second pass: add the 3 closest mountains with their paths
-				for mountain in nearby_mountains:
-					print("Found mountain ", mountain.node.name, " at distance ", mountain.distance)
-					# Calculate path from building to mountain
-					var path = _astar_pathfind(building_tile_coords, mountain.tile_coords, tilemap_layer)
-					# Convert tile coordinates to world positions for the path
-					var world_path = []
-					for tile_pos in path:
-						world_path.append(tilemap_layer.map_to_local(tile_pos))
-					
-					connections.append({
-						"name": mountain.node.name,
-						"type": "mountain",
-						"distance": mountain.distance,
-						"object_type": "mountain",
-						"path": world_path,
-						"tile_coords": mountain.tile_coords
-					})
-					print("Added mountain connection: ", mountain.node.name, " at ", mountain.distance, " tiles away")
-			else:
-				print("MapObjects holder not found!")
-	
-	# Also search for trees if they're in allowed connections
-	if "tree" in allowed_connections:
-		print("Looking for tree connections for ", building_type)
-		
-		# Use the new environment system to get trees
-		if game_node.has_method("get_environment_objects"):
-			var trees = game_node.get_environment_objects("trees")
-			print("Found ", trees.size(), " trees in environment system")
-			
-			# First pass: collect trees within range with distances (no pathfinding yet)
-			var nearby_trees = []
-			for tree_id in trees:
-				var tree_data = trees[tree_id]
-				var tree_tile_coords = tree_data["tile_coords"]
-				var tile_distance = abs(building_tile_coords.x - tree_tile_coords.x) + abs(building_tile_coords.y - tree_tile_coords.y)
-				
-				if tile_distance <= connection_range_tiles:
-					nearby_trees.append({
-						"id": tree_id,
-						"tile_coords": tree_tile_coords,
-						"distance": tile_distance
-					})
-			
-			# Sort by distance and take only the 3 closest
-			nearby_trees.sort_custom(func(a, b): return a.distance < b.distance)
-			if nearby_trees.size() > 3:
-				nearby_trees = nearby_trees.slice(0, 3)
-			
-			# Second pass: calculate paths only for the 3 closest trees
-			for tree in nearby_trees:
-				# Calculate path from building to tree
-				var path = _astar_pathfind(building_tile_coords, tree.tile_coords, tilemap_layer)
-				# Convert tile coordinates to world positions for the path
-				var world_path = []
-				for tile_pos in path:
-					world_path.append(tilemap_layer.map_to_local(tile_pos))
-				
-				connections.append({
-					"name": tree.id,
-					"type": "tree",
-					"distance": tree.distance,
-					"object_type": "tree",
-					"path": world_path,
-					"tile_coords": tree.tile_coords
-				})
-		else:
-			print("Environment system not available, falling back to old method")
-			# Fallback to old method - also optimize this
-			var map_objects_holder = game_node.get_node_or_null("MapObjects")
-			if map_objects_holder:
-				print("Found MapObjects holder with ", map_objects_holder.get_child_count(), " children")
-				
-				# First pass: collect nearby trees
-				var nearby_trees = []
-				for child in map_objects_holder.get_children():
-					if child.name.begins_with("Tree") or child.name.begins_with("tree_"):
-						var tree_tile_coords = tilemap_layer.local_to_map(child.position)
-						var tile_distance = abs(building_tile_coords.x - tree_tile_coords.x) + abs(building_tile_coords.y - tree_tile_coords.y)
-						
-						if tile_distance <= connection_range_tiles:
-							nearby_trees.append({
-								"node": child,
-								"tile_coords": tree_tile_coords,
-								"distance": tile_distance
-							})
-				
-				# Sort and limit to 3 closest
-				nearby_trees.sort_custom(func(a, b): return a.distance < b.distance)
-				if nearby_trees.size() > 3:
-					nearby_trees = nearby_trees.slice(0, 3)
-				
-				# Calculate paths for only the 3 closest
-				for tree in nearby_trees:
-					var path = _astar_pathfind(building_tile_coords, tree.tile_coords, tilemap_layer)
-					var world_path = []
-					for tile_pos in path:
-						world_path.append(tilemap_layer.map_to_local(tile_pos))
-					
-					connections.append({
-						"name": tree.node.name,
-						"type": "tree",
-						"distance": tree.distance,
-						"object_type": "tree",
-						"path": world_path,
-						"tile_coords": tree.tile_coords
-					})
-			else:
-				print("MapObjects holder not found!")
-	
-	# Also search for fish if they're in allowed connections
-	if "fish" in allowed_connections:
-		print("Looking for fish connections for ", building_type)
-		
-		# Use the new environment system to get fish
-		if game_node.has_method("get_environment_objects"):
-			var fish = game_node.get_environment_objects("fish")
-			print("Found ", fish.size(), " fish in environment system")
-			
-			# Collect all fish with distances
-			var all_fish = []
-			for fish_id in fish:
-				var fish_data = fish[fish_id]
-				var fish_tile_coords = fish_data["tile_coords"]
-				var tile_distance = _hex_distance(building_tile_coords, fish_tile_coords)
-				
-				all_fish.append({
-					"id": fish_id,
-					"tile_coords": fish_tile_coords,
-					"distance": tile_distance
-				})
-			
-			# Sort by distance and take only the 5 closest
-			all_fish.sort_custom(func(a, b): return a.distance < b.distance)
-			print("Found ", all_fish.size(), " fish total, taking 5 closest")
-			if all_fish.size() > 5:
-				all_fish = all_fish.slice(0, 5)
-			
-			# Add the 5 closest fish to connections
-			for fish_obj in all_fish:
-				print("Added fish connection: ", fish_obj.id, " at ", fish_obj.distance, " tiles away")
-				connections.append({
-					"name": fish_obj.id,
-					"type": "fish",
-					"distance": fish_obj.distance,
-					"object_type": "fish",
-					"tile_coords": fish_obj.tile_coords
-				})
+					print("Added connection: ", building_name, " (", other_type, ")")
 	
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
-	
-	# For lumberjacks, limit tree connections to 3 nearest
-	# (Mountains are already limited during collection above)
-	if building_type == "lumberjack":
-		var tree_connections = []
-		var other_connections = []
-		
-		for connection in connections:
-			if connection.type == "tree":
-				tree_connections.append(connection)
-			else:
-				other_connections.append(connection)
-		
-		# Keep only the 3 nearest trees
-		if tree_connections.size() > 3:
-			tree_connections = tree_connections.slice(0, 3)
-		
-		# Combine back together
-		connections = other_connections + tree_connections
-		connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
 	return connections
 
@@ -946,6 +732,10 @@ func _redraw_connections():
 	}
 	
 	for connection in connections:
+		# Skip resource connections (mountains, trees, fish) - we now use job paths for those
+		if connection.object_type in ["mountain", "tree", "fish"]:
+			continue
+		
 		# Re-validate container at start of each iteration
 		if not connection_lines_container or not is_instance_valid(connection_lines_container):
 			print("BuildingDetailsModal: Container became invalid mid-loop! Re-ensuring...")
@@ -1248,9 +1038,22 @@ func _populate_building_info():
 	
 	# Populate capacity section (next to image)
 	if capacity_container:
-		# Clear existing capacity info
+		# Clear existing capacity controls BUT PRESERVE the Show Paths checkbox at the top
+		# The first child should be the HBoxContainer that contains the checkbox
+		var first_child = capacity_container.get_child(0) if capacity_container.get_child_count() > 0 else null
+		var checkbox_container = null
+		
+		# Identify which child is the checkbox container
+		if first_child is HBoxContainer:
+			# Check if this container has the checkbox as its last child
+			var last_child_of_first = first_child.get_child(first_child.get_child_count() - 1) if first_child.get_child_count() > 0 else null
+			if last_child_of_first == paths_toggle_checkbox:
+				checkbox_container = first_child
+		
+		# Queue free all children except the checkbox container
 		for child in capacity_container.get_children():
-			child.queue_free()
+			if child != checkbox_container:
+				child.queue_free()
 		
 		var building_type = building_data.get("building_type", "unknown")
 		print("UI DEBUG: Populating capacity section for building_type: ", building_type)
@@ -1277,6 +1080,10 @@ func _populate_building_info():
 		for child in connections_container.get_children():
 			child.queue_free()
 		
+		# Clear and rebuild connections data for selection
+		building_connections_data.clear()
+		selected_building_path_index = -1
+		
 		var connections = building_data.get("connections", [])
 		if connections.is_empty():
 			var no_connections_label = Label.new()
@@ -1284,11 +1091,29 @@ func _populate_building_info():
 			no_connections_label.add_theme_color_override("font_color", Color.GRAY)
 			connections_container.add_child(no_connections_label)
 		else:
+			var connection_index = 0
 			for connection in connections:
+				# Store connection data with index for selection
+				building_connections_data.append(connection)
+				
+				# Create a row for this connection
 				var connection_row = HBoxContainer.new()
+				connection_row.add_theme_constant_override("separation", 10)
 				connections_container.add_child(connection_row)
 				
-				# Connection type icon/indicator
+				# Connection identifier button (clickable) with unique path ID
+				var connection_button = Button.new()
+				
+				# Create unique path ID for this connection - include target building name
+				var path_id = "path_" + connection.name
+				connection_button.text = path_id
+				connection_button.custom_minimum_size.x = 150
+				connection_button.modulate = Color.WHITE
+				connection_button.set_meta("connection_index", connection_index)
+				connection_button.pressed.connect(_on_building_path_clicked.bind(connection_index))
+				connection_row.add_child(connection_button)
+				
+				# Connection type icon/indicator and name
 				var type_label = Label.new()
 				var type_text = connection.type.capitalize()
 				if connection.object_type == "building":
@@ -1304,6 +1129,8 @@ func _populate_building_info():
 				details_label.text = connection.name + " (" + str(connection.distance) + " tiles)"
 				details_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				connection_row.add_child(details_label)
+				
+				connection_index += 1
 	
 	# Populate jobs section (only for work buildings)
 	var building_type = building_data.get("building_type", "unknown")
@@ -1321,7 +1148,7 @@ func _populate_jobs_from_building():
 	_clear_selected_path()
 	selected_job_index = -1
 	
-	# Clear existing jobs
+	# Clear existing job rows (but not the toggle checkbox)
 	for child in jobs_container.get_children():
 		child.queue_free()
 	
@@ -1339,6 +1166,13 @@ func _populate_jobs_from_building():
 		print("UI DEBUG: Displaying ", jobs.size(), " jobs")
 		for i in range(jobs.size()):
 			_add_job_row(jobs_container, jobs[i], i)
+	
+	# Redraw paths and connections if toggle is on (in case job paths changed due to capacity)
+	if paths_toggle_checkbox and paths_toggle_checkbox.button_pressed:
+		_clear_all_job_path_lines()
+		_clear_connection_lines()
+		_draw_all_job_paths()
+		_draw_connection_lines()
 
 func _add_job_row(container: Container, job: Dictionary, job_index: int):
 	"""Add a single job row to the jobs container with clickable path"""
@@ -1384,8 +1218,11 @@ func _on_job_path_clicked(job_index: int):
 		selected_job_index = -1
 		return
 	
-	# Clear previous selection
+	# Clear previous job selection
 	_clear_selected_path()
+	# Clear building path selection when selecting a job path
+	_clear_selected_building_path()
+	selected_building_path_index = -1
 	
 	# Set new selection
 	selected_job_index = job_index
@@ -1439,6 +1276,192 @@ func _clear_selected_path():
 		selected_job_path_line.queue_free()
 		selected_job_path_line = null
 		print("BuildingDetailsModal: Cleared selected job path visualization")
+
+func _on_building_path_clicked(connection_index: int):
+	"""Handle building connection path button click - toggle path visualization"""
+	if connection_index < 0 or connection_index >= building_connections_data.size():
+		print("BuildingDetailsModal: Invalid connection index: ", connection_index)
+		return
+	
+	# If clicking the same connection, toggle it off
+	if selected_building_path_index == connection_index:
+		print("BuildingDetailsModal: Toggling off path for connection index ", connection_index)
+		_clear_selected_building_path()
+		selected_building_path_index = -1
+		return
+	
+	# Clear previous building path selection
+	_clear_selected_building_path()
+	# Clear job path selection when selecting a building path
+	_clear_selected_path()
+	selected_job_index = -1
+	
+	# Set new selection
+	selected_building_path_index = connection_index
+	var selected_connection = building_connections_data[connection_index]
+	
+	print("BuildingDetailsModal: Drawing path for connection index ", connection_index, " - ", selected_connection.get("name", "unknown"))
+	_draw_selected_building_path(selected_connection)
+
+func _draw_selected_building_path(connection: Dictionary):
+	"""Draw the selected building's connection path in white on the tilemap"""
+	if not building_node or not game_node:
+		return
+	
+	var tilemap = game_node.get_node_or_null("TileMapLayer")
+	if not tilemap:
+		print("BuildingDetailsModal: Could not find tilemap for path drawing")
+		return
+	
+	# Ensure container is ready
+	_ensure_connection_lines_container()
+	
+	var path = []
+	
+	# Try to use pre-calculated path if available
+	if connection.has("path") and not connection["path"].is_empty():
+		path = connection["path"]
+		print("BuildingDetailsModal: Using pre-calculated path for ", connection.name)
+	else:
+		# Otherwise, calculate path if we have tile coordinates
+		var building_tile_coords = tilemap.local_to_map(building_node.position)
+		
+		if connection.has("tile_coords"):
+			# Use A* pathfinding to get tile path
+			var target_tile = connection["tile_coords"]
+			var tile_path = _astar_pathfind(building_tile_coords, target_tile, tilemap)
+			if not tile_path.is_empty():
+				path = tile_path
+				print("BuildingDetailsModal: Calculated A* path to ", connection.name, " with ", tile_path.size(), " tiles")
+			else:
+				print("BuildingDetailsModal: No path found to ", connection.name)
+				return
+		else:
+			print("BuildingDetailsModal: Connection has no tile_coords data")
+			return
+	
+	# Create line for the selected path in white
+	var line = Line2D.new()
+	line.width = 6.0  # Thicker than regular paths for visibility
+	line.default_color = Color.WHITE
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.z_index = 100  # Bring to front so it's always visible
+	
+	# Convert path to world coordinates and add to line
+	for point in path:
+		var world_pos: Vector2
+		if point is Vector2i:
+			# Tile coordinates - convert to world
+			world_pos = tilemap.map_to_local(point)
+		else:
+			# Already world coordinates
+			world_pos = point as Vector2
+		line.add_point(world_pos)
+	
+	# Add line to container
+	if connection_lines_container and is_instance_valid(connection_lines_container):
+		connection_lines_container.add_child(line)
+		selected_building_path_line = line
+		print("BuildingDetailsModal: Drew white path for selected connection with ", line.get_point_count(), " points")
+	else:
+		print("BuildingDetailsModal: Could not add path line - container invalid, ensuring it exists")
+		_ensure_connection_lines_container()
+		if connection_lines_container and is_instance_valid(connection_lines_container):
+			connection_lines_container.add_child(line)
+			selected_building_path_line = line
+			print("BuildingDetailsModal: Drew white path after recreating container")
+		else:
+			print("BuildingDetailsModal: ERROR - could not create container for path")
+			line.queue_free()
+
+func _clear_selected_building_path():
+	"""Remove the white selected building path visualization"""
+	if selected_building_path_line and is_instance_valid(selected_building_path_line):
+		selected_building_path_line.queue_free()
+		selected_building_path_line = null
+		print("BuildingDetailsModal: Cleared selected building path visualization")
+
+func _on_paths_toggle_toggled(toggled_on: bool):
+	"""Handle paths toggle checkbox - controls both job paths and building connections"""
+	if not building_node:
+		return
+	
+	# Store the toggle state for this building
+	building_paths_visibility[building_node.name] = toggled_on
+	print("BuildingDetailsModal: Paths toggle for %s set to %s" % [building_node.name, toggled_on])
+	
+	if toggled_on:
+		_draw_all_job_paths()
+		_draw_connection_lines()
+	else:
+		_clear_all_job_path_lines()
+		_clear_connection_lines()
+
+func _draw_all_job_paths():
+	"""Draw all job paths for the current building in colored lines"""
+	if not building_node or not game_node:
+		return
+	
+	_ensure_connection_lines_container()
+	
+	var jobs = building_node.get_meta("resource_jobs", [])
+	if jobs.is_empty():
+		print("BuildingDetailsModal: No jobs to draw")
+		return
+	
+	var tilemap = game_node.get_node_or_null("TileMapLayer")
+	if not tilemap:
+		print("BuildingDetailsModal: Could not find tilemap for path drawing")
+		return
+	
+	# Colors for different jobs (cycle through colors)
+	var path_colors = [
+		Color.CYAN,
+		Color.MAGENTA,
+		Color.YELLOW,
+		Color.LIGHT_BLUE,
+		Color.LIGHT_GREEN,
+		Color.LIGHT_CORAL
+	]
+	
+	# Draw each job's path
+	for i in range(jobs.size()):
+		var job = jobs[i]
+		var tile_path = job.get("tile_path", [])
+		
+		if tile_path.is_empty():
+			continue
+		
+		# Assign color based on job index
+		var color = path_colors[i % path_colors.size()]
+		
+		var line = Line2D.new()
+		line.width = 3.0
+		line.default_color = color
+		line.joint_mode = Line2D.LINE_JOINT_ROUND
+		line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		line.end_cap_mode = Line2D.LINE_CAP_ROUND
+		
+		# Convert tile path to world coordinates
+		for tile in tile_path:
+			var world_pos = tilemap.map_to_local(tile)
+			line.add_point(world_pos)
+		
+		# Add line to container
+		if connection_lines_container and is_instance_valid(connection_lines_container):
+			connection_lines_container.add_child(line)
+			all_job_path_lines.append(line)
+			print("BuildingDetailsModal: Drew path for job %d with %d points" % [i, line.get_point_count()])
+
+func _clear_all_job_path_lines():
+	"""Remove all drawn job path lines"""
+	for line in all_job_path_lines:
+		if line and is_instance_valid(line):
+			line.queue_free()
+	all_job_path_lines.clear()
+	print("BuildingDetailsModal: Cleared all job path lines")
 
 func _debug_print_tree(node: Node, indent: int):
 	var indent_str = ""
@@ -1639,12 +1662,15 @@ func close_modal():
 	_clear_connection_lines()
 	# Clear selected job path visualization
 	_clear_selected_path()
+	# Clear all job path lines
+	_clear_all_job_path_lines()
 	selected_job_index = -1
-	# Clean up container when modal closes
+	# Hide and clean up container when modal closes
 	if connection_lines_container and is_instance_valid(connection_lines_container):
+		connection_lines_container.hide()  # Hide immediately to remove paths from view
 		connection_lines_container.queue_free()
 		connection_lines_container = null
-		print("BuildingDetailsModal: Freed connection lines container on close")
+		print("BuildingDetailsModal: Hid and freed connection lines container on close")
 	
 	# Disconnect from game's building_jobs_updated signal
 	var game = building_node.get_parent().get_parent() if building_node else null

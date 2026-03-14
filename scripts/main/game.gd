@@ -671,6 +671,21 @@ func get_resource_on_tile(tile_coords: Vector2i) -> Dictionary:
 	
 	return {}
 
+func _clear_all_resource_job_markers():
+	"""Clear all job markers from all resources (used before pathfinding on load)"""
+	var resource_types = ["mountains", "trees", "fish"]
+	var total_cleared = 0
+	
+	for resource_type in resource_types:
+		var objects = get_environment_objects(resource_type)
+		for obj_id in objects:
+			if objects[obj_id].get("job") != null:
+				objects[obj_id]["job"] = null
+				total_cleared += 1
+	
+	if total_cleared > 0:
+		print("Game: Cleared ", total_cleared, " resource job markers before pathfinding")
+
 func _count_actual_occupancy(building_name: String, capacity_type: String, owner_player: int) -> int:
 	"""Count actual number of units assigned to a building for a specific capacity type"""
 	if not players_data.has(owner_player):
@@ -2957,48 +2972,6 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	
 	print("Unit ", unit["unique_id"], " moving to resource: ", closest_connection.get("name"), " (", closest_connection.get("type"), ")")
 
-func _find_nearest_mountain(from_position: Vector2) -> Dictionary:
-	"""Find the nearest mountain and return connection data"""
-	var mountains = get_environment_objects("mountains")
-	var nearest = null
-	var nearest_distance = INF
-	
-	for mountain_id in mountains:
-		var mountain_data = mountains[mountain_id]
-		var mountain_pos = tilemap_layer.map_to_local(mountain_data["tile_coords"])
-		var distance = from_position.distance_to(mountain_pos)
-		if distance < nearest_distance:
-			nearest_distance = distance
-			nearest = {
-				"name": mountain_id,
-				"type": "mountain",
-				"distance": nearest_distance,
-				"object_type": "mountain"
-			}
-	
-	return nearest
-
-func _find_nearest_tree(from_position: Vector2) -> Dictionary:
-	"""Find the nearest tree and return connection data"""
-	var trees = get_environment_objects("trees")
-	var nearest = null
-	var nearest_distance = INF
-	
-	for tree_id in trees:
-		var tree_data = trees[tree_id]
-		var tree_pos = tilemap_layer.map_to_local(tree_data["tile_coords"])
-		var distance = from_position.distance_to(tree_pos)
-		if distance < nearest_distance:
-			nearest_distance = distance
-			nearest = {
-				"name": tree_id,
-				"type": "tree",
-				"distance": nearest_distance,
-				"object_type": "tree"
-			}
-	
-	return nearest
-
 func _find_nearest_farm(from_position: Vector2) -> Dictionary:
 	"""Find the nearest farm building and return connection data"""
 	var nearest = {}
@@ -3026,22 +2999,22 @@ func _find_building_connections_for_unit(building: Node2D) -> Array:
 	return _calculate_building_connections_directly(building)
 
 func _calculate_building_connections_directly(building: Node2D) -> Array:
-	"""Direct calculation of building connections with guaranteed resource detection"""
+	"""Direct calculation of building-to-building connections only (resource connections now handled via job paths)"""
 	var connections = []
 	var building_type = building.get_meta("building_type", "unknown")
 	
 	print("Finding connections for building type: ", building_type)
 	
-	# Define connection rules
+	# Define building-to-building connection rules only
 	var connection_rules = {
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
 		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack"],
-		"fishing_hut": ["town_center", "fish"],
-		"farmhouse": ["town_center", "house", "farm"],
-		"stoneworker": ["house", "town_center", "mountain"],
-		"lumberjack": ["house", "town_center", "tree"],
-		"lumber_mill": ["town_center", "tree"]
+		"fishing_hut": ["town_center"],
+		"farmhouse": ["town_center", "house"],
+		"stoneworker": ["house", "town_center"],
+		"lumberjack": ["house", "town_center"],
+		"lumber_mill": ["town_center"]
 	}
 	
 	var allowed_connections = connection_rules.get(building_type, [])
@@ -3055,7 +3028,7 @@ func _calculate_building_connections_directly(building: Node2D) -> Array:
 	var building_tile_coords = tilemap.local_to_map(building.position)
 	var connection_range_tiles = 50
 	
-	# Get buildings first
+	# Get buildings only (no resource connections)
 	if has_method("get_player_buildings"):
 		var all_buildings = get_player_buildings(1)
 		print("Checking connections for ", building.name, " at tile ", building_tile_coords, " - found ", all_buildings.size(), " total buildings")
@@ -3077,87 +3050,10 @@ func _calculate_building_connections_directly(building: Node2D) -> Array:
 						"name": other_building.name,
 						"type": other_type,
 						"distance": tile_distance,
-						"object_type": "building"
+						"object_type": "building",
+						"tile_coords": other_tile_coords
 					})
 					print("Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away")
-	
-	# Add resource connections with pathfinding
-	if "mountain" in allowed_connections:
-		print("Looking for mountain connections for ", building_type)
-		
-		if has_method("get_environment_objects"):
-			var mountains = get_environment_objects("mountains")
-			print("Found ", mountains.size(), " mountains in environment system")
-			
-			var nearby_mountains = []
-			for mountain_id in mountains:
-				var mountain_data = mountains[mountain_id]
-				var mountain_tile_coords = mountain_data["tile_coords"]
-				var tile_distance = _hex_distance(building_tile_coords, mountain_tile_coords)
-				
-				if tile_distance <= connection_range_tiles:
-					nearby_mountains.append({
-						"id": mountain_id,
-						"tile_coords": mountain_tile_coords,
-						"distance": tile_distance
-					})
-			
-			nearby_mountains.sort_custom(func(a, b): return a.distance < b.distance)
-			print("Found ", nearby_mountains.size(), " nearby mountains, limiting to 3 if needed")
-			if nearby_mountains.size() > 3:
-				nearby_mountains = nearby_mountains.slice(0, 3)
-			
-			# Calculate paths for mountains
-			for mountain in nearby_mountains:
-				var path = _astar_pathfind_for_game(building_tile_coords, mountain["tile_coords"])
-				var world_path = []
-				for tile_pos in path:
-					world_path.append(tilemap.map_to_local(tile_pos))
-				
-				connections.append({
-					"name": mountain["id"],
-					"type": "mountain",
-					"distance": mountain["distance"],
-					"object_type": "mountain",
-					"path": world_path
-				})
-				print("Added mountain connection: ", mountain["id"], " at ", mountain["distance"], " tiles away")
-	
-	if "tree" in allowed_connections:
-		print("Looking for tree connections for ", building_type)
-		
-		if has_method("get_environment_objects"):
-			var trees = get_environment_objects("trees")
-			var nearby_trees = []
-			for tree_id in trees:
-				var tree_data = trees[tree_id]
-				var tree_tile_coords = tree_data["tile_coords"]
-				var tile_distance = _hex_distance(building_tile_coords, tree_tile_coords)
-				
-				if tile_distance <= connection_range_tiles:
-					nearby_trees.append({
-						"id": tree_id,
-						"tile_coords": tree_tile_coords,
-						"distance": tile_distance
-					})
-			
-			nearby_trees.sort_custom(func(a, b): return a.distance < b.distance)
-			if nearby_trees.size() > 3:
-				nearby_trees = nearby_trees.slice(0, 3)
-			
-			for tree in nearby_trees:
-				var path = _astar_pathfind_for_game(building_tile_coords, tree["tile_coords"])
-				var world_path = []
-				for tile_pos in path:
-					world_path.append(tilemap.map_to_local(tile_pos))
-				
-				connections.append({
-					"name": tree["id"],
-					"type": "tree",
-					"distance": tree["distance"],
-					"object_type": "tree",
-					"path": world_path
-				})
 	
 	return connections
 
@@ -3699,6 +3595,9 @@ func _restore_environment_objects(environment_objects_data: Array):
 func _auto_assign_jobs_on_load():
 	"""Auto-assign units to jobs based on worker occupancy levels when loading a save"""
 	print("Game: Starting auto-assign jobs on load")
+	
+	# Clear all resource job markers before pathfinding (prevents stale job assignments from interfering)
+	_clear_all_resource_job_markers()
 	
 	# Work building types that have jobs
 	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
