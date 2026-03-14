@@ -1,6 +1,9 @@
 # scripts/main/game.gd - Orchestrator (with Debug Prints)
 extends Node
 
+# --- Signals ---
+signal building_jobs_updated(building_name: String)  # Emitted when a building's jobs are updated
+
 # --- Constants ---
 const MAP_WIDTH = 100
 const MAP_HEIGHT = 100
@@ -555,7 +558,8 @@ func register_mountain(mountain_node: Node2D) -> String:
 		"name": mountain_node.name,
 		"position": mountain_node.position,
 		"tile_coords": tile_coords,
-		"node_path": mountain_node.get_path()
+		"node_path": mountain_node.get_path(),
+		"job": null  # Track which job is assigned to this resource
 	}
 	
 	# Update count
@@ -581,7 +585,8 @@ func register_tree(tree_node: Node2D) -> String:
 		"name": tree_node.name,
 		"position": tree_node.position,
 		"tile_coords": tile_coords,
-		"node_path": tree_node.get_path()
+		"node_path": tree_node.get_path(),
+		"job": null  # Track which job is assigned to this resource
 	}
 	
 	# Update count
@@ -607,7 +612,8 @@ func register_fish(fish_node: Node2D) -> String:
 		"name": fish_node.name,
 		"position": fish_node.position,
 		"tile_coords": tile_coords,
-		"node_path": fish_node.get_path()
+		"node_path": fish_node.get_path(),
+		"job": null  # Track which job is assigned to this resource
 	}
 	
 	# Update count
@@ -1009,6 +1015,8 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	
 	# Update building metadata with jobs
 	building_node.set_meta("resource_jobs", jobs)
+	# Notify modal that jobs have been updated
+	building_jobs_updated.emit(building_node.name)
 	print("DEBUG: Successfully created %d empty job slots for %s (building: %s). Total jobs now: %d" % [new_jobs_needed, building_type, building_node.name, jobs.size()])
 
 func _initialize_job_paths_on_load(building_node: Node2D):
@@ -1073,8 +1081,21 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 			jobs[i]["tile_path"] = path_data["tile_path"]
 			jobs[i]["world_path"] = path_data["world_path"]
 	
+	# Mark resources as assigned to jobs (conflict avoidance)
+	var objects = get_environment_objects(resource_type)
+	for i in range(jobs.size()):
+		if i < resource_paths.size():
+			var job = jobs[i]
+			var resource_id = job.get("resource_id")
+			var job_id = job.get("job_id", "")
+			if resource_id and resource_id in objects:
+				objects[resource_id]["job"] = job_id
+				print("Game: Marked resource ", resource_id, " as assigned to job ", job_id)
+	
 	# Update building metadata
 	building_node.set_meta("resource_jobs", jobs)
+	# Notify modal that jobs have been updated
+	building_jobs_updated.emit(building_node.name)
 	print("DEBUG: Initialized %d job paths for %s (building: %s). Total jobs: %d" % [resource_paths.size(), building_type, building_node.name, jobs.size()])
 
 func _trim_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
@@ -1086,6 +1107,18 @@ func _trim_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	
 	# Remove jobs beyond new capacity
 	if jobs.size() > new_capacity:
+		# Clear resource assignments for removed jobs (conflict avoidance)
+		for i in range(new_capacity, jobs.size()):
+			var job = jobs[i]
+			var resource_id = job.get("resource_id")
+			var resource_type = job.get("resource_type")
+			
+			if resource_id and resource_type:
+				var objects = get_environment_objects(resource_type)
+				if resource_id in objects:
+					objects[resource_id]["job"] = null
+					print("Game: Cleared resource ", resource_id, " assignment from removed job")
+		
 		jobs.resize(new_capacity)
 		building_node.set_meta("resource_jobs", jobs)
 		print("Trimmed jobs for %s to %d capacity" % [building_node.name, new_capacity])
@@ -2263,6 +2296,8 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						break
 				# CRITICAL: Save the updated jobs back to building metadata
 				building_node.set_meta("resource_jobs", jobs)
+				# Notify modal that jobs have been updated
+				building_jobs_updated.emit(building_node.name)
 			elif capacity_type == "station" or capacity_type == "training":
 				# For barracks jobs, use naming convention: building_id_capacity_type
 				var barracks_job_name = building_id + "_" + capacity_type
@@ -2431,6 +2466,8 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 					break
 			# Save updated jobs back to building metadata
 			building_node.set_meta("resource_jobs", jobs)
+			# Notify modal that jobs have been updated
+			building_jobs_updated.emit(building_node.name)
 		elif capacity_type == "station" or capacity_type == "training":
 			# For barracks jobs, use naming convention: building_id_capacity_type
 			unit_data["job"] = building_node.name + "_" + capacity_type
@@ -3213,6 +3250,11 @@ func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_
 			for obj_id in objects:
 				var obj_data = objects[obj_id]
 				if obj_data.get("tile_coords") == current_tile:
+					# Skip resources already assigned to jobs (conflict avoidance)
+					if obj_data.get("job") != null:
+						print("Game: Resource ", obj_id, " already assigned to job, skipping")
+						continue
+					
 					found_resources.append({
 						"id": obj_id,
 						"type": search_resource_type,

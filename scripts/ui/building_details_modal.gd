@@ -17,6 +17,8 @@ var camera_controller: Node
 var connection_paths: Array = []  # Store path data for redrawing
 var demolish_warning_modal: ConfirmationDialog
 var connection_lines_container: Node2D  # Dedicated container for connection line nodes
+var selected_job_path_line: Line2D = null  # Currently selected job's path visualization (white)
+var selected_job_index: int = -1  # Currently selected job index
 
 func _ready():
 	print("Building Details Modal: _ready() called")
@@ -369,6 +371,12 @@ func setup_building_details(building: Node2D):
 		if camera_controller.is_connected("position_changed", _on_camera_moved):
 			camera_controller.disconnect("position_changed", _on_camera_moved)
 		camera_controller.connect("position_changed", _on_camera_moved)
+	
+	# Connect to game's building_jobs_updated signal for real-time job updates
+	if game_node and game_node.is_connected("building_jobs_updated", Callable(self, "_on_building_jobs_updated")):
+		game_node.disconnect("building_jobs_updated", Callable(self, "_on_building_jobs_updated"))
+	if game_node and game_node.has_signal("building_jobs_updated"):
+		game_node.connect("building_jobs_updated", Callable(self, "_on_building_jobs_updated"))
 	
 	# Update title with building ID
 	var building_id = building_data.get("name", "Unknown")
@@ -847,6 +855,14 @@ func _on_camera_moved():
 	if is_showing_connections and building_node:
 		_update_line_positions()
 
+func _on_building_jobs_updated(building_name: String):
+	"""Handle real-time job updates when jobs are assigned/changed"""
+	# Only update if this is the building currently shown in the modal
+	if building_node and building_node.name == building_name:
+		print("BuildingDetailsModal: Jobs updated for building %s, refreshing display" % building_name)
+		# Re-populate the jobs section dynamically
+		_populate_jobs_from_building()
+
 func _update_line_positions():
 	# Update all connection lines based on current camera position and zoom
 	if not camera_controller or not building_node:
@@ -1301,6 +1317,10 @@ func _populate_jobs_from_building():
 	if not jobs_container:
 		return
 	
+	# Clear selected path visualization when refreshing jobs list
+	_clear_selected_path()
+	selected_job_index = -1
+	
 	# Clear existing jobs
 	for child in jobs_container.get_children():
 		child.queue_free()
@@ -1317,20 +1337,25 @@ func _populate_jobs_from_building():
 		jobs_container.add_child(no_jobs_label)
 	else:
 		print("UI DEBUG: Displaying ", jobs.size(), " jobs")
-		for job in jobs:
-			_add_job_row(jobs_container, job)
+		for i in range(jobs.size()):
+			_add_job_row(jobs_container, jobs[i], i)
 
-func _add_job_row(container: Container, job: Dictionary):
-	"""Add a single job row to the jobs container"""
+func _add_job_row(container: Container, job: Dictionary, job_index: int):
+	"""Add a single job row to the jobs container with clickable path"""
 	var job_row = HBoxContainer.new()
 	job_row.add_theme_constant_override("separation", 10)
 	container.add_child(job_row)
 	
-	# Job ID / Path ID
-	var job_label = Label.new()
-	job_label.text = job.get("path_id", "unknown")
-	job_label.custom_minimum_size.x = 120
-	job_row.add_child(job_label)
+	# Job ID / Path ID - make clickable button
+	var path_button = Button.new()
+	var path_id = job.get("path_id", "unknown")
+	path_button.text = path_id
+	path_button.custom_minimum_size.x = 120
+	path_button.modulate = Color.WHITE
+	# Store job index in button metadata for later retrieval
+	path_button.set_meta("job_index", job_index)
+	path_button.pressed.connect(_on_job_path_clicked.bindv([job_index]))
+	job_row.add_child(path_button)
 	
 	# Assigned unit display
 	var unit_assigned = job.get("unit_assigned", null)
@@ -1344,6 +1369,76 @@ func _add_job_row(container: Container, job: Dictionary):
 	
 	unit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	job_row.add_child(unit_label)
+
+func _on_job_path_clicked(job_index: int):
+	"""Handle job path button click - toggle path visualization"""
+	var jobs = building_node.get_meta("resource_jobs", [])
+	if job_index < 0 or job_index >= jobs.size():
+		print("BuildingDetailsModal: Invalid job index: ", job_index)
+		return
+	
+	# If clicking the same job, toggle it off
+	if selected_job_index == job_index:
+		print("BuildingDetailsModal: Toggling off path for job index ", job_index)
+		_clear_selected_path()
+		selected_job_index = -1
+		return
+	
+	# Clear previous selection
+	_clear_selected_path()
+	
+	# Set new selection
+	selected_job_index = job_index
+	var selected_job = jobs[job_index]
+	
+	print("BuildingDetailsModal: Drawing path for job index ", job_index, " - ", selected_job.get("path_id", "unknown"))
+	_draw_selected_job_path(selected_job)
+
+func _draw_selected_job_path(job: Dictionary):
+	"""Draw the selected job's path in white on the tilemap"""
+	var tile_path = job.get("tile_path", [])
+	if tile_path.is_empty():
+		print("BuildingDetailsModal: Job has no tile path to draw")
+		return
+	
+	# Ensure container is ready
+	_ensure_connection_lines_container()
+	
+	# Get tilemap reference from game
+	var tilemap = game_node.get_node_or_null("TileMapLayer") if game_node else null
+	if not tilemap:
+		print("BuildingDetailsModal: Could not find tilemap for path drawing")
+		return
+	
+	# Create line for the selected path in white
+	var line = Line2D.new()
+	line.width = 6.0  # Thicker than regular paths for visibility
+	line.default_color = Color.WHITE
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.z_index = 100  # Bring to front so it's always visible
+	
+	# Convert tile path to world coordinates and add to line
+	for tile in tile_path:
+		var world_pos = tilemap.map_to_local(tile)
+		line.add_point(world_pos)
+	
+	# Add line to container
+	if connection_lines_container and is_instance_valid(connection_lines_container):
+		connection_lines_container.add_child(line)
+		selected_job_path_line = line
+		print("BuildingDetailsModal: Drew white path for selected job with ", line.get_point_count(), " points")
+	else:
+		print("BuildingDetailsModal: Could not add path line - container invalid")
+		line.queue_free()
+
+func _clear_selected_path():
+	"""Remove the white selected path visualization"""
+	if selected_job_path_line and is_instance_valid(selected_job_path_line):
+		selected_job_path_line.queue_free()
+		selected_job_path_line = null
+		print("BuildingDetailsModal: Cleared selected job path visualization")
 
 func _debug_print_tree(node: Node, indent: int):
 	var indent_str = ""
@@ -1542,11 +1637,21 @@ func close_modal():
 	"""Close the modal and clear all visual elements"""
 	print("BuildingDetailsModal: close_modal() called - clearing connection lines")
 	_clear_connection_lines()
+	# Clear selected job path visualization
+	_clear_selected_path()
+	selected_job_index = -1
 	# Clean up container when modal closes
 	if connection_lines_container and is_instance_valid(connection_lines_container):
 		connection_lines_container.queue_free()
 		connection_lines_container = null
 		print("BuildingDetailsModal: Freed connection lines container on close")
+	
+	# Disconnect from game's building_jobs_updated signal
+	var game = building_node.get_parent().get_parent() if building_node else null
+	if game and game.is_connected("building_jobs_updated", Callable(self, "_on_building_jobs_updated")):
+		game.disconnect("building_jobs_updated", Callable(self, "_on_building_jobs_updated"))
+		print("BuildingDetailsModal: Disconnected from building_jobs_updated signal")
+	
 	visible = false
 
 func _unregister_from_ui_manager():
