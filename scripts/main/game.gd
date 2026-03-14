@@ -228,6 +228,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			building_scene.set_meta("station_occupancy", 0)
 			building_scene.set_meta("training_occupancy", 0)
 		
+		# Initialize empty jobs array for work buildings
+		building_scene.set_meta("resource_jobs", [])
+		
 		print("Game: Placing building at tile ", tile_coords, " world pos ", world_pos)
 		
 		# Deduct building costs from player resources
@@ -650,9 +653,15 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	# Auto-assign units to this building if capacity increased
 	if difference > 0:
 		_auto_assign_units_to_building(building_node, capacity_type, difference)
+		# Create jobs for work capacity in work buildings
+		if capacity_type == "worker":
+			_create_jobs_for_worker_capacity(building_node, new_value)
 	elif difference < 0:
 		# Capacity decreased - need to remove some unit assignments
 		_remove_excess_unit_assignments(building_node, capacity_type, abs(difference), owner_player)
+		# Remove excess jobs for work capacity
+		if capacity_type == "worker":
+			_trim_jobs_for_worker_capacity(building_node, new_value)
 	
 	# Recalculate global population
 	update_player_population(owner_player)
@@ -887,6 +896,49 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			# Reset movement state - sprite cleanup will happen in update_player_population
 			unit["movement_state"] = "idle"
 			unit["movement_cycle_step"] = 0
+
+func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
+	"""Create job entries when worker capacity increases"""
+	if not building_node:
+		return
+	
+	var building_type = building_node.get_meta("building_type", "unknown")
+	
+	# Only create jobs for work buildings
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+	if not building_type in work_buildings:
+		return
+	
+	# Get existing jobs or create new array
+	var jobs = building_node.get_meta("resource_jobs", [])
+	var current_job_count = jobs.size()
+	
+	# Create job entries for new capacity slots
+	for i in range(current_job_count, new_capacity):
+		var job = {
+			"job_id": "job_" + building_node.name + "_" + str(i),
+			"path_id": "placeholderpath" + str(i + 1),
+			"unit_assigned": null,
+			"created_day": 0  # Will be updated with actual day
+		}
+		jobs.append(job)
+	
+	# Update building metadata with jobs
+	building_node.set_meta("resource_jobs", jobs)
+	print("Created %d jobs for %s (building: %s)" % [new_capacity - current_job_count, building_type, building_node.name])
+
+func _trim_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
+	"""Remove excess job entries when worker capacity decreases"""
+	if not building_node:
+		return
+	
+	var jobs = building_node.get_meta("resource_jobs", [])
+	
+	# Remove jobs beyond new capacity
+	if jobs.size() > new_capacity:
+		jobs.resize(new_capacity)
+		building_node.set_meta("resource_jobs", jobs)
+		print("Trimmed jobs for %s to %d capacity" % [building_node.name, new_capacity])
 
 func get_nearest_environment_objects(position: Vector2, object_type: String, max_count: int = -1) -> Array:
 	# Get environment objects sorted by distance from a position
@@ -1549,6 +1601,7 @@ func initialize_map():
 		# Restore buildings if loading from save
 		if not loaded_buildings_data.is_empty():
 			_restore_buildings_with_proper_centering(loaded_buildings_data)
+			_auto_assign_jobs_on_load()  # Auto-assign units to jobs based on occupancy
 			loaded_buildings_data = []  # Clear after restoration
 		
 		# Restore environment objects if loading from save
@@ -2051,6 +2104,13 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections
+				
+				# Also update the job metadata to track which unit is assigned
+				var jobs = building_node.get_meta("resource_jobs", [])
+				for job_entry in jobs:
+					if job_entry.get("unit_assigned") == null:
+						job_entry["unit_assigned"] = unit["unique_id"]
+						break
 			elif capacity_type == "station" or capacity_type == "training":
 				# For barracks jobs, use naming convention: building_id_capacity_type
 				var barracks_job_name = building_id + "_" + capacity_type
@@ -3246,6 +3306,15 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 				building_scene.set_meta("station_occupancy", building_info.get("station_occupancy", 0))
 				building_scene.set_meta("training_occupancy", building_info.get("training_occupancy", 0))
 			
+			# Initialize jobs array (load from save if available, otherwise create empty)
+			var saved_jobs = building_info.get("resource_jobs", [])
+			building_scene.set_meta("resource_jobs", saved_jobs)
+			
+			# Auto-create jobs if worker occupancy > 0 and jobs are empty
+			var worker_occupancy = building_info.get("worker_occupancy", 0)
+			if worker_occupancy > 0 and saved_jobs.is_empty():
+				_create_jobs_for_worker_capacity(building_scene, worker_occupancy)
+			
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
 			
@@ -3293,6 +3362,93 @@ func _restore_environment_objects(environment_objects_data: Array):
 			# print("Game: Restored environment object ", environment_id, " at ", obj_position)
 		else:
 			push_warning("Could not find existing node to restore environment object: " + environment_id)
+
+func _auto_assign_jobs_on_load():
+	"""Auto-assign units to jobs based on worker occupancy levels when loading a save"""
+	print("Game: Starting auto-assign jobs on load")
+	
+	# Work building types that have jobs
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+	
+	# Iterate through all buildings in map_objects_holder
+	for building_node in map_objects_holder.get_children():
+		if not _is_building_node(building_node):
+			continue
+		
+		var building_type = building_node.get_meta("building_type", "unknown")
+		if not building_type in work_buildings:
+			continue
+		
+		var worker_occupancy = building_node.get_meta("worker_occupancy", 0)
+		if worker_occupancy == 0:
+			continue
+		
+		# Get existing jobs or create them if missing
+		var jobs = building_node.get_meta("resource_jobs", [])
+		if jobs.is_empty() and worker_occupancy > 0:
+			_create_jobs_for_worker_capacity(building_node, worker_occupancy)
+			jobs = building_node.get_meta("resource_jobs", [])
+		
+		# Now auto-assign units to any unassigned job slots
+		var owner_player = building_node.get_meta("owner_player", 1)
+		if not players_data.has(owner_player):
+			continue
+		
+		var player_units = players_data[owner_player].get("units", [])
+		var jobs_assigned = 0
+		
+		# FIRST: Sync existing unit assignments to job objects
+		# Units that already have job = building_name should have their corresponding job marked
+		for unit in player_units:
+			if unit.get("job") == building_node.name:
+				# This unit is already assigned to this building
+				# Check if job object tracks this unit
+				var unit_tracked = false
+				for job in jobs:
+					if job.get("unit_assigned") == unit["unique_id"]:
+						unit_tracked = true
+						break
+				
+				# If not tracked, mark the first unassigned job with this unit
+				if not unit_tracked:
+					for job in jobs:
+						if job.get("unit_assigned") == null:
+							job["unit_assigned"] = unit["unique_id"]
+							jobs_assigned += 1
+							print("Game: Synced existing unit ", unit["unique_id"], " to job at ", building_node.name, " on load")
+							break
+		
+		# SECOND: Assign remaining unassigned units to remaining unassigned jobs
+		var remaining_slots = worker_occupancy - jobs_assigned
+		if remaining_slots > 0:
+			for unit in player_units:
+				if remaining_slots <= 0:
+					break
+				
+				# Skip units that already have jobs
+				if unit.get("job") != null:
+					continue
+				
+				# Find an unassigned job slot
+				for job in jobs:
+					if job.get("unit_assigned") == null:
+						# Assign unit to this job
+						unit["job"] = building_node.name
+						job["unit_assigned"] = unit["unique_id"]
+						
+						# Cache building connections for the unit
+						if buildings_connections_cache.has(building_node.name):
+							unit["job_connections"] = buildings_connections_cache[building_node.name]
+						else:
+							var connections = _find_building_connections_for_unit(building_node)
+							unit["job_connections"] = connections
+							buildings_connections_cache[building_node.name] = connections
+						
+						remaining_slots -= 1
+						print("Game: Auto-assigned unit ", unit["unique_id"], " to job at ", building_node.name, " on load")
+						break
+		
+		print("Game: Assigned ", jobs_assigned, " units to jobs at ", building_node.name, " on load")
 
 func _setup_game_footer():
 	# Create and setup the game footer

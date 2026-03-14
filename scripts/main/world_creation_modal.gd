@@ -235,27 +235,27 @@ func _show_current_step():
 func _step_void():
 	world_data.clear()
 	_clear_and_draw_map()
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_water():
 	world_data.clear()
 	generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
 	_clear_and_draw_map()
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_land():
 	if world_data.is_empty():
 		generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
 	generator._generate_continent(MAP_WIDTH, MAP_HEIGHT, world_data)
 	_clear_and_draw_map()
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_ice():
 	if world_data.is_empty():
 		_step_land()
 	generator._add_ice_caps(MAP_WIDTH, MAP_HEIGHT, world_data)
 	_clear_and_draw_map()
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_mountains():
 	if world_data.is_empty():
@@ -269,7 +269,7 @@ func _step_mountains():
 	)
 	_clear_and_draw_map()
 	# No object placement here - terrain only
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_forests():
 	if world_data.is_empty():
@@ -283,7 +283,7 @@ func _step_forests():
 	)
 	_clear_and_draw_map()
 	# No object placement here - terrain only
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_plains():
 	if world_data.is_empty():
@@ -296,7 +296,7 @@ func _step_plains():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_mountain_peaks():
 	print("WorldCreation: Executing mountain peaks step")
@@ -309,7 +309,7 @@ func _step_mountain_peaks():
 			print("WorldCreation: Mountain peaks placed")
 		else:
 			print("WorldCreation: Map object manager not found or missing method")
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_ancient_forests():
 	print("WorldCreation: Executing ancient forests step")
@@ -322,7 +322,7 @@ func _step_ancient_forests():
 			print("WorldCreation: Ancient forests placed")
 		else:
 			print("WorldCreation: Map object manager not found or missing method")
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_fish():
 	print("WorldCreation: Executing fish step")
@@ -338,7 +338,7 @@ func _step_fish():
 			print("WorldCreation: Fish placed")
 		else:
 			print("WorldCreation: Map object manager not found or missing method")
-	_center_camera_on_map()
+	_center_camera_position_only()
 
 func _step_race_select():
 	# Don't hide the UI, just update it like other steps
@@ -382,7 +382,19 @@ func _show_tile_selection_preview():
 	# Show fishing hut preview at center
 	_preview_fishing_hut(center_tile)
 
+func _center_camera_position_only():
+	"""Center camera position on map without changing zoom level (preserves user zoom)"""
+	if camera and tilemap_layer:
+		# Calculate the center of the map in world coordinates
+		var map_center_x = MAP_WIDTH / 2.0
+		var map_center_y = MAP_HEIGHT / 2.0
+		var world_center = tilemap_layer.map_to_local(Vector2i(int(map_center_x), int(map_center_y)))
+		
+		camera.position = world_center
+		print("WorldCreation: Camera centered at: ", world_center)
+
 func _center_camera_on_map():
+	"""Full camera reset: center position AND reset zoom to default"""
 	if camera and tilemap_layer:
 		# Calculate the center of the map in world coordinates
 		var map_center_x = MAP_WIDTH / 2.0
@@ -391,7 +403,7 @@ func _center_camera_on_map():
 		
 		camera.position = world_center
 		camera.zoom = Vector2(0.6, 0.6)  # Zoom out to see more of the map
-		print("WorldCreation: Camera centered at: ", world_center)
+		print("WorldCreation: Camera reset to: ", world_center, " with zoom: ", camera.zoom)
 
 func _clear_and_draw_map():
 	if not is_instance_valid(tilemap_layer):

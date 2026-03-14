@@ -181,6 +181,10 @@ func _setup_modal():
 	var connections_section = _create_connections_section()
 	content_container.add_child(connections_section)
 	
+	# Jobs section
+	var jobs_section = _create_jobs_section()
+	content_container.add_child(jobs_section)
+	
 	# Actions section
 	var actions_section = _create_actions_section()
 	content_container.add_child(actions_section)
@@ -318,6 +322,21 @@ func _create_connections_section() -> Control:
 	connections_container.name = "ConnectionsContainer"
 	connections_container.add_theme_constant_override("separation", 5)
 	section.add_child(connections_container)
+	
+	return section
+
+func _create_jobs_section() -> Control:
+	var section = VBoxContainer.new()
+	
+	var section_title = Label.new()
+	section_title.text = "Jobs"
+	section_title.add_theme_font_size_override("font_size", 16)
+	section.add_child(section_title)
+	
+	var jobs_container = VBoxContainer.new()
+	jobs_container.name = "JobsContainer"
+	jobs_container.add_theme_constant_override("separation", 5)
+	section.add_child(jobs_container)
 	
 	return section
 
@@ -1265,6 +1284,59 @@ func _populate_building_info():
 				details_label.text = connection.name + " (" + str(connection.distance) + " tiles)"
 				details_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				connection_row.add_child(details_label)
+	
+	# Populate jobs section (only for work buildings)
+	var building_type = building_data.get("building_type", "unknown")
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+	if building_type in work_buildings:
+		_populate_jobs_from_building()
+
+func _populate_jobs_from_building():
+	"""Populate jobs section with jobs from the building's metadata"""
+	var jobs_container = find_child("JobsContainer", true, false)
+	if not jobs_container:
+		return
+	
+	# Clear existing jobs
+	for child in jobs_container.get_children():
+		child.queue_free()
+	
+	# Get jobs from building metadata
+	var jobs = building_node.get_meta("resource_jobs", [])
+	
+	if jobs.is_empty():
+		var no_jobs_label = Label.new()
+		no_jobs_label.text = "No jobs configured"
+		no_jobs_label.add_theme_color_override("font_color", Color.GRAY)
+		jobs_container.add_child(no_jobs_label)
+	else:
+		for job in jobs:
+			_add_job_row(jobs_container, job)
+
+func _add_job_row(container: Container, job: Dictionary):
+	"""Add a single job row to the jobs container"""
+	var job_row = HBoxContainer.new()
+	job_row.add_theme_constant_override("separation", 10)
+	container.add_child(job_row)
+	
+	# Job ID / Path ID
+	var job_label = Label.new()
+	job_label.text = job.get("path_id", "unknown")
+	job_label.custom_minimum_size.x = 120
+	job_row.add_child(job_label)
+	
+	# Assigned unit display
+	var unit_assigned = job.get("unit_assigned", null)
+	var unit_label = Label.new()
+	if unit_assigned:
+		unit_label.text = "Assigned: " + str(unit_assigned)
+		unit_label.add_theme_color_override("font_color", Color.GREEN)
+	else:
+		unit_label.text = "Unassigned"
+		unit_label.add_theme_color_override("font_color", Color.YELLOW)
+	
+	unit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	job_row.add_child(unit_label)
 
 func _debug_print_tree(node: Node, indent: int):
 	var indent_str = ""
