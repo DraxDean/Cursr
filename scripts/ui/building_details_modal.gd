@@ -1649,9 +1649,11 @@ func _get_special_effects(building_type: String) -> String:
 			return "None"
 
 func _on_close_pressed():
-	_clear_connection_lines()
+	# Call the full close_modal() to ensure ALL paths (connection_lines, job_path_lines, etc.) are cleaned up
+	close_modal()
 	close_requested.emit()
-	queue_free()
+	# Queue_free will be called by game.gd's _on_building_details_closed callback
+	# This ensures the modal is fully cleaned up and freed after signals are processed
 
 func _register_with_ui_manager():
 	"""Register this modal with the UI manager's modal stack"""

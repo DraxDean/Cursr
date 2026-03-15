@@ -1519,7 +1519,10 @@ func _open_building_details_modal(building: Node2D):
 	print("Game: Building details modal setup complete")
 
 func _on_building_details_closed():
+	# Clean up building selection and free the modal
 	_clear_building_selection()
+	if building_details_modal and is_instance_valid(building_details_modal):
+		building_details_modal.queue_free()
 	building_details_modal = null
 
 func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
