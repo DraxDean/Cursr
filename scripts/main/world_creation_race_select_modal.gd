@@ -167,7 +167,7 @@ func _update_race_info():
 	# Race image placeholder
 	if selected_race == "human":
 		# Load human peasant sprite for human race
-		var peasant_texture = load("res://assets/units/human_peasant_side.png")
+		var peasant_texture = load("res://assets/units/human_male_peasant_side.png")  # Use male sprite for preview
 		if peasant_texture:
 			var image_rect = TextureRect.new()
 			image_rect.texture = peasant_texture

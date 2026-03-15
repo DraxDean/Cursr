@@ -408,7 +408,7 @@ func _create_test_sprite():
 	test_sprite.centered = true
 	
 	# Try to load the unit texture
-	var texture_path = "res://assets/units/human_peasant_side.png"
+	var texture_path = "res://assets/units/human_male_peasant_side.png"  # Use male sprite for console
 	if ResourceLoader.exists(texture_path):
 		var texture = load(texture_path)
 		test_sprite.texture = texture

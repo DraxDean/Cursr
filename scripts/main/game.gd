@@ -2085,8 +2085,8 @@ func _spawn_unit(unit_data: Dictionary):
 		unit_sprite.position = unit_data["position"]
 		unit_sprite.z_index = 6  # Above buildings but below UI
 		
-		# Load appropriate texture based on race and type
-		var texture_path = "res://assets/units/human_peasant_side.png"  # Default for now
+	# Load appropriate texture based on race and type
+		var texture_path = _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"))
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
 		else:
@@ -2231,6 +2231,18 @@ func _generate_random_name(race: String, gender: String = "male") -> String:
 	var random_surname = surnames[randi() % surnames.size()]
 	
 	return random_given + " " + random_surname
+
+func _get_unit_sprite_path(race: String, gender: String) -> String:
+	"""Get the sprite path for a unit based on race and gender"""
+	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
+	var race_prefix = race.to_lower()
+	return "res://assets/units/%s_%s_peasant_side.png" % [race_prefix, gender_prefix]
+
+func _get_unit_portrait_path(race: String, gender: String) -> String:
+	"""Get the portrait path for a unit based on race and gender"""
+	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
+	var race_prefix = race.to_lower()
+	return "res://assets/portraits/%s-portrait-%s-peasant-brownhair.png" % [race_prefix, gender_prefix]
 
 func _restore_missing_unit_names():
 	"""Restore names for units that don't have them (backward compatibility for old saves)"""
@@ -2621,8 +2633,8 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		unit_sprite.z_index = 6
 		unit_sprite.centered = true  # Center the sprite on its position
 		
-		# Load texture
-		var texture_path = "res://assets/units/human_peasant_side.png"
+		# Load texture based on unit's race and gender
+		var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
 		if ResourceLoader.exists(texture_path):
 			var texture = load(texture_path)
 			unit_sprite.texture = texture

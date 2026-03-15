@@ -58,7 +58,17 @@ func refresh_content():
 	
 	# Character Portrait
 	var portrait = TextureRect.new()
-	portrait.texture = load("res://assets/portraits/human-portrait-male-peasant-brownhair.png")
+	var portrait_path = ""
+	if game_ref and game_ref.has_method("_get_unit_portrait_path"):
+		portrait_path = game_ref._get_unit_portrait_path(current_unit.get("race", "human"), current_unit.get("gender", "male"))
+	else:
+		# Fallback if method not available
+		portrait_path = "res://assets/portraits/human-portrait-male-peasant-brownhair.png"
+	
+	if ResourceLoader.exists(portrait_path):
+		portrait.texture = load(portrait_path)
+	else:
+		print("Warning: Portrait not found: ", portrait_path)
 	portrait.expand_mode = TextureRect.EXPAND_FIT_WIDTH
 	portrait.custom_minimum_size = Vector2(120, 150)
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE

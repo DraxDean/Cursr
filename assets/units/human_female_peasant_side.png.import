@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://l5qairuvsb3n"
-path="res://.godot/imported/human_peasant_side.png-3782f230c0705e0f847accff775bffca.ctex"
+uid="uid://cvab5xfm7q42"
+path="res://.godot/imported/human_female_peasant_side.png-4dd76e792a492db85905b3492bdead86.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/units/human_peasant_side.png"
-dest_files=["res://.godot/imported/human_peasant_side.png-3782f230c0705e0f847accff775bffca.ctex"]
+source_file="res://assets/units/human_female_peasant_side.png"
+dest_files=["res://.godot/imported/human_female_peasant_side.png-4dd76e792a492db85905b3492bdead86.ctex"]
 
 [params]
 
