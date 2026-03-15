@@ -10,7 +10,7 @@ var races = {
 	"human": {
 		"name": "Human",
 		"description": "Versatile and adaptable, humans are skilled traders and diplomats. They build balanced settlements with strong economies and diverse capabilities.",
-		"buildings": ["town_center", "barracks", "house", "fishing_hut"]
+		"buildings": ["town_center", "barracks", "house", "farmhouse", "fishing_hut", "lumberjack", "research", "stoneworker"]
 	},
 	"elf": {
 		"name": "Elf",
@@ -68,11 +68,33 @@ func setup_integrated(game_ref: Node, world_creation_ref: Node, ui_layer: Canvas
 	_update_buildings_grid()
 
 func _create_integrated_ui():
-	# No background or title needed - using existing header/footer system
+	# Create background container matching header/footer style exactly
+	var bg_container = Control.new()
+	# Position to align with header: header is at (200,20) with size (800,120), ends at y=140
+	# RaceSelectUI is at (50,160), so relative position is (200-50, 140-160) = (150, -20)
+	bg_container.position = Vector2(150, -20)
+	# Height: from bottom of header (140) to top of footer (screen_size.y - 80) = screen_size.y - 220
+	bg_container.size = Vector2(800, get_viewport().get_visible_rect().size.y - 220)
+	bg_container.clip_contents = true
+	add_child(bg_container)
+	
+	# Background
+	var bg = ColorRect.new()
+	bg.color = Color(0, 0, 0, 0.25)  # 25% opacity black like header/footer
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_container.add_child(bg)
+	
+	# Content container with minimal padding
+	var content_holder = Control.new()
+	content_holder.position = Vector2(5, 5)
+	content_holder.size = Vector2(790, bg_container.size.y - 10)
+	bg_container.add_child(content_holder)
+	
+	# Main vertical layout
 	var main_container = VBoxContainer.new()
 	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	main_container.add_theme_constant_override("separation", 15)
-	add_child(main_container)
+	main_container.add_theme_constant_override("separation", 10)
+	content_holder.add_child(main_container)
 	
 	_create_race_ui_content(main_container)
 
@@ -143,21 +165,46 @@ func _update_race_info():
 	var race_data = races[selected_race]
 	
 	# Race image placeholder
-	var image_bg = ColorRect.new()
-	image_bg.color = Color(0.3, 0.3, 0.3)
-	image_bg.custom_minimum_size = Vector2(300, 200)
-	race_info_container.add_child(image_bg)
-	
-	var image_label = Label.new()
-	image_label.text = race_data["name"] + " Image"
-	image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	image_bg.add_child(image_label)
+	if selected_race == "human":
+		# Load human peasant sprite for human race
+		var peasant_texture = load("res://assets/units/human_peasant_side.png")
+		if peasant_texture:
+			var image_rect = TextureRect.new()
+			image_rect.texture = peasant_texture
+			image_rect.custom_minimum_size = Vector2(300, 200)
+			image_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+			image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			image_rect.texture_filter = TEXTURE_FILTER_NEAREST  # Keep pixels sharp
+			image_rect.modulate = Color(1.5, 1.5, 1.5)  # Brighten the sprite
+			race_info_container.add_child(image_rect)
+		else:
+			var image_bg = ColorRect.new()
+			image_bg.color = Color(0.3, 0.3, 0.3)
+			image_bg.custom_minimum_size = Vector2(300, 200)
+			race_info_container.add_child(image_bg)
+			
+			var image_label = Label.new()
+			image_label.text = race_data["name"] + " Image"
+			image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			image_bg.add_child(image_label)
+	else:
+		var image_bg = ColorRect.new()
+		image_bg.color = Color(0.3, 0.3, 0.3)
+		image_bg.custom_minimum_size = Vector2(300, 200)
+		race_info_container.add_child(image_bg)
+		
+		var image_label = Label.new()
+		image_label.text = race_data["name"] + " Image"
+		image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		image_bg.add_child(image_label)
 	
 	# Race name
 	var name_label = Label.new()
 	name_label.text = race_data["name"]
 	name_label.add_theme_font_size_override("font_size", 28)
+	name_label.add_theme_color_override("font_color", Color.WHITE)  # White text
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	race_info_container.add_child(name_label)
 	
@@ -166,6 +213,7 @@ func _update_race_info():
 	desc_label.text = race_data["description"]
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_label.add_theme_font_size_override("font_size", 14)
+	desc_label.add_theme_color_override("font_color", Color.WHITE)  # White text for readability
 	race_info_container.add_child(desc_label)
 
 func _update_buildings_grid():
@@ -202,12 +250,21 @@ func _update_selected_building_info():
 		return
 	
 	# Try to load the actual building image
-	var image_path = "res://assets/buildings/human_" + selected_building.replace("_", "") + ".png"
-	# Handle special cases for file naming
+	var image_path = ""
+	# Handle special cases for file naming (building name to actual filename mapping)
 	if selected_building == "town_center":
 		image_path = "res://assets/buildings/human_towncentre-export.png"
 	elif selected_building == "fishing_hut":
 		image_path = "res://assets/buildings/human_finshinghut.png"
+	elif selected_building == "research":
+		image_path = "res://assets/buildings/human_research.png"
+	elif selected_building == "lumberjack":
+		image_path = "res://assets/buildings/human_lumberjack.png"
+	elif selected_building == "stoneworker":
+		image_path = "res://assets/buildings/human_stoneworker.png"
+	else:
+		# Generic mapping: human_[building_name].png
+		image_path = "res://assets/buildings/human_" + selected_building.replace("_", "") + ".png"
 	
 	print("Trying to load building image: ", image_path)
 	
@@ -223,6 +280,7 @@ func _update_selected_building_info():
 		image_rect.custom_minimum_size = Vector2(200, 100)
 		image_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image_rect.texture_filter = TEXTURE_FILTER_NEAREST  # Keep pixels sharp
 		building_selected_container.add_child(image_rect)
 	else:
 		# Fallback to colored background with text
@@ -241,6 +299,7 @@ func _update_selected_building_info():
 	var title_label = Label.new()
 	title_label.text = selected_building.replace("_", " ").capitalize()
 	title_label.add_theme_font_size_override("font_size", 20)
+	title_label.add_theme_color_override("font_color", Color.WHITE)  # White text
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	building_selected_container.add_child(title_label)
 	
@@ -249,6 +308,7 @@ func _update_selected_building_info():
 	desc_label.text = "A essential building for " + races[selected_race]["name"] + " settlements."
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_label.add_theme_font_size_override("font_size", 12)
+	desc_label.add_theme_color_override("font_color", Color.WHITE)  # White text
 	building_selected_container.add_child(desc_label)
 
 func _on_race_selected(race_key: String):
