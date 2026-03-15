@@ -20,14 +20,9 @@ func setup(data: Dictionary):
 		sprite.texture = texture
 		
 		# Center the sprite within the building node
-		# The building node position should be at tile center, sprite should be offset to center on tile
-		var tile_size = Vector2(32, 32)  # Get from tilemap if available
-		var sprite_size = texture.get_size()
-		
-		# Calculate offset to center sprite on tile
-		var offset_x = (tile_size.x - sprite_size.x) / 2.0
-		var offset_y = (tile_size.y - sprite_size.y) / 2.0
-		sprite.position = Vector2(offset_x, offset_y)
+		# For large buildings positioned at the upside-down triangle meeting point,
+		# no additional offset is needed - the node position is correct
+		sprite.offset = Vector2.ZERO
 	
 	# Set metadata if provided
 	if data.has("owner_player"):

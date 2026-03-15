@@ -23,6 +23,11 @@ var ui_manager: Node
 var header_component: Node
 var footer_component: Node
 
+# Town center placement state
+var is_placing_town_center: bool = false
+var town_center_preview_sprite: Sprite2D
+var town_center_placed: bool = false
+
 # Generation steps data
 var generation_steps = [
 	{
@@ -151,6 +156,10 @@ func cleanup_ui():
 	# Clean up our UI elements when done
 	var _ui_layer = game_node.get_node("UI_Layer")
 	
+	# Clean up town center preview sprite
+	if town_center_preview_sprite and is_instance_valid(town_center_preview_sprite):
+		town_center_preview_sprite.queue_free()
+	
 	# Clean up race selection UI if it exists
 	if has_meta("race_select_ui"):
 		var race_ui = get_meta("race_select_ui")
@@ -197,28 +206,38 @@ func _on_tile_selected(tile_pos: Vector2):
 	# Preview fishing hut at selected position
 	_preview_fishing_hut(tile_pos)
 
-func _preview_fishing_hut(tile_pos: Vector2):
-	# Load and place the town center sprite as a preview (using town center for starting building)
+func _show_town_center_preview(tile_pos: Vector2):
+	# Clean up existing preview if any
+	if town_center_preview_sprite and is_instance_valid(town_center_preview_sprite):
+		town_center_preview_sprite.queue_free()
+	
+	# Load town center texture
 	var town_center_texture = preload("res://assets/buildings/human_towncentre-export.png")
 	
 	# Create a sprite node for the preview
-	var preview_sprite = Sprite2D.new()
-	preview_sprite.name = "TownCenterPreview"
-	preview_sprite.texture = town_center_texture
+	town_center_preview_sprite = Sprite2D.new()
+	town_center_preview_sprite.name = "TownCenterPreview"
+	town_center_preview_sprite.texture = town_center_texture
+	town_center_preview_sprite.modulate = Color(1, 1, 1, 0.7)  # Semi-transparent
+	town_center_preview_sprite.z_index = 10  # Make sure it's above the tilemap
 	
-	# Position it at the center tile
+	# Position it at the upside-down triangle meeting point
 	if tilemap_layer:
-		var world_pos = tilemap_layer.map_to_local(Vector2i(int(tile_pos.x), int(tile_pos.y)))
-		preview_sprite.position = world_pos
-		preview_sprite.z_index = 10  # Make sure it's above the tilemap
+		# Get the midpoint between the two tiles above the center tile
+		var tile_above_left = tilemap_layer.map_to_local(Vector2i(int(tile_pos.x) - 1, int(tile_pos.y) - 1))
+		var tile_above_right = tilemap_layer.map_to_local(Vector2i(int(tile_pos.x), int(tile_pos.y) - 1))
+		var midpoint = (tile_above_left + tile_above_right) / 2.0
+		
+		town_center_preview_sprite.position = midpoint
 		
 		# Add to the tilemap's parent so it's in the right layer
-		tilemap_layer.get_parent().add_child(preview_sprite)
-		
-		# Store reference for cleanup
-		set_meta("preview_sprite", preview_sprite)
-		
-	print("Town center preview placed at: ", tile_pos)
+		tilemap_layer.get_parent().add_child(town_center_preview_sprite)
+	
+	print("Town center preview shown at: ", tile_pos)
+
+func _preview_fishing_hut(tile_pos: Vector2):
+	# Legacy function - kept for compatibility
+	_show_town_center_preview(tile_pos)
 
 func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D, _ui_manager_ref: Node):
 	# Keep this for compatibility but redirect to direct UI
@@ -416,18 +435,18 @@ func _step_choose_starting_tile():
 			race_ui.queue_free()
 		remove_meta("race_select_ui")
 	
-	# Auto-select center tile
-	var center_tile = Vector2(MAP_WIDTH / 2.0, MAP_HEIGHT / 2.0)
-	world_data["starting_tile"] = center_tile
-	print("Auto-selected center tile: ", center_tile)
+	# Start interactive town center placement mode
+	is_placing_town_center = true
+	town_center_placed = false
 	
-	# Show town center preview at center
-	_preview_fishing_hut(center_tile)
+	# Create initial preview at center
+	var center_tile = Vector2(MAP_WIDTH / 2.0, MAP_HEIGHT / 2.0)
+	_show_town_center_preview(center_tile)
 	
 	# Update header for this step
-	header_component.update_step("Choose Starting Location", "Your settlement will be built in the center of the world")
-	footer_component.update_buttons(["Back", "Next"])
-	print("WorldCreation: Tile selection step - auto-selected center")
+	header_component.update_step("Choose Starting Location", "Hover to preview placement. Click to place your town center. Use Reset to change position.")
+	footer_component.update_buttons(["Back", "Reset"])
+	print("WorldCreation: Town center placement mode active")
 
 func _load_town_center_names():
 	"""Load town center names from assets/names/buildings/towncentre.txt"""
@@ -451,12 +470,17 @@ func _step_name_settlement():
 	"""Display settlement naming UI"""
 	print("WorldCreation: Showing settlement naming step")
 	
-	# Remove the preview sprite (not needed for naming)
+	# Disable town center placement mode
+	is_placing_town_center = false
+	
+	# Clean up any other preview sprites but keep the placed town center sprite
 	if has_meta("preview_sprite"):
 		var preview_sprite = get_meta("preview_sprite")
 		if is_instance_valid(preview_sprite):
 			preview_sprite.queue_free()
 		remove_meta("preview_sprite")
+	
+	# Keep town_center_preview_sprite visible - don't delete it
 	
 	# Pick a random town name if not already selected
 	if selected_town_name.is_empty() and not town_names.is_empty():
@@ -596,8 +620,12 @@ func _on_back_pressed():
 	game_node._cancel_world_creation()
 
 func _on_reset_camera_pressed():
-	print("WorldCreation: Resetting camera view")
-	_center_camera_on_map()
+	# Check if we're in town center placement mode
+	if is_placing_town_center:
+		_reset_town_center_placement()
+	else:
+		print("WorldCreation: Resetting camera view")
+		_center_camera_on_map()
 
 func _on_reroll_pressed():
 	print("WorldCreation: Rerolling step %d" % current_step)
@@ -678,3 +706,83 @@ func _on_start_game_pressed():
 	# For other steps, just finish (shouldn't normally happen)
 	cleanup_ui()
 	game_node._finish_world_creation(world_data)
+
+func _unhandled_input(event: InputEvent):
+	"""Handle input during town center placement"""
+	if not is_placing_town_center:
+		return
+	
+	if event is InputEventMouseMotion:
+		_update_town_center_preview()
+	elif event is InputEventMouseButton:
+		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_place_town_center()
+
+func _update_town_center_preview():
+	"""Update preview sprite position based on mouse hover"""
+	if not town_center_preview_sprite or not is_instance_valid(town_center_preview_sprite):
+		return
+	
+	# Convert screen position to world position
+	var world_pos = camera.get_global_mouse_position()
+	# Convert to tile coordinates
+	var tile_coords = tilemap_layer.local_to_map(world_pos)
+	
+	# Position preview at the midpoint between the two tiles above the hovered tile and the hovered tile
+	# This creates an upside-down triangle meeting point
+	var tile_above_left = tilemap_layer.map_to_local(Vector2i(int(tile_coords.x) - 1, int(tile_coords.y) - 1))
+	var tile_above_right = tilemap_layer.map_to_local(Vector2i(int(tile_coords.x), int(tile_coords.y) - 1))
+	
+	# Calculate the midpoint between the two tiles above
+	var midpoint_above = (tile_above_left + tile_above_right) / 2.0
+	
+	# Position sprite at this upside-down triangle meeting point
+	town_center_preview_sprite.position = midpoint_above
+	
+	# Check if placement is valid and update tint
+	var can_place = _can_place_town_center_at_tile(tile_coords)
+	if can_place:
+		town_center_preview_sprite.modulate = Color(0.7, 1.0, 0.7, 0.7)  # Green tint
+	else:
+		town_center_preview_sprite.modulate = Color(1.0, 0.7, 0.7, 0.7)  # Red tint
+
+func _can_place_town_center_at_tile(tile_coords: Vector2i) -> bool:
+	"""Check if town center can be placed at this tile"""
+	# Check if tile is within map bounds
+	var used_rect = tilemap_layer.get_used_rect()
+	if not used_rect.has_point(tile_coords):
+		return false
+	
+	# Could add more validation here (terrain type, etc.)
+	return true
+
+func _place_town_center():
+	"""Place the town center at the clicked location"""
+	# Convert screen position to tile coordinates
+	var world_pos = camera.get_global_mouse_position()
+	var tile_coords = tilemap_layer.local_to_map(world_pos)
+	
+	if _can_place_town_center_at_tile(tile_coords):
+		# Store the placement location
+		world_data["starting_tile"] = Vector2(tile_coords.x, tile_coords.y)
+		town_center_placed = true
+		
+		# Make preview sprite fully opaque and keep it visible on the map
+		if town_center_preview_sprite and is_instance_valid(town_center_preview_sprite):
+			town_center_preview_sprite.modulate = Color(1, 1, 1, 1.0)  # Fully opaque
+		
+		is_placing_town_center = false
+		
+		# Update UI to continue
+		header_component.update_step("Choose Starting Location", "Town center placed! Click Next to continue.")
+		footer_component.update_buttons(["Back", "Next"])
+		
+		print("WorldCreation: Town center placed at: ", world_data["starting_tile"])
+	else:
+		print("Cannot place town center at this location")
+
+func _reset_town_center_placement():
+	"""Reset town center placement back to preview mode"""
+	if is_placing_town_center and town_center_preview_sprite and is_instance_valid(town_center_preview_sprite):
+		town_center_preview_sprite.modulate = Color(1, 1, 1, 0.7)  # Reset to neutral color
+		print("WorldCreation: Town center placement reset")

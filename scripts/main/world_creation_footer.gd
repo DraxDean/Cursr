@@ -109,8 +109,14 @@ func update_buttons(button_texts: Array):
 				if back_button:
 					back_button.text = "Back"
 					back_button.visible = true
+			"Reset":
+				if reset_camera_button:
+					reset_camera_button.text = "Reset"
+					reset_camera_button.visible = true
 			"Reset Camera":
-				if reset_camera_button: reset_camera_button.visible = true
+				if reset_camera_button: 
+					reset_camera_button.text = "Reset Camera"
+					reset_camera_button.visible = true
 			"Reroll":
 				if reroll_button: reroll_button.visible = true
 			"Continue":

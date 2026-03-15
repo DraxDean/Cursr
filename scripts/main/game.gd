@@ -3548,8 +3548,10 @@ func _place_town_center_building(tile_coords: Vector2i):
 		var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
 		building_scene.name = building_name
 		
-		# Position it at tile center (building script will handle sprite centering)
-		var world_pos = tilemap_layer.map_to_local(tile_coords)
+		# Position it at the upside-down triangle meeting point (midpoint between the two tiles above)
+		var tile_above_left = tilemap_layer.map_to_local(Vector2i(tile_coords.x - 1, tile_coords.y - 1))
+		var tile_above_right = tilemap_layer.map_to_local(Vector2i(tile_coords.x, tile_coords.y - 1))
+		var world_pos = (tile_above_left + tile_above_right) / 2.0
 		building_scene.position = world_pos
 		building_scene.z_index = 5  # Above terrain but below UI
 		
