@@ -1959,11 +1959,13 @@ func _create_initial_units():
 			for i in range(10):
 				var unit_id = _get_next_unit_id()
 				var player_race = players_data[player_id].get("race", "human")
+				var gender = ["male", "female"][randi() % 2]  # Randomly choose male or female
 				var unit_data = {
 					"unique_id": unit_id,
-					"name": _generate_random_name(player_race),
+					"name": _generate_random_name(player_race, gender),
 					"type": "peasant",
 					"race": player_race,
+					"gender": gender,
 					"player_id": player_id,
 					"position": Vector2.ZERO,  # Will be updated when assigned housing
 					"living_quarters": null,
@@ -2139,16 +2141,15 @@ func _load_race_names():
 	var races = ["human", "elf"]
 	
 	for race in races:
-		race_names[race] = {"given": [], "surnames": []}
+		race_names[race] = {"given": {"male": [], "female": []}, "surnames": []}
 		
-		# Load given names - use direct file path without ResourceLoader
-		var given_names_path = "res://assets/names/%ss/given_names.txt" % race
-		print("Game: Attempting to load given names from: %s" % given_names_path)
+		# Load male given names
+		var male_names_path = "res://assets/names/%ss/male_given_names.txt" % race
+		print("Game: Attempting to load male given names from: %s" % male_names_path)
 		
-		var given_file = FileAccess.open(given_names_path, FileAccess.READ)
-		if given_file:
-			var content = given_file.get_as_text().strip_edges()
-			print("Game: File content length for given names: %d" % content.length())
+		var male_file = FileAccess.open(male_names_path, FileAccess.READ)
+		if male_file:
+			var content = male_file.get_as_text().strip_edges()
 			var names_array = content.split("\n")
 			# Filter out empty strings
 			var filtered_names = []
@@ -2156,13 +2157,29 @@ func _load_race_names():
 				var trimmed = name_item.strip_edges()
 				if not trimmed.is_empty():
 					filtered_names.append(trimmed)
-			race_names[race]["given"] = filtered_names
-			print("Game: Loaded %d given names for %s (filtered from %d)" % [filtered_names.size(), race, names_array.size()])
-			if filtered_names.size() > 0:
-				print("Game: First given name: %s, Last given name: %s" % [filtered_names[0], filtered_names[filtered_names.size()-1]])
+			race_names[race]["given"]["male"] = filtered_names
+			print("Game: Loaded %d male given names for %s" % [filtered_names.size(), race])
 		else:
-			push_error("Game: Failed to open given names file: %s" % given_names_path)
-			print("Game: FileAccess error: %d" % FileAccess.get_open_error())
+			push_error("Game: Failed to open male given names file: %s" % male_names_path)
+		
+		# Load female given names
+		var female_names_path = "res://assets/names/%ss/female_given_names.txt" % race
+		print("Game: Attempting to load female given names from: %s" % female_names_path)
+		
+		var female_file = FileAccess.open(female_names_path, FileAccess.READ)
+		if female_file:
+			var content = female_file.get_as_text().strip_edges()
+			var names_array = content.split("\n")
+			# Filter out empty strings
+			var filtered_names = []
+			for name_item in names_array:
+				var trimmed = name_item.strip_edges()
+				if not trimmed.is_empty():
+					filtered_names.append(trimmed)
+			race_names[race]["given"]["female"] = filtered_names
+			print("Game: Loaded %d female given names for %s" % [filtered_names.size(), race])
+		else:
+			push_error("Game: Failed to open female given names file: %s" % female_names_path)
 		
 		# Load surnames - use direct file path without ResourceLoader
 		var surnames_path = "res://assets/names/%ss/surnames.txt" % race
@@ -2189,21 +2206,25 @@ func _load_race_names():
 	
 	print("Game: ===== NAME LOADING COMPLETE =====")
 
-func _generate_random_name(race: String) -> String:
-	"""Generate a random name for a unit of the given race"""
+func _generate_random_name(race: String, gender: String = "male") -> String:
+	"""Generate a random name for a unit of the given race and gender"""
 	if not race_names.has(race):
 		push_error("Game: Race '%s' not found in race_names" % race)
 		return "Unit " + str(unit_counter)
 	
-	if race_names[race]["given"].is_empty():
-		push_error("Game: No given names loaded for race '%s'" % race)
+	if not race_names[race]["given"].has(gender):
+		push_error("Game: Gender '%s' not found in given names for race '%s'" % [gender, race])
+		return "Unit " + str(unit_counter)
+	
+	if race_names[race]["given"][gender].is_empty():
+		push_error("Game: No %s given names loaded for race '%s'" % [gender, race])
 		return "Unit " + str(unit_counter)
 	
 	if race_names[race]["surnames"].is_empty():
 		push_error("Game: No surnames loaded for race '%s'" % race)
 		return "Unit " + str(unit_counter)
 	
-	var given_names = race_names[race]["given"]
+	var given_names = race_names[race]["given"][gender]
 	var surnames = race_names[race]["surnames"]
 	
 	var random_given = given_names[randi() % given_names.size()]
