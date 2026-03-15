@@ -444,7 +444,18 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 			continue
 		
 		var building_type = _extract_building_type_from_name(child.name)
-		var worker_count = child.get_meta("worker_occupancy", 0)
+		
+		# Count actual assigned workers from jobs, not cached occupancy
+		var worker_count = 0
+		var jobs = child.get_meta("resource_jobs", [])
+		if not jobs.is_empty():
+			# Count jobs with assigned units
+			for job in jobs:
+				if job.get("unit_assigned") != null:
+					worker_count += 1
+		else:
+			# Fallback to metadata if no jobs exist
+			worker_count = child.get_meta("worker_occupancy", 0)
 		
 		# Each building type produces different resources based on worker count
 		match building_type:

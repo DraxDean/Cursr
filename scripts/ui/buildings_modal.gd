@@ -43,12 +43,24 @@ func refresh_content():
 		if game_ref.map_objects_holder:
 			for child in game_ref.map_objects_holder.get_children():
 				if child.name in player_building_names:
+					# Count actual assigned workers from jobs instead of using cached metadata
+					var actual_worker_count = 0
+					var jobs = child.get_meta("resource_jobs", [])
+					if not jobs.is_empty():
+						# Count jobs with assigned units
+						for job in jobs:
+							if job.get("unit_assigned") != null:
+								actual_worker_count += 1
+					else:
+						# Fallback to metadata if no jobs exist
+						actual_worker_count = child.get_meta("worker_occupancy", 0)
+					
 					var building_info = {
-					"name": child.get_meta("display_name", child.name),  # Use display name if available
+						"name": child.get_meta("display_name", child.name),  # Use display name if available
 						"position": child.position,
 						"type": game_ref._extract_building_type_from_name(child.name),
 						"living_occupancy": child.get_meta("living_occupancy", 0),
-						"worker_occupancy": child.get_meta("worker_occupancy", 0)
+						"worker_occupancy": actual_worker_count
 					}
 					player_buildings.append(building_info)
 	
