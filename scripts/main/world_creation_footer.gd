@@ -121,6 +121,10 @@ func update_buttons(button_texts: Array):
 					continue_button.visible = true
 			"Start Game":
 				if start_game_button: start_game_button.visible = true
+			"Begin Game":
+				if start_game_button:
+					start_game_button.text = "Begin Game"
+					start_game_button.visible = true
 
 # Button signal handlers
 func _on_back_pressed():

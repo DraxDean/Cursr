@@ -44,7 +44,7 @@ func refresh_content():
 			for child in game_ref.map_objects_holder.get_children():
 				if child.name in player_building_names:
 					var building_info = {
-						"name": child.name,
+					"name": child.get_meta("display_name", child.name),  # Use display name if available
 						"position": child.position,
 						"type": game_ref._extract_building_type_from_name(child.name),
 						"living_occupancy": child.get_meta("living_occupancy", 0),

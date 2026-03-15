@@ -68,6 +68,10 @@ var unit_movement_speed: float = 1.0  # Speed multiplier for unit movement (0.5 
 # Name System - for generating unique unit names by race
 var race_names: Dictionary = {}  # Caches loaded names: {"human": {"given": [], "surnames": []}, "elf": {...}}
 
+# Building naming - for workplace names (building_type -> array of work-related names)
+var building_work_names: Dictionary = {}  # {"fishing_hut": ["Angling", "Fishery", ...], "lumberjack": [...], ...}
+var renamed_workplaces: Dictionary = {}  # Track already-renamed workplaces to avoid duplicates
+
 # --- Variables ---
 var world_data: Dictionary = {}
 var loaded_buildings_data: Array = []
@@ -717,37 +721,73 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 		return false
 	
 	var owner_player = building_node.get_meta("owner_player", 1)
+	
+	# For worker capacity, count filled jobs instead of using occupancy number
+	if capacity_type == "worker":
+		var jobs = building_node.get_meta("resource_jobs", [])
+		var filled_count = 0
+		for job in jobs:
+			if job.get("unit_assigned") != null:
+				filled_count += 1
+		
+		var max_jobs = jobs.size()
+		var difference = new_value - filled_count
+		
+		print("DEBUG: Worker capacity change - filled jobs: ", filled_count, " -> new: ", new_value, ", max jobs available: ", max_jobs, " (diff: ", difference, ")")
+		
+		if difference > 0:
+			# Need to assign more units to existing job slots
+			var available_pop = get_player_population_data(owner_player).get("unemployed", 0)
+			if available_pop < difference:
+				print("Not enough unemployed population to fill ", difference, " jobs. Available: ", available_pop)
+				return false
+			# Auto-assign units to empty job slots
+			_auto_assign_units_to_building(building_node, capacity_type, difference)
+		elif difference < 0:
+			# Need to unassign units from filled job slots
+			_remove_excess_unit_assignments(building_node, capacity_type, abs(difference), owner_player)
+		
+		# Recalculate global population
+		update_player_population(owner_player)
+		
+		# Recalculate resource production rates
+		calculate_resource_rates(owner_player)
+		
+		# Emit signal for modal updates
+		building_jobs_updated.emit(building_node.name)
+		
+		return true
+	
+	# For non-worker capacity types (living, station, training), use original logic
 	var current_occupancy = building_node.get_meta(capacity_type + "_occupancy", 0)
-	var difference = new_value - current_occupancy
+	var occupancy_difference = new_value - current_occupancy
 	
 	# Check if we have enough available population for increases
-	if difference > 0:
+	if occupancy_difference > 0:
 		var pop_data = get_player_population_data(owner_player)
 		var available = 0
 		if capacity_type == "living":
 			available = pop_data.get("unhoused", 0)
-		elif capacity_type == "worker":
-			available = pop_data.get("unemployed", 0)
 		elif capacity_type == "station" or capacity_type == "training":
-			# For barracks jobs, check unemployed population (same as worker jobs)
+			# For barracks jobs, check unemployed population
 			available = pop_data.get("unemployed", 0)
 		
-		print("DEBUG: Capacity check for ", capacity_type, " - need ", difference, ", available ", available, " (total unemployed: ", pop_data.get("unemployed", 0), ")")
+		print("DEBUG: Capacity check for ", capacity_type, " - need ", occupancy_difference, ", available ", available)
 		
-		if available < difference:
-			print("Not enough ", capacity_type, " population available. Need ", difference, ", have ", available)
+		if available < occupancy_difference:
+			print("Not enough ", capacity_type, " population available. Need ", occupancy_difference, ", have ", available)
 			return false
 	
 	# Update building occupancy
 	building_node.set_meta(capacity_type + "_occupancy", new_value)
 	
 	# Auto-assign units to this building if capacity increased
-	if difference > 0:
+	if occupancy_difference > 0:
 		# Assign units to existing unassigned jobs (jobs exist at max capacity from creation)
-		_auto_assign_units_to_building(building_node, capacity_type, difference)
-	elif difference < 0:
+		_auto_assign_units_to_building(building_node, capacity_type, occupancy_difference)
+	elif occupancy_difference < 0:
 		# Capacity decreased - remove unit assignments from some jobs (keep job slots)
-		_remove_excess_unit_assignments(building_node, capacity_type, abs(difference), owner_player)
+		_remove_excess_unit_assignments(building_node, capacity_type, abs(occupancy_difference), owner_player)
 	
 	# Recalculate global population
 	update_player_population(owner_player)
@@ -955,6 +995,11 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 	var player_units = player_data.get("units", [])
 	var assignments_removed = 0
 	
+	# For worker capacity, we also need to clear the job slots
+	var jobs = []
+	if capacity_type == "worker":
+		jobs = building_node.get_meta("resource_jobs", [])
+	
 	# Find units assigned to this building and remove excess assignments
 	for unit in player_units:
 		if assignments_removed >= excess_count:
@@ -975,7 +1020,16 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 				should_remove = true
 		
 		if should_remove:
-			# Remove the specific assignment
+			# For worker capacity, also clear the unit_assigned field from the job slot
+			if capacity_type == "worker":
+				for job in jobs:
+					if job.get("unit_assigned") == unit_id:
+						job["unit_assigned"] = null
+						job["assigned_job_index"] = -1
+						print("DEBUG: Cleared job slot unit_assigned for unit ", unit_id)
+						break
+			
+			# Remove the specific assignment from the unit
 			if capacity_type == "living":
 				unit["living_quarters"] = null
 			elif capacity_type == "worker":
@@ -1684,6 +1738,7 @@ func _ready():
 
 	# --- Load Name System ---
 	_load_race_names()
+	_load_building_work_names()
 
 	# --- Initialize Map ---
 	initialize_map()
@@ -2165,6 +2220,114 @@ func _restore_missing_unit_names():
 	if units_without_names > 0:
 		print("Game: Restored names for %d units from old save" % units_without_names)
 
+func _load_building_work_names():
+	"""Load work-related names for each workplace building type"""
+	print("Game: Loading building work names...")
+	
+	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker"]
+	
+	for building_type in workplace_types:
+		var names_path = "res://assets/names/buildings/%s.txt" % building_type
+		var names_file = FileAccess.open(names_path, FileAccess.READ)
+		if names_file:
+			var content = names_file.get_as_text().strip_edges()
+			var names_array = content.split("\n")
+			# Filter out empty strings
+			var filtered_names = []
+			for work_name in names_array:
+				var trimmed = work_name.strip_edges()
+				if not trimmed.is_empty():
+					filtered_names.append(trimmed)
+			building_work_names[building_type] = filtered_names
+			print("Game: Loaded %d work names for %s" % [filtered_names.size(), building_type])
+		else:
+			push_error("Game: Failed to load work names for %s from %s" % [building_type, names_path])
+			building_work_names[building_type] = []
+
+func _rename_workplace_on_first_assignment(building_node: Node2D, unit: Dictionary):
+	"""Rename a workplace when the first worker is assigned, combining surname + work name"""
+	if not building_node or not unit:
+		print("DEBUG RENAME: Failed - building_node or unit is null")
+		return false
+	
+	var building_type = building_node.get_meta("building_type", "")
+	var building_id = building_node.name
+	print("DEBUG RENAME: Starting rename check for %s (type: %s)" % [building_id, building_type])
+	
+	# Only rename workplaces (fishing_hut, lumberjack, stoneworker, research, lumber_mill)
+	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker", "research", "lumber_mill"]
+	if building_type not in workplace_types:
+		print("DEBUG RENAME: Failed - %s not in workplace_types" % building_type)
+		return false
+	
+	# Check if already renamed (would have a name like "Surname WorkName" instead of "building_type#")
+	# Default format is building_type followed by digits (e.g., "lumberjack1", "town_center1")
+	if not building_id.begins_with(building_type):
+		print("DEBUG RENAME: Failed - building ID doesn't start with type")
+		return false
+	
+	var after_type = building_id.substr(building_type.length())
+	if not after_type.is_valid_int():
+		print("DEBUG RENAME: Failed - building already has non-default name (%s after type %s is not just digits)" % [after_type, building_type])
+		return false
+	
+	print("DEBUG RENAME: Pattern check passed - ID: %s has default format (type + digits)" % building_id)
+	
+	# Extract surname from unit name (e.g., "John Gonzalez" -> "Gonzalez")
+	var unit_name = unit.get("name", "")
+	if unit_name.is_empty():
+		print("DEBUG RENAME: Failed - unit has no name")
+		return false
+	
+	var name_parts = unit_name.split(" ")
+	var surname = name_parts[-1] if name_parts.size() > 0 else unit_name
+	print("DEBUG RENAME: Unit name: %s, Surname: %s" % [unit_name, surname])
+	
+	# Load building work names if not already loaded
+	if not building_work_names.has(building_type) or building_work_names[building_type].is_empty():
+		print("DEBUG RENAME: Loading work names for %s" % building_type)
+		_load_building_work_names()
+	
+	# Get work names for this building type
+	var work_names = building_work_names.get(building_type, [])
+	print("DEBUG RENAME: Available work names for %s: %d names" % [building_type, work_names.size()])
+	if work_names.is_empty():
+		print("DEBUG RENAME: Failed - No work names available for %s" % building_type)
+		return false
+	
+	# Select a random work name
+	var work_name = work_names[randi() % work_names.size()]
+	
+	# Combine surname + work name
+	var new_building_name = surname + " " + work_name
+	
+	# Check for duplicates by seeing if this exact name already exists
+	for other_building_name in renamed_workplaces.values():
+		if other_building_name == new_building_name:
+			# Duplicate found, try adding a number
+			var counter = 1
+			while renamed_workplaces.values().has(new_building_name + " " + str(counter)):
+				counter += 1
+			new_building_name = new_building_name + " " + str(counter)
+			break
+	
+	# Update building metadata - store display name but keep node name as ID for selection
+	var old_name = building_node.name
+	
+	# Store display name in metadata instead of renaming node
+	building_node.set_meta("display_name", new_building_name)
+	renamed_workplaces[old_name] = new_building_name
+	
+	# Update building connections cache - keep using building IDs
+	# (no change needed, it already uses old_name which we're keeping)
+	
+	# No need to update player data - building ID stays the same (the node name)
+	# Only the display_name metadata was changed
+	var owner_player = building_node.get_meta("owner_player", 1)
+	
+	print("Game: Renamed workplace from '%s' to '%s' (display name only) after assigning %s" % [old_name, new_building_name, unit.get("unique_id")])
+	return true
+
 func _cache_job_connections_for_unit(unit: Dictionary):
 	"""Cache or recache the job connections for a unit after a new building is placed.
 	This updates the unit's cached paths to include any newly available buildings."""
@@ -2307,6 +2470,14 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			
 			# Also update the job metadata to track which unit is assigned
 			var jobs = building_node.get_meta("resource_jobs", [])
+			
+			# Count filled jobs BEFORE assignment to detect if this is the first
+			var jobs_filled_before = 0
+			for job_slot in jobs:
+				if job_slot.get("unit_assigned") != null:
+					jobs_filled_before += 1
+			var is_first_assignment = jobs_filled_before == 0
+			
 			var assigned_job = null
 			var job_index = -1
 			for i in range(jobs.size()):
@@ -2333,7 +2504,14 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			
 			# CRITICAL: Save the updated jobs back to building metadata
 			building_node.set_meta("resource_jobs", jobs)
-			# Notify modal that jobs have been updated
+			
+			# If this is the first assignment to a workplace, rename it with the worker's surname + work name
+			if is_first_assignment and capacity_type == "worker":
+				print("DEBUG: About to call rename - building name before: %s" % building_node.name)
+				var rename_result = _rename_workplace_on_first_assignment(building_node, unit)
+				print("DEBUG: Rename result: %s, building name after: %s" % [rename_result, building_node.name])
+			
+			# Notify modal that jobs have been updated (use updated building name)
 			building_jobs_updated.emit(building_node.name)
 			units_assigned += 1
 			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
@@ -3379,6 +3557,12 @@ func _place_town_center_building(tile_coords: Vector2i):
 		# Add to map objects holder
 		map_objects_holder.add_child(building_scene)
 		
+		# Set the display name from settlement name if available
+		var settlement_name = player_data.get("settlement_name", "")
+		if not settlement_name.is_empty():
+			building_scene.set_meta("display_name", settlement_name)
+			print("Game: Set town center display name to: ", settlement_name)
+		
 		# Add building to player's buildings list
 		var owner_player = setup_data.get("owner_player", 1)
 		if players_data.has(owner_player):
@@ -3494,6 +3678,10 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			# Initialize jobs array (load from save if available, otherwise create empty)
 			var saved_jobs = building_info.get("resource_jobs", [])
 			building_scene.set_meta("resource_jobs", saved_jobs)
+			
+			# Restore display name if it was saved (lore-based naming)
+			if building_info.has("display_name") and not building_info["display_name"].is_empty():
+				building_scene.set_meta("display_name", building_info["display_name"])
 			
 			# Auto-create jobs if they're missing (use max capacity, not current occupancy)
 			if saved_jobs.is_empty():
@@ -3665,6 +3853,25 @@ func _auto_assign_jobs_on_load():
 						remaining_slots -= 1
 						print("Game: Auto-assigned unit ", unit["unique_id"], " to job at ", building_node.name, " on load")
 						break
+		
+		# Persist the updated jobs back to building metadata
+		building_node.set_meta("resource_jobs", jobs)
+		
+		# Check if this workplace needs to be renamed (if it has workers assigned and hasn't been renamed yet)
+		# Get the first assigned unit to use its surname
+		var first_assigned_unit = null
+		for job in jobs:
+			if job.get("unit_assigned") != null:
+				# Find the unit with this unique_id
+				for unit in player_units:
+					if unit["unique_id"] == job.get("unit_assigned"):
+						first_assigned_unit = unit
+						break
+				if first_assigned_unit:
+					break
+		
+		if first_assigned_unit:
+			_rename_workplace_on_first_assignment(building_node, first_assigned_unit)
 		
 		print("Game: Assigned ", jobs_assigned, " units to jobs at ", building_node.name, " on load")
 
@@ -3974,15 +4181,12 @@ func _execute_save() -> bool:
 					"construction_day": child.get_meta("construction_day", 0),
 					"living_occupancy": child.get_meta("living_occupancy", 0),
 					"worker_occupancy": child.get_meta("worker_occupancy", 0),
-					"resource_jobs": child.get_meta("resource_jobs", [])
+					"resource_jobs": child.get_meta("resource_jobs", []),
+					"display_name": child.get_meta("display_name", "")  # Save lore-based display name
 				}
 				
-				# Add barracks-specific occupancy types
-				if building_info["building_type"] == "barracks":
-					building_info["station_occupancy"] = child.get_meta("station_occupancy", 0)
-					building_info["training_occupancy"] = child.get_meta("training_occupancy", 0)
-				
 				buildings_data.append(building_info)
+	
 	# Collect environment objects data
 	var environment_objects_data = []
 	if map_objects_holder:

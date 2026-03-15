@@ -78,7 +78,17 @@ func refresh_content():
 	job_container.add_child(job_label)
 	var job_value = Label.new()
 	var job = current_unit.get("job", null)
-	job_value.text = "Unemployed" if job == null else str(job)
+	# Show job display name if available, otherwise show job ID
+	if job == null:
+		job_value.text = "Unemployed"
+	else:
+		var job_display_name = job
+		if game_ref and game_ref.has_method("map_objects_holder"):
+			for building_node in game_ref.map_objects_holder.get_children():
+				if building_node.name == job:
+					job_display_name = building_node.get_meta("display_name", job)
+					break
+		job_value.text = str(job_display_name)
 	job_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 	job_container.add_child(job_value)
 	
@@ -92,7 +102,17 @@ func refresh_content():
 	living_container.add_child(living_label)
 	var living_value = Label.new()
 	var living_quarters = current_unit.get("living_quarters", null)
-	living_value.text = "None" if living_quarters == null else str(living_quarters)
+	# Show living quarters display name if available, otherwise show ID
+	if living_quarters == null:
+		living_value.text = "None"
+	else:
+		var living_display_name = living_quarters
+		if game_ref and game_ref.has_method("map_objects_holder"):
+			for building_node in game_ref.map_objects_holder.get_children():
+				if building_node.name == living_quarters:
+					living_display_name = building_node.get_meta("display_name", living_quarters)
+					break
+		living_value.text = str(living_display_name)
 	living_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 	living_container.add_child(living_value)
 	

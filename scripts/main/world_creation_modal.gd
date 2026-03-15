@@ -79,8 +79,22 @@ var generation_steps = [
 		"title": "Choose Your People",
 		"description": "Select the race that will inhabit this world\nand choose their starting settlement.",
 		"action": "_step_race_select"
+	},
+	{
+		"title": "Choose Your Settlement Location",
+		"description": "Your settlement will be built in the center of the world.",
+		"action": "_step_choose_starting_tile"
+	},
+	{
+		"title": "Name Your Settlement",
+		"description": "Choose a name for your new settlement.",
+		"action": "_step_name_settlement"
 	}
 ]
+
+# Variables for town naming
+var town_names: Array = []
+var selected_town_name: String = ""
 
 func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D):
 	game_node = game_ref
@@ -88,6 +102,9 @@ func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Came
 	camera = camera_ref
 	
 	print("WorldCreationModal: Setting up direct UI control")
+	
+	# Load town center names for naming step
+	_load_town_center_names()
 	
 	# Create our own UI elements directly in the UI_Layer
 	_create_world_creation_ui()
@@ -140,6 +157,16 @@ func cleanup_ui():
 		if is_instance_valid(race_ui):
 			race_ui.queue_free()
 		remove_meta("race_select_ui")
+	
+	# Clean up naming UI if it exists
+	if has_meta("naming_ui"):
+		var naming_ui = get_meta("naming_ui")
+		if is_instance_valid(naming_ui):
+			naming_ui.queue_free()
+		remove_meta("naming_ui")
+	
+	if has_meta("settlement_name_input"):
+		remove_meta("settlement_name_input")
 	
 	# Clean up preview sprite if it exists
 	if has_meta("preview_sprite"):
@@ -220,11 +247,17 @@ func _show_current_step():
 	# Show/hide buttons based on step
 	if footer_component:
 		footer_component.reroll_button.visible = current_step > 0
-		# Check if this is the race selection step specifically
-		if current_step < generation_steps.size() and generation_steps[current_step]["action"] == "_step_race_select":
-			footer_component.update_buttons(["Back", "Next"])
-		else:
-			footer_component.update_buttons_for_step(current_step, generation_steps.size())
+		# Check specific steps for custom button layouts
+		if current_step < generation_steps.size():
+			var step_action = generation_steps[current_step]["action"]
+			if step_action == "_step_race_select":
+				footer_component.update_buttons(["Back", "Next"])
+			elif step_action == "_step_choose_starting_tile":
+				footer_component.update_buttons(["Back", "Next"])
+			elif step_action == "_step_name_settlement":
+				footer_component.update_buttons(["Back", "Begin Game"])
+			else:
+				footer_component.update_buttons_for_step(current_step, generation_steps.size())
 	
 	# Execute the step action
 	if has_method(step_data["action"]):
@@ -348,39 +381,180 @@ func _step_race_select():
 	_show_race_selection_ui()
 	print("WorldCreation: Race selection step activated")
 
-func _step_choose_starting_tile():
-	header_component.update_step("Choose Starting Location", "Your settlement will be built in the center of the world")
-	footer_component.update_buttons(["Back", "Start Game"])
-	_show_tile_selection_preview()
-
 func _show_race_selection_ui():
-	# Create race selection UI in the middle area (between header and footer)
-	var ui_layer = game_node.get_node("UI_Layer")
+	"""Show the race selection modal UI"""
+	# Check if race selection UI already exists
+	if has_meta("race_select_ui"):
+		var existing_race_ui = get_meta("race_select_ui")
+		if is_instance_valid(existing_race_ui):
+			return  # Already showing
+		remove_meta("race_select_ui")
 	
-	# Create race selection container
-	var RaceSelectUI = preload("res://scripts/main/world_creation_race_select_modal.gd")
-	var race_select_ui = RaceSelectUI.new()
+	# Get UI layer reference
+	var ui_layer = game_node.get_node("UI_Layer")
+	if not ui_layer:
+		push_error("WorldCreationModal: UI_Layer not found")
+		return
+	
+	# Load and instantiate race selection modal
+	var RaceSelectModal = preload("res://scripts/main/world_creation_race_select_modal.gd")
+	var race_select_ui = RaceSelectModal.new()
+	
+	# Set up the race select modal (this also adds it to ui_layer)
 	race_select_ui.setup_integrated(game_node, self, ui_layer)
 	
-	# Store reference so we can clean it up later
-	if not has_meta("race_select_ui"):
-		set_meta("race_select_ui", race_select_ui)
+	# Store reference for later cleanup
+	set_meta("race_select_ui", race_select_ui)
+	
+	print("WorldCreation: Race selection UI shown")
 
-func _show_tile_selection_preview():
-	# Clean up any existing UI
+func _step_choose_starting_tile():
+	# Clean up race selection UI if it exists
 	if has_meta("race_select_ui"):
 		var race_ui = get_meta("race_select_ui")
 		if is_instance_valid(race_ui):
 			race_ui.queue_free()
 		remove_meta("race_select_ui")
 	
-	# Automatically select center tile
+	# Auto-select center tile
 	var center_tile = Vector2(MAP_WIDTH / 2.0, MAP_HEIGHT / 2.0)
 	world_data["starting_tile"] = center_tile
 	print("Auto-selected center tile: ", center_tile)
 	
-	# Show fishing hut preview at center
+	# Show town center preview at center
 	_preview_fishing_hut(center_tile)
+	
+	# Update header for this step
+	header_component.update_step("Choose Starting Location", "Your settlement will be built in the center of the world")
+	footer_component.update_buttons(["Back", "Next"])
+	print("WorldCreation: Tile selection step - auto-selected center")
+
+func _load_town_center_names():
+	"""Load town center names from assets/names/buildings/towncentre.txt"""
+	var names_path = "res://assets/names/buildings/towncentre.txt"
+	if FileAccess.file_exists(names_path):
+		var file = FileAccess.open(names_path, FileAccess.READ)
+		if file:
+			var content = file.get_as_text()
+			var lines = content.split("\n")
+			for line in lines:
+				var trimmed = line.strip_edges()
+				if not trimmed.is_empty():
+					town_names.append(trimmed)
+			print("Game: Loaded %d town center names" % town_names.size())
+		else:
+			push_error("Failed to open towncentre.txt")
+	else:
+		push_error("towncentre.txt not found at: " + names_path)
+
+func _step_name_settlement():
+	"""Display settlement naming UI"""
+	print("WorldCreation: Showing settlement naming step")
+	
+	# Remove the preview sprite (not needed for naming)
+	if has_meta("preview_sprite"):
+		var preview_sprite = get_meta("preview_sprite")
+		if is_instance_valid(preview_sprite):
+			preview_sprite.queue_free()
+		remove_meta("preview_sprite")
+	
+	# Pick a random town name if not already selected
+	if selected_town_name.is_empty() and not town_names.is_empty():
+		_pick_random_town_name()
+	
+	# Update header
+	header_component.update_step("Name Your Settlement", "Choose a name for your new settlement")
+	footer_component.update_buttons(["Back", "Begin Game"])
+	
+	# Show naming UI
+	_show_settlement_naming_ui()
+
+func _pick_random_town_name():
+	"""Select a random town name from the loaded list"""
+	if town_names.is_empty():
+		selected_town_name = "New Settlement"
+	else:
+		var random_name = town_names[randi() % town_names.size()]
+		# Capitalize each word in the name
+		selected_town_name = random_name.to_upper()[0] + random_name.substr(1)
+	print("WorldCreation: Selected town name: ", selected_town_name)
+
+func _show_settlement_naming_ui():
+	"""Create and show the settlement naming UI"""
+	var ui_layer = game_node.get_node("UI_Layer")
+	
+	# Check if naming UI already exists, if so remove it
+	if has_meta("naming_ui"):
+		var naming_ui = get_meta("naming_ui")
+		if is_instance_valid(naming_ui):
+			naming_ui.queue_free()
+		remove_meta("naming_ui")
+	
+	# Create a container for the naming UI
+	var naming_container = Control.new()
+	naming_container.name = "SettlementNamingContainer"
+	naming_container.size = get_viewport().get_visible_rect().size
+	naming_container.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Let input pass through to buttons below
+	var center_vbox = VBoxContainer.new()
+	center_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	center_vbox.add_theme_constant_override("separation", 20)
+	
+	# Center it on screen
+	var center_panel = PanelContainer.new()
+	center_panel.custom_minimum_size = Vector2(400, 200)
+	var screen_size = get_viewport().get_visible_rect().size
+	center_panel.position = (screen_size - center_panel.custom_minimum_size) / 2
+	
+	var inner_vbox = VBoxContainer.new()
+	inner_vbox.add_theme_constant_override("separation", 15)
+	
+	# Label
+	var label = Label.new()
+	label.text = "Enter settlement name:"
+	label.add_theme_font_size_override("font_size", 16)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner_vbox.add_child(label)
+	
+	# Input field
+	var input_field = LineEdit.new()
+	input_field.text = selected_town_name
+	input_field.custom_minimum_size = Vector2(300, 40)
+	input_field.set_meta("settlement_name_input", true)
+	inner_vbox.add_child(input_field)
+	
+	# Button container (Reroll and input in HBox)
+	var button_hbox = HBoxContainer.new()
+	button_hbox.add_theme_constant_override("separation", 10)
+	button_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	
+	var reroll_button = Button.new()
+	reroll_button.text = "Reroll"
+	reroll_button.custom_minimum_size = Vector2(100, 40)
+	reroll_button.pressed.connect(_on_reroll_settlement_name)
+	button_hbox.add_child(reroll_button)
+	
+	inner_vbox.add_child(button_hbox)
+	
+	center_panel.add_child(inner_vbox)
+	naming_container.add_child(center_panel)
+	
+	ui_layer.add_child(naming_container)
+	set_meta("naming_ui", naming_container)
+	set_meta("settlement_name_input", input_field)
+	
+	print("WorldCreation: Settlement naming UI created")
+
+func _on_reroll_settlement_name():
+	"""Pick a new random town name and update the input field"""
+	_pick_random_town_name()
+	
+	# Update the input field if it exists
+	if has_meta("settlement_name_input"):
+		var input_field = get_meta("settlement_name_input")
+		if is_instance_valid(input_field):
+			input_field.text = selected_town_name
+	
+	print("WorldCreation: Rerolled settlement name to: ", selected_town_name)
 
 func _center_camera_position_only():
 	"""Center camera position on map without changing zoom level (preserves user zoom)"""
@@ -452,11 +626,22 @@ func _on_continue_pressed():
 	print("WorldCreationModal: Continue/Next button pressed - current step: %d" % current_step)
 	
 	# Special handling for race selection step
-	if current_step == generation_steps.size() - 1:  # Race selection step
+	var race_select_index = 10  # Race selection is at index 10
+	var _tile_select_index = 11  # Tile selection is at index 11
+	var _naming_index = 12  # Naming is at index 12
+	
+	if current_step == race_select_index:
+		# Race selection finishing - need to finish the UI and advance
 		if has_meta("race_select_ui"):
 			var race_ui = get_meta("race_select_ui")
 			if is_instance_valid(race_ui):
-				race_ui._finish_race_selection()
+				race_ui._finish_race_selection_internal()
+				# Manually advance the step since the race UI doesn't do it
+				current_step += 1
+				if current_step < step_states.size():
+					step_states.resize(current_step)
+				print("WorldCreationModal: Advanced to step: %d" % current_step)
+				_show_current_step()
 				return
 	
 	# Normal step progression
@@ -467,17 +652,29 @@ func _on_continue_pressed():
 	_show_current_step()
 
 func _on_start_game_pressed():
-	print("WorldCreationModal: Start game button pressed")
+	print("WorldCreationModal: Start game button pressed - step: %d" % current_step)
 	
-	# Check if we need to advance to tile selection or finish
-	if current_step == generation_steps.size() - 1:  # Race selection step
-		# If we're in race selection mode, advance to tile selection
-		if has_meta("race_select_ui"):
-			var race_ui = get_meta("race_select_ui")
-			if is_instance_valid(race_ui):
-				race_ui._finish_race_selection()
-				return
+	var naming_index = 12  # Naming is at index 12
 	
-	# For tile selection step, just finish (tile is auto-selected)
+	# If we're on the naming step, capture the name and finish
+	if current_step == naming_index:
+		# Get the settlement name from the input field
+		if has_meta("settlement_name_input"):
+			var input_field = get_meta("settlement_name_input")
+			if is_instance_valid(input_field):
+				selected_town_name = input_field.text
+		
+		# Store the selected town name in world data
+		if not world_data.has("player_data"):
+			world_data["player_data"] = {}
+		world_data["player_data"]["settlement_name"] = selected_town_name
+		
+		print("WorldCreation: Settlement named: ", selected_town_name)
+		
+		cleanup_ui()
+		game_node._finish_world_creation(world_data)
+		return
+	
+	# For other steps, just finish (shouldn't normally happen)
 	cleanup_ui()
 	game_node._finish_world_creation(world_data)

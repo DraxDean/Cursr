@@ -273,6 +273,11 @@ func _on_building_selected(building: String):
 	_update_selected_building_info()
 
 func _finish_race_selection():
+	# This method is now called indirectly through world_creation_modal
+	# Just finish the race selection modal, don't advance steps
+	_finish_race_selection_internal()
+
+func _finish_race_selection_internal():
 	# Store race and building selection in world data
 	if world_creation_modal.world_data.has("player_data"):
 		world_creation_modal.world_data["player_data"].merge({
@@ -285,6 +290,5 @@ func _finish_race_selection():
 			"starting_building": selected_building
 		}
 	
-	# Move to tile selection step
+	# Clean up and let the normal step progression handle the next steps
 	queue_free()
-	world_creation_modal._step_choose_starting_tile()

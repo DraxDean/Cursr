@@ -215,11 +215,6 @@ func _gui_input(event):
 func _create_image_capacity_section() -> Control:
 	var section = VBoxContainer.new()
 	
-	var section_title = Label.new()
-	section_title.text = "Building Overview"
-	section_title.add_theme_font_size_override("font_size", 16)
-	section.add_child(section_title)
-	
 	# Horizontal container for image and capacity info
 	var main_container = HBoxContainer.new()
 	main_container.add_theme_constant_override("separation", 15)
@@ -260,11 +255,6 @@ func _create_image_capacity_section() -> Control:
 
 func _create_info_section() -> Control:
 	var section = VBoxContainer.new()
-	
-	var section_title = Label.new()
-	section_title.text = "Building Information"
-	section_title.add_theme_font_size_override("font_size", 16)
-	section.add_child(section_title)
 	
 	var info_container = VBoxContainer.new()
 	info_container.name = "InfoContainer"  # Set explicit name
@@ -396,9 +386,10 @@ func setup_building_details(building: Node2D):
 	if game_node and game_node.has_signal("building_jobs_updated"):
 		game_node.connect("building_jobs_updated", Callable(self, "_on_building_jobs_updated"))
 	
-	# Update title with building ID
+	# Update title with building ID and coordinates
 	var building_id = building_data.get("name", "Unknown")
-	title_label.text = "Building Details: " + building_id
+	var coords = building_data.get("tile_coords", Vector2i(0, 0))
+	title_label.text = building_id + " (" + str(coords.x) + ", " + str(coords.y) + ")"
 	
 	# Clear previous paths and connections
 	_clear_all_job_path_lines()
@@ -421,8 +412,8 @@ func setup_building_details(building: Node2D):
 func _extract_building_data(building: Node2D) -> Dictionary:
 	var data = {}
 	
-	# Basic info
-	data["name"] = building.name
+	# Basic info - use display_name if set, otherwise use node name (building ID)
+	data["name"] = building.get_meta("display_name", building.name)
 	data["position"] = building.position
 	data["owner_player"] = building.get_meta("owner_player", 1)
 	data["building_type"] = building.get_meta("building_type", "unknown")
@@ -520,20 +511,21 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 				var tile_distance = _hex_distance(building_tile_coords, other_tile_coords)
 				
 				if other_type in allowed_connections and tile_distance <= connection_range_tiles:
+					# Get display name if it exists
+					var display_name = other_building.get_meta("display_name", other_building.name)
 					connections.append({
 						"name": other_building.name,
+						"display_name": display_name,
 						"type": other_type,
 						"distance": tile_distance,
 						"object_type": "building",
 						"tile_coords": other_tile_coords
 					})
-					print("Added connection: ", building_name, " (", other_type, ")")
-	
+					print("Added connection: ", other_building.name, " -> ", display_name, " (", other_type, ")")
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
 	return connections
-
 func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMapLayer) -> Array:
 	# Simple A* implementation for tile-based pathfinding
 	var open_set = []
@@ -646,6 +638,12 @@ func _on_building_jobs_updated(building_name: String):
 	# Only update if this is the building currently shown in the modal
 	if building_node and building_node.name == building_name:
 		print("BuildingDetailsModal: Jobs updated for building %s, refreshing display" % building_name)
+		# Re-extract building data to pick up any name changes
+		building_data = _extract_building_data(building_node)
+		# Update title to show new name if it was renamed
+		var building_id = building_data.get("name", "Unknown")
+		var coords = building_data.get("tile_coords", Vector2i(0, 0))
+		title_label.text = building_id + " (" + str(coords.x) + ", " + str(coords.y) + ")"
 		# Re-populate the jobs section dynamically
 		_populate_jobs_from_building()
 
@@ -865,12 +863,19 @@ func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer, pat
 	
 	print("Drew connection line with ", path.size(), " points in ", color)
 
-func _clear_connection_lines():
+func _clear_connection_lines(immediate: bool = false):
 	# Remove all Line2D nodes from the scene
 	print("BuildingDetailsModal: Clearing %d connection lines" % connection_lines.size())
 	for line in connection_lines:
 		if is_instance_valid(line):
-			line.queue_free()
+			if immediate:
+				# When closing modal, immediately free to prevent orphaned nodes
+				if line.get_parent():
+					line.get_parent().remove_child(line)
+				line.free()
+			else:
+				# Normal operation, defer deletion
+				line.queue_free()
 	
 	connection_lines.clear()
 	connection_paths.clear()
@@ -983,18 +988,8 @@ func _populate_building_info():
 		var current_day = building_data.get("current_day", construction_day)
 		var days_built = current_day - construction_day
 		
-		_add_info_row(info_container, "Built on Day:", str(construction_day))
 		if days_built >= 0:
-			_add_info_row(info_container, "Days Active:", str(days_built))
-		
-		# Location information
-		if building_data.has("tile_coords"):
-			var coords = building_data["tile_coords"]
-			_add_info_row(info_container, "Coordinates:", "(" + str(coords.x) + ", " + str(coords.y) + ")")
-		
-		# Building ID (from name) - now uses clean naming like house1, town_center1
-		var building_id = building_data.get("name", "Unknown")
-		_add_info_row(info_container, "Building ID:", building_id)
+			_add_info_row(info_container, "Age:", str(days_built))
 	
 	# Populate stats section
 	if stats_container:
@@ -1104,16 +1099,13 @@ func _populate_building_info():
 				# Connection identifier button (clickable) with unique path ID
 				var connection_button = Button.new()
 				
-				# Create unique path ID for this connection - include target building name
-				var path_id = "path_" + connection.name
-				connection_button.text = path_id
+				# Create unique path ID for this connection - use display name if available
+				var display_name = connection.get("display_name", connection.name)
+				connection_button.text = display_name
 				connection_button.custom_minimum_size.x = 150
-				connection_button.modulate = Color.WHITE
-				connection_button.set_meta("connection_index", connection_index)
-				connection_button.pressed.connect(_on_building_path_clicked.bind(connection_index))
+				connection_button.pressed.connect(_on_building_path_clicked.bindv([connection_index]))
 				connection_row.add_child(connection_button)
 				
-				# Connection type icon/indicator and name
 				var type_label = Label.new()
 				var type_text = connection.type.capitalize()
 				if connection.object_type == "building":
@@ -1126,17 +1118,11 @@ func _populate_building_info():
 				
 				# Connection name and distance
 				var details_label = Label.new()
-				details_label.text = connection.name + " (" + str(connection.distance) + " tiles)"
-				details_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				details_label.text = display_name + " (" + str(connection.distance) + " tiles)"
+				details_label.custom_minimum_size.x = 150
 				connection_row.add_child(details_label)
 				
 				connection_index += 1
-	
-	# Populate jobs section (only for work buildings)
-	var building_type = building_data.get("building_type", "unknown")
-	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
-	if building_type in work_buildings:
-		_populate_jobs_from_building()
 
 func _populate_jobs_from_building():
 	"""Populate jobs section with jobs from the building's metadata"""
@@ -1273,7 +1259,10 @@ func _draw_selected_job_path(job: Dictionary):
 func _clear_selected_path():
 	"""Remove the white selected path visualization"""
 	if selected_job_path_line and is_instance_valid(selected_job_path_line):
-		selected_job_path_line.queue_free()
+		# Immediately remove from parent to prevent orphaned rendering
+		if selected_job_path_line.get_parent():
+			selected_job_path_line.get_parent().remove_child(selected_job_path_line)
+		selected_job_path_line.free()  # Immediately free instead of queue_free
 		selected_job_path_line = null
 		print("BuildingDetailsModal: Cleared selected job path visualization")
 
@@ -1379,7 +1368,10 @@ func _draw_selected_building_path(connection: Dictionary):
 func _clear_selected_building_path():
 	"""Remove the white selected building path visualization"""
 	if selected_building_path_line and is_instance_valid(selected_building_path_line):
-		selected_building_path_line.queue_free()
+		# Immediately remove from parent to prevent orphaned rendering
+		if selected_building_path_line.get_parent():
+			selected_building_path_line.get_parent().remove_child(selected_building_path_line)
+		selected_building_path_line.free()  # Immediately free instead of queue_free
 		selected_building_path_line = null
 		print("BuildingDetailsModal: Cleared selected building path visualization")
 
@@ -1416,15 +1408,13 @@ func _draw_all_job_paths():
 		print("BuildingDetailsModal: Could not find tilemap for path drawing")
 		return
 	
-	# Colors for different jobs (cycle through colors)
-	var path_colors = [
-		Color.CYAN,
-		Color.MAGENTA,
-		Color.YELLOW,
-		Color.LIGHT_BLUE,
-		Color.LIGHT_GREEN,
-		Color.LIGHT_CORAL
-	]
+	# Colors for different resource types
+	var resource_colors = {
+		"trees": Color.GREEN,
+		"mountains": Color.GRAY,
+		"fish": Color.DEEP_SKY_BLUE,
+		"unknown": Color.LIGHT_GRAY
+	}
 	
 	# Draw each job's path
 	for i in range(jobs.size()):
@@ -1434,8 +1424,9 @@ func _draw_all_job_paths():
 		if tile_path.is_empty():
 			continue
 		
-		# Assign color based on job index
-		var color = path_colors[i % path_colors.size()]
+		# Get color based on resource type
+		var resource_type = job.get("resource_type", "unknown")
+		var color = resource_colors.get(resource_type, Color.LIGHT_GRAY)
 		
 		var line = Line2D.new()
 		line.width = 3.0
@@ -1453,13 +1444,20 @@ func _draw_all_job_paths():
 		if connection_lines_container and is_instance_valid(connection_lines_container):
 			connection_lines_container.add_child(line)
 			all_job_path_lines.append(line)
-			print("BuildingDetailsModal: Drew path for job %d with %d points" % [i, line.get_point_count()])
+			print("BuildingDetailsModal: Drew path for job %d (%s) with %d points" % [i, resource_type, line.get_point_count()])
 
-func _clear_all_job_path_lines():
+func _clear_all_job_path_lines(immediate: bool = false):
 	"""Remove all drawn job path lines"""
 	for line in all_job_path_lines:
 		if line and is_instance_valid(line):
-			line.queue_free()
+			if immediate:
+				# When closing modal, immediately free to prevent orphaned nodes
+				if line.get_parent():
+					line.get_parent().remove_child(line)
+				line.free()
+			else:
+				# Normal operation, defer deletion
+				line.queue_free()
 	all_job_path_lines.clear()
 	print("BuildingDetailsModal: Cleared all job path lines")
 
@@ -1515,7 +1513,19 @@ func _get_building_display_name(building_type: String) -> String:
 
 func _get_building_production() -> String:
 	var building_type = building_data.get("building_type", "unknown")
-	var worker_occupancy = building_data.get("worker_occupancy", 0)
+	
+	# For worker capacity buildings, count filled jobs instead of occupancy
+	var worker_occupancy = 0
+	if building_node:
+		var jobs = building_node.get_meta("resource_jobs", [])
+		if not jobs.is_empty():  # This is a worker capacity building
+			for job in jobs:
+				if job.get("unit_assigned") != null:
+					worker_occupancy += 1
+	
+	# Fallback to old occupancy value if no jobs (shouldn't happen, but safety)
+	if worker_occupancy == 0:
+		worker_occupancy = building_data.get("worker_occupancy", 0)
 	
 	match building_type:
 		"fishing_hut":
@@ -1659,18 +1669,27 @@ func _register_with_ui_manager():
 func close_modal():
 	"""Close the modal and clear all visual elements"""
 	print("BuildingDetailsModal: close_modal() called - clearing connection lines")
-	_clear_connection_lines()
+	_clear_connection_lines(true)  # Immediate cleanup when closing
 	# Clear selected job path visualization
 	_clear_selected_path()
+	# Clear selected building path visualization
+	_clear_selected_building_path()
+	selected_building_path_index = -1
 	# Clear all job path lines
-	_clear_all_job_path_lines()
+	_clear_all_job_path_lines(true)  # Immediate cleanup when closing
 	selected_job_index = -1
-	# Hide and clean up container when modal closes
+	# Remove and clean up container when modal closes
 	if connection_lines_container and is_instance_valid(connection_lines_container):
-		connection_lines_container.hide()  # Hide immediately to remove paths from view
-		connection_lines_container.queue_free()
+		# First clear any remaining children (shouldn't be any after above cleanup)
+		for child in connection_lines_container.get_children():
+			if is_instance_valid(child):
+				child.free()
+		# Remove from tree to prevent visual overlap with new modal's container
+		if connection_lines_container.get_parent():
+			connection_lines_container.get_parent().remove_child(connection_lines_container)
+		connection_lines_container.free()  # Immediately free the container too
 		connection_lines_container = null
-		print("BuildingDetailsModal: Hid and freed connection lines container on close")
+		print("BuildingDetailsModal: Removed and freed connection lines container on close")
 	
 	# Disconnect from game's building_jobs_updated signal
 	var game = building_node.get_parent().get_parent() if building_node else null
@@ -1711,7 +1730,6 @@ func _get_ui_manager():
 			return ui_mgr
 	
 	print("BuildingDetailsModal: Failed to find UI manager")
-	return null
 	return null
 
 func _on_upgrade_pressed():
@@ -1800,14 +1818,25 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 	minus_btn.custom_minimum_size = Vector2(30, 30)
 	control_row.add_child(minus_btn)
 	
-	# Current/Max display - get actual occupancy from building node
+	# Current/Max display
 	var capacity_label = Label.new()
 	var current_occupancy = 0
-	if building_node:
+	
+	# For worker capacity, count filled job slots; for others, use occupancy metadata
+	if capacity_type == "worker" and building_node:
+		var jobs = building_node.get_meta("resource_jobs", [])
+		var filled_count = 0
+		for job in jobs:
+			if job.get("unit_assigned") != null:
+				filled_count += 1
+		current_occupancy = filled_count
+		print("UI DEBUG: Worker capacity - jobs.size()=%d, filled=%d" % [jobs.size(), filled_count])
+	elif building_node:
 		current_occupancy = building_node.get_meta(capacity_type + "_occupancy", 0)
 	else:
 		# Fallback to building_data if building_node not available
 		current_occupancy = building_data.get(capacity_type + "_occupancy", 0)
+	
 	capacity_label.text = str(current_occupancy) + "/" + str(max_capacity)
 	capacity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	capacity_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
