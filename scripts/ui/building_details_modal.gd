@@ -401,6 +401,8 @@ func setup_building_details(building: Node2D):
 		paths_toggle_checkbox.set_pressed_no_signal(should_show_paths)
 	
 	_populate_building_info()
+	# Always populate jobs on open so existing assignments are visible immediately
+	_populate_jobs_from_building()
 	
 	# If paths should be shown, draw both job paths and building connections
 	if should_show_paths:
@@ -1166,22 +1168,45 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 	job_row.add_theme_constant_override("separation", 10)
 	container.add_child(job_row)
 	
-	# Job ID / Path ID - make clickable button
+	# Job slot label — use path_id if available, otherwise a human-readable slot name
 	var path_button = Button.new()
-	var path_id = job.get("path_id", "unknown")
-	path_button.text = path_id
+	var path_id = job.get("path_id", "")
+	if path_id.is_empty():
+		# Research and similar buildings have no resource path — show a numbered slot label
+		var building_type = building_node.get_meta("building_type", "worker") if building_node else "worker"
+		var slot_label_map = {
+			"research": "Researcher",
+			"town_center": "Scientist",
+			"barracks": "Soldier",
+			"farmhouse": "Farmer",
+		}
+		var slot_prefix = slot_label_map.get(building_type, "Worker")
+		path_button.text = slot_prefix + " " + str(job_index + 1)
+		path_button.disabled = true  # No path to visualise
+		path_button.modulate = Color(0.8, 0.8, 0.8)
+	else:
+		path_button.text = path_id
+		path_button.modulate = Color.WHITE
+		path_button.pressed.connect(_on_job_path_clicked.bindv([job_index]))
 	path_button.custom_minimum_size.x = 120
-	path_button.modulate = Color.WHITE
-	# Store job index in button metadata for later retrieval
 	path_button.set_meta("job_index", job_index)
-	path_button.pressed.connect(_on_job_path_clicked.bindv([job_index]))
 	job_row.add_child(path_button)
 	
-	# Assigned unit display
+	# Assigned unit display — look up name if possible
 	var unit_assigned = job.get("unit_assigned", null)
 	var unit_label = Label.new()
 	if unit_assigned:
-		unit_label.text = "Assigned: " + str(unit_assigned)
+		var display_name = unit_assigned  # fallback to ID
+		var game = game_node if game_node else _get_game_node()
+		if game and game.get("players_data") != null:
+			for pid in game.players_data:
+				if str(pid) == "environment":
+					continue
+				for u in game.players_data[pid].get("units", []):
+					if u.get("unique_id") == unit_assigned:
+						display_name = u.get("name", unit_assigned)
+						break
+		unit_label.text = display_name
 		unit_label.add_theme_color_override("font_color", Color.GREEN)
 	else:
 		unit_label.text = "Unassigned"
