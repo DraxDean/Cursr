@@ -109,6 +109,13 @@ var players_data: Dictionary = {
 			"unhoused": 10,  # total - housed
 			"unemployed": 10,  # total - working
 			"growth_accumulator": 0.0  # Fractional growth accumulation (adds 1 when >= 1.0)
+		},
+		"technologies": {
+			# Tech levels; each key maps to current level (0 = not researched)
+			"work_ethic": 0,
+			"fishing_bonus": 0,
+			"woodcutting_bonus": 0,
+			"stoneworking_bonus": 0
 		}
 	},
 	"environment": {
@@ -486,7 +493,101 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 	if players_data.has(player_id):
 		players_data[player_id]["resource_rates"] = rates
 	
+	# Apply technology bonuses (post-calculation multipliers)
+	_apply_tech_bonuses_to_rates(player_id, rates)
+	
 	return rates
+
+func _apply_tech_bonuses_to_rates(player_id: int, rates: Dictionary):
+	"""Apply researched technology bonuses to the already-calculated base rates"""
+	if not players_data.has(player_id):
+		return
+	var techs = players_data[player_id].get("technologies", {})
+	
+	# Work Ethic: +5% to ALL resource production per level
+	var work_ethic_level = techs.get("work_ethic", 0)
+	if work_ethic_level > 0:
+		var global_mult = work_ethic_level * 0.05
+		for key in rates:
+			rates[key] = int(rates[key] * (1.0 + global_mult))
+	
+	# Fishing Bonus: +5% food per level (on top of work ethic)
+	var fishing_level = techs.get("fishing_bonus", 0)
+	if fishing_level > 0 and rates.has("food"):
+		rates["food"] = int(rates["food"] * (1.0 + fishing_level * 0.05))
+	
+	# Woodcutting Bonus: +5% wood per level
+	var woodcutting_level = techs.get("woodcutting_bonus", 0)
+	if woodcutting_level > 0 and rates.has("wood"):
+		rates["wood"] = int(rates["wood"] * (1.0 + woodcutting_level * 0.05))
+	
+	# Stoneworking Bonus: +5% stone per level
+	var stoneworking_level = techs.get("stoneworking_bonus", 0)
+	if stoneworking_level > 0 and rates.has("stone"):
+		rates["stone"] = int(rates["stone"] * (1.0 + stoneworking_level * 0.05))
+	
+	# Persist the bonus-adjusted rates back
+	players_data[player_id]["resource_rates"] = rates
+
+func get_tech_level(player_id: int, tech_id: String) -> int:
+	"""Return current research level for a technology"""
+	if not players_data.has(player_id):
+		return 0
+	return players_data[player_id].get("technologies", {}).get(tech_id, 0)
+
+func get_tech_cost(current_level: int) -> int:
+	"""Cost to advance from current_level to current_level+1. Doubles each level: 50,100,200…"""
+	return 50 * int(pow(2, current_level))
+
+func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool:
+	"""Attempt to purchase the next level of a technology. Returns true on success."""
+	if not players_data.has(player_id):
+		return false
+	var player_data = players_data[player_id]
+	
+	# Ensure technologies dict exists (backward compat with old saves)
+	if not player_data.has("technologies"):
+		player_data["technologies"] = {
+			"work_ethic": 0, "fishing_bonus": 0,
+			"woodcutting_bonus": 0, "stoneworking_bonus": 0
+		}
+	
+	var current_level = player_data["technologies"].get(tech_id, 0)
+	if current_level >= max_level:
+		print("Tech %s already at max level %d" % [tech_id, max_level])
+		return false
+	
+	# Check prerequisites: fishing/woodcutting/stoneworking require work_ethic >= 1
+	var prereqs = {
+		"fishing_bonus": "work_ethic",
+		"woodcutting_bonus": "work_ethic",
+		"stoneworking_bonus": "work_ethic"
+	}
+	if prereqs.has(tech_id):
+		var req = prereqs[tech_id]
+		if player_data["technologies"].get(req, 0) < 1:
+			print("Tech %s requires %s level 1+" % [tech_id, req])
+			return false
+	
+	var cost = get_tech_cost(current_level)
+	var resources = player_data.get("resources", {})
+	var current_science = resources.get("science", 0)
+	
+	if current_science < cost:
+		print("Not enough science: need %d, have %d" % [cost, current_science])
+		return false
+	
+	# Deduct science and apply upgrade
+	resources["science"] = current_science - cost
+	player_data["resources"] = resources
+	player_data["technologies"][tech_id] = current_level + 1
+	players_data[player_id] = player_data
+	
+	# Recalculate rates with new bonus
+	calculate_resource_rates(player_id)
+	
+	print("Researched %s to level %d (cost %d science)" % [tech_id, current_level + 1, cost])
+	return true
 
 func get_resource_rates(player_id: int) -> Dictionary:
 	"""Get current resource rates for a player"""
@@ -1299,6 +1400,14 @@ func _migrate_players_data_structure():
 				var pop_data = player_data["population"]
 				if not pop_data.has("growth_accumulator"):
 					pop_data["growth_accumulator"] = 0.0
+			# Ensure technologies dict exists for old saves
+			if not player_data.has("technologies"):
+				player_data["technologies"] = {
+					"work_ethic": 0,
+					"fishing_bonus": 0,
+					"woodcutting_bonus": 0,
+					"stoneworking_bonus": 0
+				}
 			if not player_data.has("name"):
 				player_data["name"] = "Player " + str(player_id)
 			if not player_data.has("race"):
@@ -4146,13 +4255,21 @@ func _on_speedup_pressed():
 	print("Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed)
 
 func _on_unit_control_gui_input(event: InputEvent, unit: Dictionary):
-	"""Handle unit control GUI input - open unit details modal on left click"""
-	# Only handle mouse button click events
+	"""Handle unit control GUI input - open unit details on left click, but
+	   yield to building selection if a building is at the same position."""
 	if not event is InputEventMouseButton:
 		return
-	
 	if not event.pressed or event.button_index != MOUSE_BUTTON_LEFT:
 		return
+	
+	# If a building exists under the cursor, let it take priority
+	if camera:
+		var world_pos = camera.get_global_mouse_position()
+		var building = _get_building_at_position(world_pos)
+		if building:
+			_select_building(building)
+			get_tree().root.set_input_as_handled()
+			return
 	
 	_open_unit_details_modal(unit)
 	get_tree().root.set_input_as_handled()

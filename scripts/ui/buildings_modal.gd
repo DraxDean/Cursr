@@ -57,6 +57,7 @@ func refresh_content():
 					
 					var building_info = {
 						"name": child.get_meta("display_name", child.name),  # Use display name if available
+						"node_name": child.name,  # Actual scene node name for lookup
 						"position": child.position,
 						"type": game_ref._extract_building_type_from_name(child.name),
 						"living_occupancy": child.get_meta("living_occupancy", 0),
@@ -136,11 +137,17 @@ func refresh_content():
 			building_info_container.add_theme_constant_override("separation", 2)
 			building_container.add_child(building_info_container)
 			
-			var building_name = Label.new()
-			building_name.text = building["name"] + " (" + building["type"].replace("_", " ").capitalize() + ")"
-			building_name.add_theme_color_override("font_color", Color.CYAN)
-			building_name.add_theme_font_size_override("font_size", 12)
-			building_info_container.add_child(building_name)
+			var building_name_btn = Button.new()
+			building_name_btn.text = building["name"] + " (" + building["type"].replace("_", " ").capitalize() + ")"
+			building_name_btn.flat = true
+			building_name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			building_name_btn.add_theme_color_override("font_color", Color.CYAN)
+			building_name_btn.add_theme_font_size_override("font_size", 12)
+			building_name_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			# Capture building data for the closure
+			var building_node_name: String = building.get("node_name", building["name"])
+			building_name_btn.pressed.connect(_on_buildings_modal_item_clicked.bind(building_node_name))
+			building_info_container.add_child(building_name_btn)
 			
 			var building_coords = Label.new()
 			var tile_coords = game_ref.tilemap_layer.local_to_map(building["position"])
@@ -236,3 +243,14 @@ func _get_building_production_text(building_type: String, worker_count: int) -> 
 			return "Produces: +" + str(science) + " Science/day"
 		_:
 			return ""
+
+func _on_buildings_modal_item_clicked(node_name: String):
+	"""Open the building details modal for the building with this node name."""
+	if not game_ref or not game_ref.map_objects_holder:
+		return
+	var building_node = game_ref.map_objects_holder.get_node_or_null(NodePath(node_name))
+	if not building_node:
+		push_warning("BuildingsModal: Could not find building node: " + node_name)
+		return
+	if game_ref.has_method("_open_building_details_modal"):
+		game_ref._open_building_details_modal(building_node)
