@@ -4102,6 +4102,8 @@ func _open_build_selection_modal():
 		ui_layer.add_child(build_selection_modal)
 		# Connect to the new unified signal that includes placement
 		build_selection_modal.place_building_confirmed.connect(_on_building_placement_confirmed_with_type)
+		# Cancel any active ghost preview when the modal is closed without confirming
+		build_selection_modal.placement_cancelled.connect(_cancel_building_placement)
 	
 	# Toggle the modal
 	build_selection_modal.toggle()

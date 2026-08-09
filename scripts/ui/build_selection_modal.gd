@@ -11,6 +11,9 @@ var keep_modal_open: bool = false
 
 signal building_selected(building_type: String, building_name: String)
 signal place_building_confirmed(build_more: bool, building_type: String)
+signal placement_cancelled
+
+var _confirming_placement: bool = false
 
 # Building data for easy lookup
 var buildings_data = [
@@ -300,6 +303,7 @@ func _can_afford_building(btype: String) -> bool:
 	return true
 
 func _on_place_confirmed():
+	_confirming_placement = true
 	place_building_confirmed.emit(build_more_mode, selected_building)
 	# Also emit old signal for compatibility
 	building_selected.emit(selected_building, selected_building_name)
@@ -312,6 +316,12 @@ func _on_place_confirmed():
 			selected_building = ""
 			selected_building_name = ""
 			_refresh_details_panel()
+	_confirming_placement = false
+
+func close_modal():
+	if not _confirming_placement:
+		placement_cancelled.emit()
+	super.close_modal()
 
 func _on_build_more_toggled(pressed: bool):
 	build_more_mode = pressed
