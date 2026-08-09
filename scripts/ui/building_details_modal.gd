@@ -1216,12 +1216,93 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 		if not found_unit.is_empty():
 			unit_btn.pressed.connect(_on_unit_name_clicked.bind(found_unit))
 		job_row.add_child(unit_btn)
+		
+		# Barracks-specific: show training progress and Train / Cancel button
+		var btype = building_node.get_meta("building_type", "") if building_node else ""
+		if btype == "barracks" and not found_unit.is_empty():
+			_add_barracks_training_row(container, found_unit)
 	else:
 		var unit_label = Label.new()
 		unit_label.text = "Unassigned"
 		unit_label.add_theme_color_override("font_color", Color.YELLOW)
 		unit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		job_row.add_child(unit_label)
+
+func _add_barracks_training_row(container: Container, unit: Dictionary):
+	"""Add a training progress / action row below a barracks job row."""
+	var training = unit.get("training")
+	var specialties = unit.get("specialties", [])
+	var game = game_node if game_node else _get_game_node()
+	
+	var train_row = HBoxContainer.new()
+	train_row.add_theme_constant_override("separation", 6)
+	# Indent slightly
+	var spacer = Control.new()
+	spacer.custom_minimum_size = Vector2(10, 0)
+	train_row.add_child(spacer)
+	container.add_child(train_row)
+	
+	if training != null:
+		var t_type = training.get("type", "")
+		var t_name = t_type.capitalize()
+		if game and game.TRAINING_DEFINITIONS.has(t_type):
+			t_name = game.TRAINING_DEFINITIONS[t_type]["name"]
+		var progress = training.get("progress", 0)
+		var days_req = training.get("days_required", 5)
+		
+		var prog_bar = ProgressBar.new()
+		prog_bar.min_value = 0
+		prog_bar.max_value = days_req
+		prog_bar.value = progress
+		prog_bar.custom_minimum_size = Vector2(100, 16)
+		prog_bar.show_percentage = false
+		train_row.add_child(prog_bar)
+		
+		var prog_lbl = Label.new()
+		prog_lbl.text = "%s %d/%dd" % [t_name, progress, days_req]
+		prog_lbl.add_theme_color_override("font_color", Color.CYAN)
+		prog_lbl.add_theme_font_size_override("font_size", 11)
+		train_row.add_child(prog_lbl)
+		
+		var cancel_btn = Button.new()
+		cancel_btn.text = "Cancel"
+		cancel_btn.add_theme_color_override("font_color", Color.ORANGE_RED)
+		cancel_btn.custom_minimum_size = Vector2(60, 20)
+		if game and game.has_method("_cancel_unit_training"):
+			cancel_btn.pressed.connect(func():
+				game._cancel_unit_training(unit)
+				if building_node and is_instance_valid(building_node):
+					setup_building_details(building_node))
+		train_row.add_child(cancel_btn)
+	else:
+		# Show earned specialties tag (compact)
+		if not specialties.is_empty():
+			var names: Array[String] = []
+			for s in specialties:
+				if game and game.TRAINING_DEFINITIONS.has(s):
+					names.append(game.TRAINING_DEFINITIONS[s]["name"])
+				else:
+					names.append(s.capitalize())
+			var spec_lbl = Label.new()
+			spec_lbl.text = "✦ " + ", ".join(names)
+			spec_lbl.add_theme_color_override("font_color", Color.GOLD)
+			spec_lbl.add_theme_font_size_override("font_size", 11)
+			train_row.add_child(spec_lbl)
+		
+		# Train as Soldier button
+		var train_btn = Button.new()
+		if "soldier" in specialties:
+			train_btn.text = "Re-train Soldier"
+		else:
+			train_btn.text = "Train as Soldier"
+		train_btn.custom_minimum_size = Vector2(130, 22)
+		train_btn.add_theme_color_override("font_color", Color.LIGHT_BLUE)
+		if game and game.has_method("_start_unit_training"):
+			train_btn.pressed.connect(func():
+				game._start_unit_training(unit, "soldier")
+				if building_node and is_instance_valid(building_node):
+					setup_building_details(building_node))
+		train_row.add_child(train_btn)
 
 func _on_unit_name_clicked(unit: Dictionary):
 	"""Open the unit details modal for the clicked unit"""

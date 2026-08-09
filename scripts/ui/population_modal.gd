@@ -99,3 +99,63 @@ func refresh_content():
 	growth_label.text = "Growth Rate: " + str(growth_rate)
 	growth_label.add_theme_color_override("font_color", Color.LIGHT_GREEN)
 	add_content_child(growth_label)
+	
+	# --- Unit Roster by Type ---
+	var sep2 = HSeparator.new()
+	add_content_child(sep2)
+	
+	var roster_header = Label.new()
+	roster_header.text = "Unit Roster:"
+	roster_header.add_theme_color_override("font_color", Color.WHITE)
+	add_content_child(roster_header)
+	
+	# Count units by type
+	var type_counts: Dictionary = {}
+	var training_count := 0
+	if game_ref and game_ref.get("players_data") != null:
+		for unit in game_ref.players_data.get(1, {}).get("units", []):
+			var utype = unit.get("type", "peasant")
+			type_counts[utype] = type_counts.get(utype, 0) + 1
+			if unit.get("training") != null:
+				training_count += 1
+	
+	var type_icons := {
+		"peasant": "🧑",
+		"soldier": "⚔️",
+		"scholar": "📚"
+	}
+	var type_colors := {
+		"peasant": Color.LIGHT_GRAY,
+		"soldier": Color.CRIMSON,
+		"scholar": Color.CORNFLOWER_BLUE
+	}
+	
+	if type_counts.is_empty():
+		var no_units = Label.new()
+		no_units.text = "No units"
+		no_units.add_theme_color_override("font_color", Color.GRAY)
+		add_content_child(no_units)
+	else:
+		for utype in type_counts:
+			var row = HBoxContainer.new()
+			add_content_child(row)
+			var icon = Label.new()
+			icon.text = type_icons.get(utype, "👤")
+			icon.custom_minimum_size = Vector2(25, 20)
+			row.add_child(icon)
+			var lbl = Label.new()
+			lbl.text = "%s: %d" % [utype.capitalize(), type_counts[utype]]
+			lbl.add_theme_color_override("font_color", type_colors.get(utype, Color.WHITE))
+			row.add_child(lbl)
+	
+	if training_count > 0:
+		var train_row = HBoxContainer.new()
+		add_content_child(train_row)
+		var t_icon = Label.new()
+		t_icon.text = "🎓"
+		t_icon.custom_minimum_size = Vector2(25, 20)
+		train_row.add_child(t_icon)
+		var t_lbl = Label.new()
+		t_lbl.text = "In Training: %d" % training_count
+		t_lbl.add_theme_color_override("font_color", Color.CYAN)
+		train_row.add_child(t_lbl)

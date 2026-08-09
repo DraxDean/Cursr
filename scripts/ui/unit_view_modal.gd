@@ -47,7 +47,18 @@ func refresh_content():
 	var type_race_label = Label.new()
 	var race = current_unit.get("race", "unknown").to_lower()
 	var unit_type = current_unit.get("type", "unknown").to_lower()
-	type_race_label.text = "%s %s" % [race, unit_type]
+	# Derive a richer title if specialties exist
+	var specialties = current_unit.get("specialties", [])
+	var display_type = unit_type
+	if not specialties.is_empty() and game_ref and game_ref.TRAINING_DEFINITIONS:
+		var titles: Array[String] = []
+		for s in specialties:
+			if game_ref.TRAINING_DEFINITIONS.has(s):
+				titles.append(game_ref.TRAINING_DEFINITIONS[s]["name"])
+			else:
+				titles.append(s.capitalize())
+		display_type = " / ".join(titles)
+	type_race_label.text = "%s %s" % [race.capitalize(), display_type]
 	type_race_label.add_theme_color_override("font_color", Color.YELLOW)
 	type_race_label.add_theme_font_size_override("font_size", 14)
 	add_content_child(type_race_label)
@@ -140,6 +151,63 @@ func refresh_content():
 	speed_value.text = str(speed_percent) + "%"
 	speed_value.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 	speed_container.add_child(speed_value)
+	
+	# --- Specialties ---
+	# (specialties already fetched above for type display)
+	var specialties_container = HBoxContainer.new()
+	data_container.add_child(specialties_container)
+	var spec_label = Label.new()
+	spec_label.text = "Titles: "
+	spec_label.add_theme_color_override("font_color", Color.WHITE)
+	spec_label.custom_minimum_size = Vector2(80, 20)
+	specialties_container.add_child(spec_label)
+	var spec_value = Label.new()
+	if specialties.is_empty():
+		spec_value.text = "None"
+		spec_value.add_theme_color_override("font_color", Color.DARK_GRAY)
+	else:
+		var names: Array[String] = []
+		for s in specialties:
+			if game_ref and game_ref.TRAINING_DEFINITIONS.has(s):
+				names.append(game_ref.TRAINING_DEFINITIONS[s]["name"])
+			else:
+				names.append(s.capitalize())
+		spec_value.text = ", ".join(names)
+		spec_value.add_theme_color_override("font_color", Color.GOLD)
+	specialties_container.add_child(spec_value)
+	
+	# --- Current Training ---
+	var training = current_unit.get("training")
+	if training != null:
+		var train_sep = HSeparator.new()
+		data_container.add_child(train_sep)
+		
+		var train_header = Label.new()
+		var t_type = training.get("type", "")
+		var t_name = t_type.capitalize()
+		if game_ref and game_ref.TRAINING_DEFINITIONS.has(t_type):
+			t_name = game_ref.TRAINING_DEFINITIONS[t_type]["name"]
+		train_header.text = "Training: " + t_name
+		train_header.add_theme_color_override("font_color", Color.CYAN)
+		train_header.add_theme_font_size_override("font_size", 12)
+		data_container.add_child(train_header)
+		
+		var progress = training.get("progress", 0)
+		var days_req = training.get("days_required", 5)
+		
+		var prog_bar = ProgressBar.new()
+		prog_bar.min_value = 0
+		prog_bar.max_value = days_req
+		prog_bar.value = progress
+		prog_bar.custom_minimum_size = Vector2(160, 18)
+		prog_bar.show_percentage = false
+		data_container.add_child(prog_bar)
+		
+		var prog_label = Label.new()
+		prog_label.text = "Day %d / %d" % [progress, days_req]
+		prog_label.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+		prog_label.add_theme_font_size_override("font_size", 11)
+		data_container.add_child(prog_label)
 	
 	# Unit ID (underneath everything)
 	var id_container = HBoxContainer.new()

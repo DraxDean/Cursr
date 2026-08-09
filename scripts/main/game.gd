@@ -8,6 +8,22 @@ signal building_jobs_updated(building_name: String)  # Emitted when a building's
 const MAP_WIDTH = 100
 const MAP_HEIGHT = 100
 
+# Training system definitions
+const TRAINING_DEFINITIONS: Dictionary = {
+	"soldier": {
+		"name": "Soldier",
+		"days_required": 5,
+		"description": "Combat veteran. +10% combat effectiveness.",
+		"building_type": "barracks"
+	},
+	"scholar": {
+		"name": "Scholar",
+		"days_required": 7,
+		"description": "Learned academic. +10% science per turn.",
+		"building_type": "research"
+	}
+}
+
 # --- Export Variables for Scenes ---
 @export var tree_scene: PackedScene
 @export var mountain_scene: PackedScene
@@ -896,6 +912,10 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	
 	# Auto-assign units to this building if capacity increased
 	if occupancy_difference > 0:
+		# For barracks: ensure job slots exist before assigning units
+		if capacity_type == "station" or capacity_type == "training":
+			var current_jobs = building_node.get_meta("resource_jobs", []).size()
+			_create_jobs_for_worker_capacity(building_node, current_jobs + occupancy_difference)
 		# Assign units to existing unassigned jobs (jobs exist at max capacity from creation)
 		_auto_assign_units_to_building(building_node, capacity_type, occupancy_difference)
 	elif occupancy_difference < 0:
@@ -1173,7 +1193,7 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	var building_type = building_node.get_meta("building_type", "unknown")
 	
 	# Only create jobs for work buildings
-	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "barracks"]
 	if not building_type in work_buildings:
 		print("DEBUG: Building type ", building_type, " is not a work building, skipping job creation")
 		return
@@ -1408,6 +1428,12 @@ func _migrate_players_data_structure():
 					"woodcutting_bonus": 0,
 					"stoneworking_bonus": 0
 				}
+			# Ensure training fields exist on each unit for old saves
+			for unit in player_data.get("units", []):
+				if not unit.has("specialties"):
+					unit["specialties"] = []
+				if not unit.has("training"):
+					unit["training"] = null
 			if not player_data.has("name"):
 				player_data["name"] = "Player " + str(player_id)
 			if not player_data.has("race"):
@@ -2100,7 +2126,10 @@ func _create_initial_units():
 					"work_timer": 0.0,
 					"movement_speed": 25.0,
 					"speed_multiplier": randf_range(0.85, 1.15),
-					"sprite_id": ""
+					"sprite_id": "",
+					# Training system
+					"specialties": [],
+					"training": null
 				}
 				
 				if not players_data[player_id].has("units"):
@@ -2197,6 +2226,10 @@ func _ensure_unit_movement_properties(unit: Dictionary):
 		unit["movement_speed"] = 25.0
 	if not unit.has("speed_multiplier"):
 		unit["speed_multiplier"] = randf_range(0.85, 1.15)  # Random speed variation for older saves
+	if not unit.has("specialties"):
+		unit["specialties"] = []
+	if not unit.has("training"):
+		unit["training"] = null
 	
 func _spawn_unit(unit_data: Dictionary):
 	# Only create sprite if both living_quarters and job are assigned
@@ -2639,6 +2672,17 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections
+			elif capacity_type == "station" or capacity_type == "training":
+				# Barracks uses a compound job name so unit_view_modal can strip the suffix
+				unit["job"] = building_id + "_" + capacity_type
+				if buildings_connections_cache.has(building_id):
+					unit["job_connections"] = buildings_connections_cache[building_id]
+				else:
+					var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
+					if job_building_node:
+						var connections = _find_building_connections_for_unit(job_building_node)
+						unit["job_connections"] = connections
+						buildings_connections_cache[building_id] = connections
 			
 			# Also update the job metadata to track which unit is assigned
 			var jobs = building_node.get_meta("resource_jobs", [])
@@ -2685,22 +2729,6 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			
 			# Notify modal that jobs have been updated (use updated building name)
 			building_jobs_updated.emit(building_node.name)
-			units_assigned += 1
-			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
-		elif capacity_type == "station" or capacity_type == "training":
-			# For barracks jobs, use naming convention: building_id_capacity_type
-			var barracks_job_name = building_id + "_" + capacity_type
-			unit["job"] = barracks_job_name
-			# Always update job connections for this unit
-			if buildings_connections_cache.has(building_id):
-				unit["job_connections"] = buildings_connections_cache[building_id]
-			else:
-				var job_building_node = map_objects_holder.get_node_or_null(NodePath(building_id))
-				if job_building_node:
-					var connections = _find_building_connections_for_unit(job_building_node)
-					unit["job_connections"] = connections
-					buildings_connections_cache[building_id] = connections
-			
 			units_assigned += 1
 			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
 	
@@ -3175,11 +3203,22 @@ func _is_tile_walkable(tile_coords: Vector2i) -> bool:
 	return true
 
 func _start_idle_wander(unit: Dictionary):
-	"""Pick a random walkable tile near the town centre and A* pathfind there"""
+	"""Pick a random walkable tile near the anchor (barracks if stationed, else town centre) and A* pathfind there"""
 	if not tilemap_layer:
 		return
 	var player_id = unit.get("player_id", 1)
-	var anchor = _get_player_town_centre_position(player_id)
+	
+	# Use barracks position as anchor if unit is assigned to one
+	var anchor = Vector2.ZERO
+	var job = unit.get("job")
+	if job and map_objects_holder:
+		var job_node = map_objects_holder.get_node_or_null(NodePath(job))
+		if job_node:
+			var btype = job_node.get_meta("building_type", "")
+			if btype == "barracks":
+				anchor = job_node.position
+	if anchor == Vector2.ZERO:
+		anchor = _get_player_town_centre_position(player_id)
 	if anchor == Vector2.ZERO:
 		return
 	var anchor_tile = tilemap_layer.local_to_map(anchor)
@@ -4222,6 +4261,9 @@ func _on_end_day_pressed():
 		if game_footer:
 			game_footer.set_day_text(turn_manager.get_day())
 		
+		# Process training progress for all units
+		_process_training_progress()
+		
 		# Refresh open modals to show updated data
 		if resources_modal and resources_modal.is_open:
 			resources_modal.refresh_content()
@@ -4229,6 +4271,70 @@ func _on_end_day_pressed():
 			population_modal.refresh_content()
 		if buildings_modal and buildings_modal.is_open:
 			buildings_modal.refresh_content()
+		if building_details_modal and is_instance_valid(building_details_modal):
+			if building_details_modal.building_node and is_instance_valid(building_details_modal.building_node):
+				building_details_modal.setup_building_details(building_details_modal.building_node)
+
+func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
+	"""Begin training for a unit. Returns false if prerequisites aren't met."""
+	if not TRAINING_DEFINITIONS.has(training_type):
+		push_warning("Game: Unknown training type: " + training_type)
+		return false
+	
+	# Allow stacking — a unit can train a type they already have for a refresher,
+	# but don't start a new training if one is already in progress.
+	if unit.get("training") != null:
+		print("Game: Unit %s is already in training" % unit.get("name", "?"))
+		return false
+	
+	var def = TRAINING_DEFINITIONS[training_type]
+	unit["training"] = {
+		"type": training_type,
+		"progress": 0,
+		"days_required": def["days_required"]
+	}
+	print("Game: Started %s training for %s (%d days)" % [training_type, unit.get("name", "?"), def["days_required"]])
+	return true
+
+func _cancel_unit_training(unit: Dictionary):
+	"""Cancel in-progress training without granting the specialty."""
+	unit["training"] = null
+	print("Game: Cancelled training for %s" % unit.get("name", "?"))
+
+func _process_training_progress():
+	"""Advance training progress by 1 day for all units currently training."""
+	for player_id in players_data.keys():
+		if str(player_id) == "environment":
+			continue
+		for unit in players_data[player_id].get("units", []):
+			var training = unit.get("training")
+			if training == null:
+				continue
+			training["progress"] += 1
+			var days_req = training.get("days_required", 5)
+			if training["progress"] >= days_req:
+				# Training complete — award specialty
+				var t_type = training.get("type", "")
+				if t_type != "" and not (t_type in unit.get("specialties", [])):
+					unit["specialties"].append(t_type)
+				unit["training"] = null
+				# Update unit type to reflect their highest specialty
+				_update_unit_type_from_specialties(unit)
+				print("Game: %s completed %s training! Specialties: %s, Type: %s" % [
+					unit.get("name", "?"), t_type, str(unit.get("specialties", [])), unit.get("type", "?")])
+
+func _update_unit_type_from_specialties(unit: Dictionary):
+	"""Set unit type based on their specialties (last specialty wins, peasant if none)."""
+	var specialties = unit.get("specialties", [])
+	if specialties.is_empty():
+		unit["type"] = "peasant"
+	elif "soldier" in specialties:
+		unit["type"] = "soldier"
+	elif "scholar" in specialties:
+		unit["type"] = "scholar"
+	else:
+		# Fallback: use the first specialty name
+		unit["type"] = specialties[0]
 
 # Footer button handlers
 func _on_build_pressed():
