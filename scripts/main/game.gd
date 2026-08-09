@@ -899,21 +899,20 @@ func _check_and_create_missing_sprites(player_id: int):
 		var unit_id = unit["unique_id"]
 		var living_quarters = unit.get("living_quarters", null)
 		var job = unit.get("job", null)
+		var has_full_assignment = living_quarters != null and job != null
 		
-		# CRITICAL: Only create sprites for units with BOTH assignments
-		if living_quarters != null and job != null:
-			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
-			
+		var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+		
+		if has_full_assignment:
 			if not existing_sprite:
-				print("Creating missing sprite for fully assigned unit: ", unit_id, " (living: ", living_quarters, ", job: ", job, ")")
 				_create_unit_sprite_and_start_cycle(unit)
 			else:
-				# Sprite exists - check if we need to update connections
-				var old_job = unit.get("previous_job", job)  # Track previous job to detect changes
+				# Sprite exists — check for state transitions
+				var old_job = unit.get("previous_job", job)
+				var current_state = unit.get("movement_state", "idle")
 				
-				if old_job != job:
-					# Job changed - reset movement to restart from home
-					print("Unit ", unit_id, " job changed from ", old_job, " to ", job, " - resetting movement cycle")
+				if old_job != job or current_state == "idle_wander":
+					# Job changed OR unit was wandering but now fully assigned: start work cycle
 					unit["movement_state"] = "idle"
 					unit["current_path"] = []
 					unit["path_index"] = 0
@@ -923,20 +922,26 @@ func _check_and_create_missing_sprites(player_id: int):
 				
 				# Always ensure job_connections are available
 				if not unit.has("job_connections") or unit.get("job_connections", []).is_empty():
-					# Extract building name from job (handle barracks job naming: barracks1_station -> barracks1)
 					var job_building = job
 					if job.contains("_station") or job.contains("_training"):
 						job_building = job.substr(0, job.rfind("_"))
-					
 					var job_building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 					if job_building_node:
 						unit["job_connections"] = _find_building_connections_for_unit(job_building_node)
 				
-				# Ensure sprite_id is tracked
 				if not unit.has("sprite_id") or unit.get("sprite_id") == "":
 					unit["sprite_id"] = unit_id
 					unit_sprite_map[unit_id] = existing_sprite
 				_start_unit_movement_cycle(unit)
+		else:
+			# Unit not fully assigned — ensure it's in idle_wander if it has a sprite
+			if existing_sprite:
+				var current_state = unit.get("movement_state", "idle_wander")
+				if current_state != "idle_wander" and current_state != "moving":
+					unit["movement_state"] = "idle_wander"
+					unit["current_path"] = []
+					unit["path_index"] = 0
+					unit["work_timer"] = 0.0
 
 func _cleanup_unassigned_unit_sprites(player_id: int):
 	"""Remove sprites for units that lost housing or work assignments"""
@@ -952,19 +957,17 @@ func _cleanup_unassigned_unit_sprites(player_id: int):
 		
 		# Check if unit lost either assignment
 		if living_quarters == null or job == null:
-			# Unit should not have a sprite - remove if it exists
+			# Unit is unassigned — keep its sprite but switch to idle wandering near town centre
 			var unit_id = unit["unique_id"]
 			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 			if existing_sprite:
-				print("Removing sprite for unit with incomplete assignments: ", unit_id)
-				# Clean up sprite tracking
-				unit_sprite_map.erase(unit_id)
-				unit["sprite_id"] = ""
-				existing_sprite.queue_free()
-				
-				# Reset movement state since unit is no longer active
-				unit["movement_state"] = "idle"
-				unit["movement_cycle_step"] = 0
+				var current_state = unit.get("movement_state", "idle_wander")
+				if current_state != "idle_wander" and current_state != "moving":
+					unit["movement_state"] = "idle_wander"
+					unit["current_path"] = []
+					unit["path_index"] = 0
+					unit["movement_cycle_step"] = 0
+					unit["work_timer"] = 0.0
 
 func _remove_unit_assignments_for_building(building_name: String, owner_player: int):
 	"""Remove assignments for units that were assigned to a demolished building"""
@@ -990,11 +993,13 @@ func _remove_unit_assignments_for_building(building_name: String, owner_player: 
 			assignments_removed = true
 			print("Removed job assignment for unit ", unit_id, " from demolished building ", building_name)
 		
-		# If assignments were removed, the sprite cleanup will happen in update_player_population
+		# If assignments were removed, switch to idle_wander so they drift near town centre
 		if assignments_removed:
-			# Reset movement state
-			unit["movement_state"] = "idle"
+			unit["movement_state"] = "idle_wander"
 			unit["movement_cycle_step"] = 0
+			unit["current_path"] = []
+			unit["path_index"] = 0
+			unit["work_timer"] = 0.0
 
 func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: String, excess_count: int, owner_player: int):
 	"""Remove assignments when building capacity is reduced"""
@@ -1051,9 +1056,12 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			assignments_removed += 1
 			print("Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name)
 			
-			# Reset movement state - sprite cleanup will happen in update_player_population
-			unit["movement_state"] = "idle"
+			# Reset movement state — unit is now unassigned, falls back to idle wandering
+			unit["movement_state"] = "idle_wander"
 			unit["movement_cycle_step"] = 0
+			unit["current_path"] = []
+			unit["path_index"] = 0
+			unit["work_timer"] = 0.0
 
 func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	"""Create empty job entries when worker capacity increases (no pathfinding)"""
@@ -2033,24 +2041,26 @@ func _restore_unit_sprites_on_load():
 		
 		for unit in player_data["units"]:
 			units_checked += 1
-			# Check if unit has both assignments
 			var living_quarters = unit.get("living_quarters", null)
 			var job = unit.get("job", null)
 			
 			if living_quarters != null and job != null:
 				units_with_assignments += 1
-				# Unit should be visible - check if sprite exists
-				var unit_id = unit["unique_id"]
-				var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
-				
-				if not existing_sprite:
-					units_without_sprites += 1
-					# Create sprite for this fully assigned unit
-					print("Restoring sprite for unit %s (%s): Living=%s, Job=%s" % [unit_id, unit.get("name", "Unknown"), living_quarters, job])
-					_create_unit_sprite_and_start_cycle(unit)
-					sprites_created += 1
-				else:
-					units_already_have_sprites += 1
+			
+			# All units get a sprite, regardless of assignment status
+			var unit_id = unit["unique_id"]
+			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
+			
+			if not existing_sprite:
+				units_without_sprites += 1
+				# Ensure unassigned units default to idle_wander so they walk near town centre
+				if living_quarters == null or job == null:
+					_ensure_unit_movement_properties(unit)
+					unit["movement_state"] = "idle_wander"
+				_create_unit_sprite_and_start_cycle(unit)
+				sprites_created += 1
+			else:
+				units_already_have_sprites += 1
 	
 	print("Unit sprite restoration complete: %d created, %d checked, %d with assignments, %d without sprites, %d already had sprites" % [sprites_created, units_checked, units_with_assignments, units_without_sprites, units_already_have_sprites])
 
@@ -2061,13 +2071,18 @@ func _ensure_unit_movement_properties(unit: Dictionary):
 	if not unit.has("path_index"):
 		unit["path_index"] = 0
 	if not unit.has("movement_state"):
-		unit["movement_state"] = "idle"
+		# Default unassigned units to idle_wander so they walk near town centre
+		var has_job = unit.get("job", null) != null
+		var has_home = unit.get("living_quarters", null) != null
+		unit["movement_state"] = "idle" if (has_job and has_home) else "idle_wander"
 	if not unit.has("movement_target"):
 		unit["movement_target"] = null
 	if not unit.has("movement_cycle_step"):
 		unit["movement_cycle_step"] = 0
 	if not unit.has("work_timer"):
 		unit["work_timer"] = 0.0
+	if not unit.has("wander_wait_time"):
+		unit["wander_wait_time"] = randf_range(1.0, 4.0)
 	if not unit.has("movement_speed"):
 		unit["movement_speed"] = 25.0
 	if not unit.has("speed_multiplier"):
@@ -2607,28 +2622,33 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 			unit["job_connections"] = _find_building_connections_for_unit(building_node)
 	
 	if not existing_sprite:
-		# Create new sprite since unit is now fully assigned
+		# Create sprite for this unit (visible for all units, assigned or not)
 		var unit_sprite = Sprite2D.new()
 		unit_sprite.name = unit_id
 		
-		# Position unit at their living quarters (home) building
+		# Choose scatter anchor: home building if assigned, town centre otherwise
 		var living_quarters_id = unit.get("living_quarters", null)
+		var anchor_pos: Vector2
 		if living_quarters_id and map_objects_holder:
 			var home_building = map_objects_holder.get_node_or_null(NodePath(living_quarters_id))
 			if home_building:
-				# Scatter units around the building to avoid overlap
-				var base_position = home_building.position
-				var scatter_radius = 40.0
-				var random_angle = randf() * TAU  # Random angle in radians
-				var random_distance = randf() * scatter_radius
-				var offset = Vector2(cos(random_angle), sin(random_angle)) * random_distance
-				unit_sprite.position = base_position + offset
-				# Update unit's stored position to match their scattered position
-				unit["position"] = unit_sprite.position
+				anchor_pos = home_building.position
 			else:
-				unit_sprite.position = unit["position"]
+				anchor_pos = _get_player_town_centre_position(unit.get("player_id", 1))
 		else:
+			anchor_pos = _get_player_town_centre_position(unit.get("player_id", 1))
+		
+		# If we have a stored non-zero position from a previous session, use it
+		if unit["position"] != Vector2.ZERO:
 			unit_sprite.position = unit["position"]
+		else:
+			# Scatter the unit around the anchor point
+			var scatter_radius = 50.0
+			var random_angle = randf() * TAU
+			var random_distance = randf() * scatter_radius
+			var offset = Vector2(cos(random_angle), sin(random_angle)) * random_distance
+			unit_sprite.position = anchor_pos + offset
+			unit["position"] = unit_sprite.position
 		
 		unit_sprite.z_index = 6
 		unit_sprite.centered = true  # Center the sprite on its position
@@ -2821,16 +2841,17 @@ func _create_initial_units_from_population():
 				"type": "peasant",
 				"race": player_race,
 				"player_id": player_id,
-				"position": Vector2(200 + (i * 15), 200 + (i * 10)),  # Spread them out slightly
+				"position": Vector2.ZERO,  # Will be scattered near town centre when sprite is created
 				"living_quarters": null,
 				"job": null,
 				# Movement properties
 				"current_path": [],
 				"path_index": 0,
-				"movement_state": "idle",
+				"movement_state": "idle_wander",  # Wander near town centre until assigned
 				"movement_target": null,
 				"movement_cycle_step": 0,
-				"work_timer": 0.0,
+				"work_timer": randf_range(0.0, 3.0),  # Stagger start times
+				"wander_wait_time": randf_range(1.0, 4.0),
 				"movement_speed": 25.0,
 				"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
 			}
@@ -2884,10 +2905,7 @@ func _update_unit_movements(delta: float):
 			continue
 		
 		for unit in player_data["units"]:
-			# Only process units that have both assignments and are visible
-			if unit.get("living_quarters", null) == null or unit.get("job", null) == null:
-				continue
-			
+			# Process all units that have a visible sprite (assigned or idle-wandering)
 			var unit_sprite = map_objects_holder.get_node_or_null(unit["unique_id"])
 			if not unit_sprite:
 				continue
@@ -2900,11 +2918,24 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 	
 	match movement_state:
 		"idle":
-			# Check if it's time to start moving
-			unit["work_timer"] += delta
-			if unit["work_timer"] >= 2.0:  # Stay idle for 2 seconds
+			# Route based on assignment: unassigned units switch to wandering
+			if unit.get("job", null) == null or unit.get("living_quarters", null) == null:
+				unit["movement_state"] = "idle_wander"
 				unit["work_timer"] = 0.0
-				_start_unit_movement_cycle(unit)
+			else:
+				# Fully assigned — run work cycle
+				unit["work_timer"] += delta
+				if unit["work_timer"] >= 2.0:
+					unit["work_timer"] = 0.0
+					_start_unit_movement_cycle(unit)
+		
+		"idle_wander":
+			# Unassigned units wander near the town centre
+			unit["work_timer"] += delta
+			var wander_wait = unit.get("wander_wait_time", 3.0)
+			if unit["work_timer"] >= wander_wait:
+				unit["work_timer"] = 0.0
+				_start_idle_wander(unit)
 		
 		"waiting":
 			# Unit is waiting at the resource/workplace
@@ -2918,15 +2949,22 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			# Follow current path
 			var current_path = unit.get("current_path", [])
 			if current_path.is_empty():
-				# No path - switch to idle
-				unit["movement_state"] = "idle"
+				# No path — go back to appropriate idle state
+				var has_job = unit.get("job", null) != null and unit.get("living_quarters", null) != null
+				unit["movement_state"] = "idle" if has_job else "idle_wander"
 				return
 			
 			var path_index = unit.get("path_index", 0)
 			if path_index >= current_path.size():
 				# Reached end of path
-				unit["movement_state"] = "waiting"  # Wait at destination
-				unit["work_timer"] = 0.0
+				var has_job = unit.get("job", null) != null and unit.get("living_quarters", null) != null
+				if has_job:
+					unit["movement_state"] = "waiting"  # Work cycle: wait at destination
+					unit["work_timer"] = 0.0
+				else:
+					# Idle wander: just pause then pick a new destination
+					unit["movement_state"] = "idle_wander"
+					unit["work_timer"] = 0.0
 				unit["current_path"] = []
 				unit["path_index"] = 0
 				return
@@ -2990,21 +3028,80 @@ func _start_unit_movement_cycle(unit: Dictionary):
 func _on_unit_reached_destination(unit: Dictionary):
 	"""Called when unit reaches its movement target"""
 	var cycle_step = unit.get("movement_cycle_step", 0)
-	print("Unit ", unit["unique_id"], " reached destination, cycle step: ", cycle_step)
 	
 	# Clear movement state
-	unit["movement_state"] = "idle"
 	unit["current_path"] = []
 	unit["path_index"] = 0
-	
-	# Advance to next step in cycle
-	unit["movement_cycle_step"] = (cycle_step + 1) % 5
-	
-	# Reset work timer for next phase
 	unit["work_timer"] = 0.0
 	
+	# Route based on current assignment
+	var has_full_assignment = unit.get("job", null) != null and unit.get("living_quarters", null) != null
+	if not has_full_assignment:
+		# Unit lost its assignment mid-cycle — fall back to wandering
+		unit["movement_state"] = "idle_wander"
+		return
+	
+	unit["movement_state"] = "idle"
+	# Advance to next step in cycle
+	unit["movement_cycle_step"] = (cycle_step + 1) % 5
 	# Immediately start the next part of the movement cycle
 	_start_unit_movement_cycle(unit)
+
+func _is_tile_walkable(tile_coords: Vector2i) -> bool:
+	"""Check if a tile is walkable for idle wandering (in bounds, not blocked by mountain/building)"""
+	if not tilemap_layer:
+		return false
+	var used_rect = tilemap_layer.get_used_rect()
+	if not used_rect.has_point(tile_coords):
+		return false
+	# Reject tiles occupied by buildings or mountains
+	if map_objects_holder:
+		var tile_world = tilemap_layer.map_to_local(tile_coords)
+		for child in map_objects_holder.get_children():
+			if child.position.distance_to(tile_world) < 20.0:
+				var child_name = child.name as String
+				if _is_building_node(child) or child_name.begins_with("mountain_"):
+					return false
+	return true
+
+func _start_idle_wander(unit: Dictionary):
+	"""Pick a random walkable tile near the town centre and A* pathfind there"""
+	if not tilemap_layer:
+		return
+	var player_id = unit.get("player_id", 1)
+	var anchor = _get_player_town_centre_position(player_id)
+	if anchor == Vector2.ZERO:
+		return
+	var anchor_tile = tilemap_layer.local_to_map(anchor)
+	var wander_radius = 8  # tiles
+	var target_tile: Vector2i = anchor_tile  # fallback
+	var found = false
+	for _attempt in range(15):
+		var dx = randi_range(-wander_radius, wander_radius)
+		var dy = randi_range(-wander_radius, wander_radius)
+		var candidate = Vector2i(anchor_tile.x + dx, anchor_tile.y + dy)
+		if _is_tile_walkable(candidate):
+			target_tile = candidate
+			found = true
+			break
+	if not found:
+		# No walkable tile found — stay put a bit longer
+		unit["work_timer"] = 0.0
+		unit["wander_wait_time"] = randf_range(2.0, 5.0)
+		return
+	var unit_tile = tilemap_layer.local_to_map(unit["position"])
+	var tile_path = _astar_pathfind_for_game(unit_tile, target_tile)
+	if tile_path.is_empty():
+		unit["work_timer"] = 0.0
+		unit["wander_wait_time"] = randf_range(2.0, 5.0)
+		return
+	var world_path = []
+	for tc in tile_path:
+		world_path.append(tilemap_layer.map_to_local(tc))
+	unit["current_path"] = world_path
+	unit["path_index"] = 0
+	unit["movement_state"] = "moving"
+	unit["wander_wait_time"] = randf_range(1.5, 5.0)  # Next pause duration
 
 func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: int):
 	"""Move unit to a specific building using pre-calculated paths from connections"""
@@ -3244,6 +3341,12 @@ func _astar_pathfind_for_game(start: Vector2i, end: Vector2i) -> Array:
 	var path = temp_modal._astar_pathfind(start, end, tilemap_layer)
 	temp_modal.queue_free()
 	return path
+
+func _get_player_town_centre_position(player_id: int) -> Vector2:
+	"""Get the world position of a player's town centre, used as idle-wander anchor"""
+	if players_data.has(player_id):
+		return players_data[player_id].get("town_centre_position", Vector2.ZERO)
+	return Vector2.ZERO
 
 func _hex_distance(a: Vector2i, b: Vector2i) -> int:
 	"""Calculate hexagonal distance between two tile coordinates"""
@@ -3616,6 +3719,8 @@ func _place_town_center_building(tile_coords: Vector2i):
 		var owner_player = setup_data.get("owner_player", 1)
 		if players_data.has(owner_player):
 			players_data[owner_player]["buildings"].append(building_name)
+			# Track town centre world position so unassigned units can idle nearby
+			players_data[owner_player]["town_centre_position"] = world_pos
 			print("Game: Added town center ", building_name, " to player ", owner_player, " buildings list")
 		
 		print("Game: Successfully placed ", starting_building, " at world position: ", world_pos)
@@ -3755,6 +3860,8 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			var owner_player = setup_data.get("owner_player", 1)
 			if players_data.has(owner_player):
 				players_data[owner_player]["buildings"].append(building_name)
+				if building_type == "town_center":
+					players_data[owner_player]["town_centre_position"] = tile_center_pos
 		else:
 			push_warning("Could not restore building with texture: " + building_info.get("texture_path", "unknown"))
 
@@ -3898,6 +4005,13 @@ func _auto_assign_jobs_on_load():
 							var connections = _find_building_connections_for_unit(building_node)
 							unit["job_connections"] = connections
 							buildings_connections_cache[building_node.name] = connections
+						
+						# If unit now has both assignments, start the work cycle
+						if unit.get("living_quarters", null) != null:
+							unit["movement_state"] = "idle"
+							unit["movement_cycle_step"] = 0
+							unit["current_path"] = []
+							unit["work_timer"] = 0.0
 						
 						remaining_slots -= 1
 						print("Game: Auto-assigned unit ", unit["unique_id"], " to job at ", building_node.name, " on load")
