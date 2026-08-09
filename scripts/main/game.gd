@@ -36,6 +36,7 @@ var buildings_modal: Control
 var population_modal: Control
 var army_modal: Control
 var units_modal: Control
+var science_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Building System
@@ -3750,6 +3751,7 @@ func _setup_game_header():
 	game_header.population_pressed.connect(_on_header_population_pressed)
 	game_header.army_pressed.connect(_on_header_army_pressed)
 	game_header.units_pressed.connect(_on_header_units_pressed)
+	game_header.science_pressed.connect(_on_header_science_pressed)
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
@@ -4065,6 +4067,7 @@ func _setup_info_modals():
 	var PopulationModalScript = preload("res://scripts/ui/population_modal.gd")
 	var ArmyModalScript = preload("res://scripts/ui/army_modal.gd")
 	var UnitsModalScript = preload("res://scripts/ui/units_modal.gd")
+	var ScienceModalScript = preload("res://scripts/ui/science_modal.gd")
 	
 	# Calculate positions to prevent overlap
 	var base_pos = Vector2(10, 60)  # Base position under header
@@ -4076,6 +4079,7 @@ func _setup_info_modals():
 	population_modal = PopulationModalScript.new(self, base_pos + modal_offset * 3)
 	army_modal = ArmyModalScript.new(self, base_pos + modal_offset * 4)
 	units_modal = UnitsModalScript.new(self, base_pos + modal_offset * 5)
+	science_modal = ScienceModalScript.new(self, base_pos + modal_offset * 6)
 	
 	# Add modals to UI layer
 	ui_layer.add_child(players_modal)
@@ -4084,6 +4088,7 @@ func _setup_info_modals():
 	ui_layer.add_child(population_modal)
 	ui_layer.add_child(army_modal)
 	ui_layer.add_child(units_modal)
+	ui_layer.add_child(science_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -4092,6 +4097,7 @@ func _setup_info_modals():
 	population_modal.modal_closed.connect(_on_modal_closed)
 	army_modal.modal_closed.connect(_on_modal_closed)
 	units_modal.modal_closed.connect(_on_modal_closed)
+	science_modal.modal_closed.connect(_on_modal_closed)
 	
 	print("Game: Info modals setup complete")
 
@@ -4265,6 +4271,10 @@ func _on_header_army_pressed():
 func _on_header_units_pressed():
 	if units_modal:
 		units_modal.toggle()
+
+func _on_header_science_pressed():
+	if science_modal:
+		science_modal.toggle()
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")

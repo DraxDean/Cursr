@@ -1192,11 +1192,11 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 	path_button.set_meta("job_index", job_index)
 	job_row.add_child(path_button)
 	
-	# Assigned unit display — look up name if possible
+	# Assigned unit display — clickable button opens unit details modal
 	var unit_assigned = job.get("unit_assigned", null)
-	var unit_label = Label.new()
 	if unit_assigned:
 		var display_name = unit_assigned  # fallback to ID
+		var found_unit: Dictionary = {}
 		var game = game_node if game_node else _get_game_node()
 		if game and game.get("players_data") != null:
 			for pid in game.players_data:
@@ -1205,15 +1205,29 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 				for u in game.players_data[pid].get("units", []):
 					if u.get("unique_id") == unit_assigned:
 						display_name = u.get("name", unit_assigned)
+						found_unit = u
 						break
-		unit_label.text = display_name
-		unit_label.add_theme_color_override("font_color", Color.GREEN)
+		var unit_btn = Button.new()
+		unit_btn.text = display_name
+		unit_btn.flat = true
+		unit_btn.add_theme_color_override("font_color", Color.GREEN)
+		unit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		unit_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		if not found_unit.is_empty():
+			unit_btn.pressed.connect(_on_unit_name_clicked.bind(found_unit))
+		job_row.add_child(unit_btn)
 	else:
+		var unit_label = Label.new()
 		unit_label.text = "Unassigned"
 		unit_label.add_theme_color_override("font_color", Color.YELLOW)
-	
-	unit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	job_row.add_child(unit_label)
+		unit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		job_row.add_child(unit_label)
+
+func _on_unit_name_clicked(unit: Dictionary):
+	"""Open the unit details modal for the clicked unit"""
+	var game = game_node if game_node else _get_game_node()
+	if game and game.has_method("_open_unit_details_modal"):
+		game._open_unit_details_modal(unit)
 
 func _on_job_path_clicked(job_index: int):
 	"""Handle job path button click - toggle path visualization"""
