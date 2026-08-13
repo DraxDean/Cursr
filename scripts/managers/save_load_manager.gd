@@ -124,3 +124,47 @@ func get_most_recent_save() -> String:
 	dir.list_dir_end()
 	
 	return most_recent_file
+
+# Returns metadata for all save files without loading full game state.
+# Each entry: { path, filename, modified_time, current_day, population, save_name }
+func get_all_saves_info() -> Array:
+	var result: Array = []
+	var dir = DirAccess.open(SAVE_DIR)
+	if not dir:
+		return result
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".save"):
+			var full_path = SAVE_DIR.path_join(file_name)
+			var info = {
+				"path": full_path,
+				"filename": file_name,
+				"modified_time": FileAccess.get_modified_time(full_path),
+				"current_day": 0,
+				"population": 0,
+				"save_name": file_name.trim_suffix(".save")
+			}
+			# Peek into the save for lightweight data
+			var file = FileAccess.open(full_path, FileAccess.READ)
+			if file and FileAccess.get_open_error() == OK:
+				var data = file.get_var()
+				if typeof(data) == TYPE_DICTIONARY:
+					info["current_day"] = data.get("current_day", 0)
+					var pd = data.get("players_data", {})
+					for pid in pd:
+						if str(pid) != "environment":
+							info["population"] = pd[pid].get("population", {}).get("total", 0)
+							break
+			result.append(info)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	# Sort newest first
+	result.sort_custom(func(a, b): return a["modified_time"] > b["modified_time"])
+	return result
+
+func delete_save(file_path: String) -> bool:
+	if not FileAccess.file_exists(file_path):
+		return false
+	var err = DirAccess.remove_absolute(file_path)
+	return err == OK

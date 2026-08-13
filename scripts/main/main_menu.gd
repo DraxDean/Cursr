@@ -4,12 +4,15 @@ extends Control
 # Scene path constants
 const GAME_SCENE_PATH = "res://scenes/main/game_scene.tscn" # Corrected Path
 const WORLD_CREATION_SCENE_PATH = "res://scenes/main/world_creation_scene.tscn"
+const LoadGameModalScript = preload("res://scripts/ui/load_game_modal.gd")
 
 # Node References - Use explicit paths assuming standard setup
 @onready var continue_button: Button = $CenterContainer/VBoxContainer/ContinueButton
 @onready var new_game_button: Button = $CenterContainer/VBoxContainer/NewGameButton
 @onready var load_game_button: Button = $CenterContainer/VBoxContainer/LoadGameButton
 @onready var quit_button: Button = $CenterContainer/VBoxContainer/QuitButton
+
+var _load_modal: Control = null
 
 func _ready():
 	# Ensure SaveLoadManager is ready (Autoloads initialize before scene _ready)
@@ -61,35 +64,24 @@ func _on_new_game_pressed():
 
 
 func _on_load_game_pressed():
-	print("Main Menu: Loading Saved Game...")
-	# We still need to select *which* game to load.
-	# For now, let's keep the simple "load first save" behavior.
-	# A proper implementation would go to a LoadScreen or trigger the in-game load modal.
-	# For simplicity here, we just set GameManager state.
-	# A better approach is needed later.
+	print("Main Menu: Opening load game browser...")
+	# Hide main menu buttons while modal is open
+	$CenterContainer.visible = false
 
-	# Find the first save path (inefficient, replace with load screen later)
-	var first_save_path = ""
-	var dir = DirAccess.open(SaveLoadManager.SAVE_DIR)
-	if dir:
-		dir.list_dir_begin()
-		var file_name = dir.get_next()
-		while file_name != "":
-			if not dir.current_is_dir() and file_name.ends_with(".save"):
-				first_save_path = SaveLoadManager.SAVE_DIR.path_join(file_name); break
-			file_name = dir.get_next()
-		dir.list_dir_end()
+	_load_modal = LoadGameModalScript.new()
+	_load_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_load_modal.back_pressed.connect(_on_load_modal_back)
+	add_child(_load_modal)
 
-	if first_save_path.is_empty():
-		push_warning("Load Game pressed, but no save file found.")
-		return
 
-	GameManager.start_mode = "load"
-	GameManager.load_file_path = first_save_path
-	var error = get_tree().change_scene_to_file(GAME_SCENE_PATH)
-	if error != OK: push_error("Failed to change scene to %s. Error code: %d" % [GAME_SCENE_PATH, error])
+func _on_load_modal_back():
+	if _load_modal and is_instance_valid(_load_modal):
+		_load_modal.queue_free()
+		_load_modal = null
+	$CenterContainer.visible = true
 
 
 func _on_quit_pressed():
 	print("Main Menu: Quitting application.")
 	get_tree().quit()
+

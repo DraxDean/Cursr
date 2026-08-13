@@ -201,6 +201,27 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 			print("_place_single_object: Placing fish at %s" % instance.position)
 			game_node.register_fish(instance)
 
+func place_objects_from_save(environment_objects_data: Array):
+	"""Restore environment objects at their exact saved positions (no RNG, no re-registration)."""
+	if not is_instance_valid(map_objects_holder):
+		push_error("MapObjectManager: map_objects_holder invalid in place_objects_from_save")
+		return
+	for obj_info in environment_objects_data:
+		var object_type = obj_info.get("object_type", "")
+		var position = obj_info.get("position", Vector2.ZERO)
+		var scene: PackedScene = null
+		match object_type:
+			"mountain": scene = mountain_scene
+			"tree": scene = tree_scene
+			"fish": scene = fish_scene
+		if not scene:
+			push_warning("MapObjectManager: No scene for object type '%s'" % object_type)
+			continue
+		var instance = scene.instantiate()
+		instance.position = position
+		map_objects_holder.add_child(instance)
+	print("MapObjectManager: Placed %d environment objects from save." % environment_objects_data.size())
+
 
 func place_building(building_data, coords):
 	print("Map Object Manager: Placing building: ", building_data, " at: ", coords);

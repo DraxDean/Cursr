@@ -1977,8 +1977,11 @@ func initialize_map():
 		# Update footer to display loaded day
 		if game_footer:
 			game_footer.set_day_text(loaded_day)
-		map_object_manager.place_objects(world_data)
-		map_object_manager.place_fish(world_data)
+		# Only place fresh environment objects for new games.
+		# On load, objects are restored from save data below.
+		if loaded_environment_objects_data.is_empty():
+			map_object_manager.place_objects(world_data)
+			map_object_manager.place_fish(world_data)
 		# Restore buildings if loading from save
 		if not loaded_buildings_data.is_empty():
 			_restore_buildings_with_proper_centering(loaded_buildings_data)
@@ -4079,42 +4082,72 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			push_warning("Could not restore building with texture: " + building_info.get("texture_path", "unknown"))
 
 func _restore_environment_objects(environment_objects_data: Array):
-	# Restore environment objects (mountains, trees, and fish) with their unique IDs
-	
+	# Restore environment objects (mountains, trees, and fish) with their unique IDs.
+	# Spawns nodes at exact saved positions, then rebuilds tracking dicts.
+
 	if not tilemap_layer or not map_objects_holder:
 		print("Warning: Cannot restore environment objects - missing tilemap or objects holder")
 		return
-	
+
+	# Spawn nodes at saved positions (no RNG, no register_* side-effects)
+	map_object_manager.place_objects_from_save(environment_objects_data)
+
+	# Reset tracking dicts before repopulating
+	players_data["environment"]["objects"]["mountains"] = {}
+	players_data["environment"]["objects"]["trees"] = {}
+	if not players_data["environment"]["objects"].has("fish"):
+		players_data["environment"]["objects"]["fish"] = {}
+	else:
+		players_data["environment"]["objects"]["fish"] = {}
+	players_data["environment"]["counts"]["mountains"] = 0
+	players_data["environment"]["counts"]["trees"] = 0
+	if not players_data["environment"]["counts"].has("fish"):
+		players_data["environment"]["counts"]["fish"] = 0
+	else:
+		players_data["environment"]["counts"]["fish"] = 0
+
 	for obj_info in environment_objects_data:
-		var obj_name = obj_info.get("name", "")
 		var obj_position = obj_info.get("position", Vector2.ZERO)
-		var environment_id = obj_info.get("environment_id", obj_name)
+		var environment_id = obj_info.get("environment_id", obj_info.get("name", ""))
 		var object_type = obj_info.get("object_type", "unknown")
-		
-		# Find the corresponding scene node that was placed during map generation
-		var existing_node = null
+
+		# Find the node we just spawned at this position
+		var existing_node: Node2D = null
 		for child in map_objects_holder.get_children():
-			# Check if position matches (within small tolerance)
-			if child.position.distance_to(obj_position) < 5.0:
+			if child.position.distance_to(obj_position) < 1.0 and not child.has_meta("environment_id"):
 				existing_node = child
 				break
-		
-		if existing_node:
-			# Update the node with saved data
-			existing_node.name = environment_id
-			existing_node.set_meta("environment_id", environment_id)
-			
-			# Re-register with environment system to restore proper tracking
-			if object_type == "mountain":
-				register_mountain(existing_node)
-			elif object_type == "tree":
-				register_tree(existing_node)
-			elif object_type == "fish":
-				register_fish(existing_node)
-			
-			# print("Game: Restored environment object ", environment_id, " at ", obj_position)
-		else:
-			push_warning("Could not find existing node to restore environment object: " + environment_id)
+
+		if not existing_node:
+			push_warning("Could not find spawned node for environment object: " + environment_id)
+			continue
+
+		# Tag and rename
+		existing_node.name = environment_id
+		existing_node.set_meta("environment_id", environment_id)
+
+		# Rebuild tracking entry
+		var tile_coords = tilemap_layer.local_to_map(existing_node.position)
+		var entry = {
+			"name": environment_id,
+			"position": existing_node.position,
+			"tile_coords": tile_coords,
+			"node_path": existing_node.get_path(),
+			"job": null
+		}
+
+		match object_type:
+			"mountain":
+				players_data["environment"]["objects"]["mountains"][environment_id] = entry
+				players_data["environment"]["counts"]["mountains"] += 1
+			"tree":
+				players_data["environment"]["objects"]["trees"][environment_id] = entry
+				players_data["environment"]["counts"]["trees"] += 1
+			"fish":
+				players_data["environment"]["objects"]["fish"][environment_id] = entry
+				players_data["environment"]["counts"]["fish"] += 1
+
+	print("Game: Restored %d environment objects." % environment_objects_data.size())
 
 func _auto_assign_jobs_on_load():
 	"""Auto-assign units to jobs based on worker occupancy levels when loading a save"""
