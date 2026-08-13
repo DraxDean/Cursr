@@ -1033,7 +1033,7 @@ func _check_and_create_missing_sprites(player_id: int):
 				var old_job = unit.get("previous_job", job)
 				var current_state = unit.get("movement_state", "idle")
 				
-				if old_job != job or current_state == "idle_wander":
+				if old_job != job or current_state == "idle_wander" or current_state == "returning_home":
 					# Job changed OR unit was wandering but now fully assigned: start work cycle
 					unit["movement_state"] = "idle"
 					unit["current_path"] = []
@@ -1084,7 +1084,8 @@ func _cleanup_unassigned_unit_sprites(player_id: int):
 			var existing_sprite = map_objects_holder.get_node_or_null(unit_id)
 			if existing_sprite:
 				var current_state = unit.get("movement_state", "idle_wander")
-				if current_state != "idle_wander" and current_state != "moving":
+				# Don't override returning_home or moving (already heading somewhere sensible)
+				if current_state != "idle_wander" and current_state != "moving" and current_state != "returning_home":
 					unit["movement_state"] = "idle_wander"
 					unit["current_path"] = []
 					unit["path_index"] = 0
@@ -1115,13 +1116,10 @@ func _remove_unit_assignments_for_building(building_name: String, owner_player: 
 			assignments_removed = true
 			print("Removed job assignment for unit ", unit_id, " from demolished building ", building_name)
 		
-		# If assignments were removed, switch to idle_wander so they drift near town centre
+		# If assignments were removed, path back home first, then idle_wander
 		if assignments_removed:
-			unit["movement_state"] = "idle_wander"
 			unit["movement_cycle_step"] = 0
-			unit["current_path"] = []
-			unit["path_index"] = 0
-			unit["work_timer"] = 0.0
+			_start_return_home(unit)
 
 func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: String, excess_count: int, owner_player: int):
 	"""Remove assignments when building capacity is reduced"""
@@ -1178,12 +1176,9 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			assignments_removed += 1
 			print("Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name)
 			
-			# Reset movement state — unit is now unassigned, falls back to idle wandering
-			unit["movement_state"] = "idle_wander"
+			# Path back home first, then idle_wander on arrival
 			unit["movement_cycle_step"] = 0
-			unit["current_path"] = []
-			unit["path_index"] = 0
-			unit["work_timer"] = 0.0
+			_start_return_home(unit)
 
 func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	"""Create empty job entries when worker capacity increases (no pathfinding)"""
@@ -3056,10 +3051,9 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 	
 	match movement_state:
 		"idle":
-			# Route based on assignment: unassigned units switch to wandering
+			# Route based on assignment: unassigned units return home then wander
 			if unit.get("job", null) == null or unit.get("living_quarters", null) == null:
-				unit["movement_state"] = "idle_wander"
-				unit["work_timer"] = 0.0
+				_start_return_home(unit)
 			else:
 				# Fully assigned — run work cycle
 				unit["work_timer"] += delta
@@ -3074,6 +3068,38 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			if unit["work_timer"] >= wander_wait:
 				unit["work_timer"] = 0.0
 				_start_idle_wander(unit)
+		
+		"returning_home":
+			# Unit lost their job — follow path home then idle_wander on arrival
+			var current_path = unit.get("current_path", [])
+			if current_path.is_empty():
+				unit["movement_state"] = "idle_wander"
+				unit["work_timer"] = 0.0
+				return
+			var path_index = unit.get("path_index", 0)
+			if path_index >= current_path.size():
+				# Arrived home — start wandering
+				unit["current_path"] = []
+				unit["path_index"] = 0
+				unit["movement_state"] = "idle_wander"
+				unit["work_timer"] = 0.0
+				return
+			# Move towards next waypoint (same logic as "moving")
+			var target_pos = current_path[path_index]
+			var current_pos = sprite.position
+			var direction = (target_pos - current_pos).normalized()
+			var movement_speed = unit.get("movement_speed", 50.0)
+			var speed_multiplier = unit.get("speed_multiplier", 1.0)
+			var move_distance = movement_speed * speed_multiplier * delta
+			if direction.x != 0:
+				sprite.flip_h = direction.x > 0
+			if current_pos.distance_to(target_pos) <= move_distance:
+				sprite.position = target_pos
+				unit["position"] = target_pos
+				unit["path_index"] = path_index + 1
+			else:
+				sprite.position = current_pos + direction * move_distance
+				unit["position"] = sprite.position
 		
 		"waiting":
 			# Unit is waiting at the resource/workplace
@@ -3201,6 +3227,43 @@ func _is_tile_walkable(tile_coords: Vector2i) -> bool:
 				if _is_building_node(child) or child_name.begins_with("mountain_"):
 					return false
 	return true
+
+func _start_return_home(unit: Dictionary):
+	"""Path the unit back to their living quarters, then switch to idle_wander on arrival."""
+	var home = unit.get("living_quarters")
+	if not home or not map_objects_holder:
+		unit["movement_state"] = "idle_wander"
+		unit["movement_cycle_step"] = 0
+		unit["current_path"] = []
+		unit["path_index"] = 0
+		unit["work_timer"] = 0.0
+		return
+	var home_node = map_objects_holder.get_node_or_null(NodePath(home))
+	if not home_node or not tilemap_layer:
+		unit["movement_state"] = "idle_wander"
+		unit["movement_cycle_step"] = 0
+		unit["current_path"] = []
+		unit["path_index"] = 0
+		unit["work_timer"] = 0.0
+		return
+	var from_tile = tilemap_layer.local_to_map(unit.get("position", home_node.position))
+	var to_tile = tilemap_layer.local_to_map(home_node.position)
+	var tile_path = _astar_pathfind_for_game(from_tile, to_tile)
+	if tile_path.is_empty():
+		unit["movement_state"] = "idle_wander"
+		unit["movement_cycle_step"] = 0
+		unit["current_path"] = []
+		unit["path_index"] = 0
+		unit["work_timer"] = 0.0
+		return
+	var world_path = []
+	for tc in tile_path:
+		world_path.append(tilemap_layer.map_to_local(tc))
+	unit["current_path"] = world_path
+	unit["path_index"] = 0
+	unit["movement_state"] = "returning_home"
+	unit["movement_cycle_step"] = 0
+	unit["work_timer"] = 0.0
 
 func _start_idle_wander(unit: Dictionary):
 	"""Pick a random walkable tile near the anchor (barracks if stationed, else town centre) and A* pathfind there"""

@@ -233,11 +233,12 @@ func _draw_unit_paths():
 	
 	var unit_pos = current_unit.get("position", Vector2.ZERO)
 	
-	# Draw current movement path (if unit is moving)
+	# Draw current movement path only during work cycle (cycle_step > 0).
+	# Idle wander movement (step == 0) is ephemeral noise — skip it.
 	var movement_state = current_unit.get("movement_state", "idle")
 	var current_path = current_unit.get("current_path", [])
-	if movement_state == "moving" and not current_path.is_empty():
-		# Draw current path in red (active movement)
+	var cycle_step = current_unit.get("movement_cycle_step", 0)
+	if movement_state == "moving" and not current_path.is_empty() and cycle_step > 0:
 		_draw_path_on_tilemap(current_path, Color.RED, tilemap_ref)
 	
 	# Draw path to job (work)
