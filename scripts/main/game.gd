@@ -53,6 +53,7 @@ var population_modal: Control
 var army_modal: Control
 var units_modal: Control
 var science_modal: Control
+var settings_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Building System
@@ -4312,6 +4313,7 @@ func _setup_info_modals():
 	var ArmyModalScript = preload("res://scripts/ui/army_modal.gd")
 	var UnitsModalScript = preload("res://scripts/ui/units_modal.gd")
 	var ScienceModalScript = preload("res://scripts/ui/science_modal.gd")
+	var SettingsModalScript = preload("res://scripts/ui/settings_modal.gd")
 	
 	# Calculate positions to prevent overlap
 	var base_pos = Vector2(10, 60)  # Base position under header
@@ -4324,6 +4326,7 @@ func _setup_info_modals():
 	army_modal = ArmyModalScript.new(self, base_pos + modal_offset * 4)
 	units_modal = UnitsModalScript.new(self, base_pos + modal_offset * 5)
 	science_modal = ScienceModalScript.new(self, base_pos + modal_offset * 6)
+	settings_modal = SettingsModalScript.new(self, base_pos + modal_offset * 7)
 	
 	# Add modals to UI layer
 	ui_layer.add_child(players_modal)
@@ -4333,6 +4336,7 @@ func _setup_info_modals():
 	ui_layer.add_child(army_modal)
 	ui_layer.add_child(units_modal)
 	ui_layer.add_child(science_modal)
+	ui_layer.add_child(settings_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -4342,6 +4346,7 @@ func _setup_info_modals():
 	army_modal.modal_closed.connect(_on_modal_closed)
 	units_modal.modal_closed.connect(_on_modal_closed)
 	science_modal.modal_closed.connect(_on_modal_closed)
+	settings_modal.modal_closed.connect(_on_modal_closed)
 	
 	print("Game: Info modals setup complete")
 
@@ -4563,9 +4568,8 @@ func _on_building_placement_cancelled():
 
 # Header button handlers
 func _on_header_settings_pressed():
-	# Delegate to existing UI manager settings functionality
-	if ui_manager and ui_manager.has_method("open_main_modal"):
-		ui_manager.open_main_modal()
+	if settings_modal:
+		settings_modal.toggle()
 
 func _on_header_players_pressed():
 	if players_modal:
