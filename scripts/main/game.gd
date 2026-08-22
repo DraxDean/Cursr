@@ -349,7 +349,7 @@ func _get_living_capacity(building_type: String) -> int:
 		"house":
 			return 7
 		"town_center":
-			return 20
+			return 12
 		"farmhouse":
 			return 2
 		"barracks":
@@ -2382,6 +2382,8 @@ func add_event_units(player_id: int, count: int):
 		# Build sprite directly (bypass _create_unit_sprite_and_start_cycle which forces idle state)
 		_spawn_event_unit_sprite(unit_data)
 		print("Game: Event added unit %s (%s) for player %d" % [uid, unit_data["name"], player_id])
+	# Try to house the new arrivals in any spare capacity
+	_auto_assign_all_units_to_housing()
 	# Update population current count to reflect actual unit list size
 	var pop = players_data[player_id].get("population", {})
 	pop["current"] = players_data[player_id]["units"].size()
@@ -3094,6 +3096,65 @@ func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 	
 	print("DEBUG: No housing available for unit ", unit_data["unique_id"])
 
+func _auto_assign_all_units_to_housing():
+	"""Assign all unhoused units to available living-capacity buildings.
+	Priority: town_center → house → farmhouse.
+	Called once after _create_initial_units on new game."""
+	if not map_objects_holder:
+		return
+
+	# Priority order for living buildings
+	var priority: Array = ["town_center", "house", "farmhouse"]
+
+	for player_id in players_data.keys():
+		if str(player_id) == "environment":
+			continue
+		var player_units: Array = players_data[player_id].get("units", [])
+
+		# Build a list of buildings with spare living capacity, in priority order
+		var housing_slots: Array = []  # [{node, remaining}]
+		for ptype in priority:
+			for child in map_objects_holder.get_children():
+				if not _is_building_node(child):
+					continue
+				if child.get_meta("owner_player", 1) != player_id:
+					continue
+				if child.get_meta("building_type", "") != ptype:
+					continue
+				var cap: int = _get_living_capacity(ptype)
+				var occ: int = child.get_meta("living_occupancy", 0)
+				var remaining: int = cap - occ
+				if remaining > 0:
+					housing_slots.append({"node": child, "remaining": remaining})
+
+		# Assign each unhoused unit to the next available slot
+		var slot_idx: int = 0
+		for unit in player_units:
+			if unit.get("living_quarters") != null:
+				continue  # Already housed
+			if slot_idx >= housing_slots.size():
+				break  # No more housing
+
+			var slot = housing_slots[slot_idx]
+			var building_node: Node2D = slot["node"]
+			unit["living_quarters"] = building_node.name
+			# Scatter position near the building
+			var angle: float = randf() * TAU
+			var dist: float = randf_range(20.0, 50.0)
+			unit["position"] = building_node.position + Vector2(cos(angle), sin(angle)) * dist
+			# Increment building occupancy
+			var new_occ: int = building_node.get_meta("living_occupancy", 0) + 1
+			building_node.set_meta("living_occupancy", new_occ)
+			slot["remaining"] -= 1
+			if slot["remaining"] <= 0:
+				slot_idx += 1
+
+			print("Game: Auto-housed %s in %s" % [unit["unique_id"], building_node.name])
+
+		# Refresh population data now occupancy is accurate
+		update_player_population(player_id)
+		print("Game: Auto-housing complete for player %d — %d units housed" % [player_id, player_units.filter(func(u): return u.get("living_quarters") != null).size()])
+
 func _get_unit_spawn_position_near_building(building_node: Node2D) -> Vector2:
 	"""Get a spawn position near a building"""
 	# Spawn slightly offset from the building to avoid overlap
@@ -3213,7 +3274,7 @@ func _get_building_max_capacity(building_type: String, capacity_type: String) ->
 	var capacity_limits = {
 		"house": {"living": 7, "worker": 0},
 		"farmhouse": {"living": 2, "worker": 6},
-		"town_center": {"living": 20, "worker": 0},
+		"town_center": {"living": 12, "worker": 0},
 		"barracks": {"living": 0, "worker": 8},
 		"fishing_hut": {"living": 0, "worker": 5},
 		"stoneworker": {"living": 0, "worker": 10},
@@ -4028,6 +4089,10 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	
 	# Create initial units for new game from world creation
 	_create_initial_units()
+
+	# Auto-assign new units to available housing (town centre first)
+	if GameManager.start_mode == "new" or GameManager.start_mode == "new_with_data":
+		_auto_assign_all_units_to_housing()
 	
 	# Update population data after units are created
 	for player_id in players_data.keys():
@@ -4497,6 +4562,7 @@ func _setup_game_footer():
 	game_footer.pause_pressed.connect(_on_pause_pressed)
 	game_footer.speedup_pressed.connect(_on_speedup_pressed)
 	game_footer.end_day_pressed.connect(_on_end_day_pressed)
+	game_footer.end_day_blocked_pressed.connect(_on_end_day_blocked_pressed)
 	
 	# Set initial day label
 	if game_footer:
@@ -4573,6 +4639,16 @@ func _setup_info_modals():
 
 func _on_modal_closed(modal_type: String):
 	print("Game: Modal closed: ", modal_type)
+
+func _on_end_day_blocked_pressed():
+	"""Show a small popup reminding the player to resolve the pending event."""
+	var dialog = AcceptDialog.new()
+	dialog.title = "Event Pending"
+	dialog.dialog_text = "You must resolve the pending event before ending the day."
+	dialog.confirmed.connect(func(): dialog.queue_free())
+	dialog.canceled.connect(func(): dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered()
 
 func _on_end_day_pressed():
 	print("Game: End day pressed")
@@ -4668,6 +4744,9 @@ func _fire_random_world_event():
 			card_color,
 			{"action": "open_event", "event_data": event_data}
 		)
+	# Block End Day until the player resolves the event
+	if is_instance_valid(game_footer):
+		game_footer.set_end_day_blocked(true)
 
 func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 	"""Begin training for a unit. Returns false if prerequisites aren't met."""
@@ -4861,8 +4940,8 @@ func _on_building_placement_cancelled():
 
 # Header button handlers
 func _on_header_settings_pressed():
-	if settings_modal:
-		settings_modal.toggle()
+	if is_instance_valid(ui_manager):
+		ui_manager.handle_escape()
 
 func _on_header_players_pressed():
 	if players_modal:

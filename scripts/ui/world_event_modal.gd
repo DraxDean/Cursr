@@ -4,6 +4,7 @@ extends "res://scripts/ui/info_modal.gd"
 
 var _game: Node
 var _event_data: Dictionary = {}
+var _choice_made: bool = false
 
 func _init(game_reference: Node):
 	_game = game_reference
@@ -19,7 +20,7 @@ func _ready() -> void:
 
 func show_event(event_data: Dictionary):
 	_event_data = event_data
-	# Update modal title to show tier + event name
+	_choice_made = false
 	if title_label:
 		var HumanEvents = preload("res://data/events/events_human.gd")
 		var tier: String = event_data.get("tier", "C")
@@ -56,7 +57,7 @@ func refresh_content():
 
 	add_content_child(HSeparator.new())
 
-	# Effect summary (base effects shown above choices)
+	# Effect summary
 	var base_effects = _event_data.get("effects", {})
 	var base_res = base_effects.get("resources", {})
 	var base_pop = base_effects.get("pop_max", 0)
@@ -83,37 +84,51 @@ func refresh_content():
 
 	add_content_child(HSeparator.new())
 
-	# Choice buttons
-	var choices: Array = _event_data.get("choices", [])
-	if choices.is_empty():
-		choices = [{"label": "Acknowledge", "effects": null}]
-
-	for choice in choices:
-		var btn = Button.new()
-		btn.text = choice.get("label", "OK")
-		btn.custom_minimum_size = Vector2(0, 34)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.pressed.connect(_on_choice_pressed.bind(choice))
-		add_content_child(btn)
+	if _choice_made:
+		# Show resolved state — no buttons, just a confirmation line
+		var done_lbl = Label.new()
+		done_lbl.text = "✔ Decision made. Close this window when ready."
+		done_lbl.add_theme_font_size_override("font_size", 12)
+		done_lbl.add_theme_color_override("font_color", Color(0.55, 0.90, 0.55))
+		done_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		add_content_child(done_lbl)
+	else:
+		# Choice buttons — only shown before a decision
+		var choices: Array = _event_data.get("choices", [])
+		if choices.is_empty():
+			choices = [{"label": "Acknowledge", "effects": null}]
+		for choice in choices:
+			var btn = Button.new()
+			btn.text = choice.get("label", "OK")
+			btn.custom_minimum_size = Vector2(0, 34)
+			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			btn.pressed.connect(_on_choice_pressed.bind(choice))
+			add_content_child(btn)
 
 func _on_choice_pressed(choice: Dictionary):
-	# If the choice has its own effects, use those exclusively (it's an alternative outcome).
-	# If effects is null, the player accepted the default — apply the event's base effects.
+	if _choice_made:
+		return  # Guard against double-fire
+
+	_choice_made = true
+
+	# Apply the chosen effects (exclusive: choice effects OR base effects)
 	var extra = choice.get("effects")
 	if extra != null and extra is Dictionary:
 		_apply_effects(extra)
 	else:
-		var base_effects = _event_data.get("effects", {})
-		_apply_effects(base_effects)
+		_apply_effects(_event_data.get("effects", {}))
 
-	# Refresh open modals after all effects are applied
+	# Refresh open modals
 	if is_instance_valid(_game):
 		if is_instance_valid(_game.resources_modal) and _game.resources_modal.is_open:
 			_game.resources_modal.refresh_content()
 		if is_instance_valid(_game.population_modal) and _game.population_modal.is_open:
 			_game.population_modal.refresh_content()
+		if is_instance_valid(_game.game_footer):
+			_game.game_footer.set_end_day_blocked(false)
 
-	close_modal()
+	# Replace choice buttons with resolved message
+	refresh_content()
 
 func _apply_effects(effects: Dictionary):
 	if effects.is_empty():
@@ -121,20 +136,18 @@ func _apply_effects(effects: Dictionary):
 	if not is_instance_valid(_game):
 		return
 
-	var player_id = 1  # Always affects player 1 for now
+	var player_id = 1
 	if not _game.players_data.has(player_id):
 		return
 
 	var player = _game.players_data[player_id]
 
-	# Resources
 	var res_delta = effects.get("resources", {})
 	var resources = player.get("resources", {})
 	for key in res_delta.keys():
 		resources[key] = max(0, resources.get(key, 0) + res_delta[key])
 	player["resources"] = resources
 
-	# Population cap
 	var pop_delta: int = effects.get("pop_max", 0)
 	if pop_delta != 0:
 		var pop = player.get("population", {})
@@ -143,12 +156,11 @@ func _apply_effects(effects: Dictionary):
 
 	_game.players_data[player_id] = player
 
-	# Population kill — remove actual unit nodes so they disappear from map + units list
 	var pop_kill: int = effects.get("pop_kill", 0)
 	if pop_kill > 0:
 		_game.remove_event_units(player_id, pop_kill)
 
-	# Population gain — spawn real units with sprites, trackable in population panel
 	var pop_gain: int = effects.get("pop_gain", 0)
 	if pop_gain > 0:
 		_game.add_event_units(player_id, pop_gain)
+

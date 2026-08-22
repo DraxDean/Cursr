@@ -15,6 +15,9 @@ signal slow_pressed
 signal pause_pressed
 signal speedup_pressed
 signal end_day_pressed
+signal end_day_blocked_pressed  # Fired when End Day is clicked while an event is pending
+
+var _end_day_blocked: bool = false
 
 func _init():
 	name = "GameFooter"
@@ -143,7 +146,20 @@ func _on_speedup_pressed():
 	speedup_pressed.emit()
 
 func _on_end_day_pressed():
+	if _end_day_blocked:
+		end_day_blocked_pressed.emit()
+		return
 	end_day_pressed.emit()
+
+func set_end_day_blocked(blocked: bool):
+	_end_day_blocked = blocked
+	if end_day_button:
+		if blocked:
+			end_day_button.modulate = Color(0.45, 0.45, 0.45, 1.0)
+			end_day_button.tooltip_text = "Resolve the pending event first."
+		else:
+			end_day_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
+			end_day_button.tooltip_text = ""
 
 func set_day_text(day: int):
 	if day_label:
