@@ -55,6 +55,9 @@ var units_modal: Control
 var science_modal: Control
 var settings_modal: Control
 var game_over_modal: Control
+var turn_events_modal: Control
+var turn_event_manager: Node
+var notification_panel: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Building System
@@ -155,6 +158,9 @@ var players_data: Dictionary = {
 # World Creation System
 var world_creator: Node
 var is_in_world_creation: bool = false
+
+# Wave Spawner
+var wave_spawner: Node
 
 
 # --- Preload ---
@@ -1740,6 +1746,11 @@ func _trigger_game_over():
 	if is_instance_valid(game_over_modal):
 		game_over_modal.show_game_over()
 
+func _get_wave_state_for_save() -> Dictionary:
+	if is_instance_valid(wave_spawner):
+		return {"wave_number": wave_spawner.wave_number, "next_wave_day": wave_spawner.next_wave_day}
+	return {"wave_number": 0, "next_wave_day": 28}
+
 func _unhandled_input(event: InputEvent):
 	# Handle debug console toggle
 	if event.is_action_pressed("debug_console"):
@@ -1860,6 +1871,21 @@ func _ready():
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
 	if not is_instance_valid(day_label): push_error("Game: Day counter label node not found!")
 	turn_manager.setup(day_label)
+
+	print("Game: Setting up WaveSpawner...")
+	var WaveSpawnerScript = preload("res://scripts/managers/wave_spawner.gd")
+	wave_spawner = WaveSpawnerScript.new()
+	wave_spawner.name = "WaveSpawner"
+	add_child(wave_spawner)
+	wave_spawner.setup(self)
+	# Connect wave signal so we can fire a turn event when a wave spawns
+	wave_spawner.wave_spawned.connect(_on_wave_spawned)
+
+	print("Game: Setting up TurnEventManager...")
+	var TurnEventManagerScript = preload("res://scripts/managers/turn_event_manager.gd")
+	turn_event_manager = TurnEventManagerScript.new()
+	turn_event_manager.name = "TurnEventManager"
+	add_child(turn_event_manager)
 	
 	# Load preview textures for building placement
 	# Create simple colored rectangles for overlays since we don't have overlay assets
@@ -1919,6 +1945,11 @@ func _ready():
 
 	# --- Setup Game Header ---
 	_setup_game_header()
+
+	# Hide the legacy TurnControlsContainer from the scene — the GameFooter replaces it.
+	var turn_controls = get_node_or_null("UI_Layer/TurnControlsContainer")
+	if turn_controls:
+		turn_controls.hide()
 
 	# --- Load Name System ---
 	_load_race_names()
@@ -1996,6 +2027,11 @@ func initialize_map():
 					# Don't create new units - they should already exist in the save file with assignments
 					# Sprite restoration will happen after buildings are restored
 					print("Game: Restored player data for ", players_data.size(), " players")
+				# Restore wave spawner state
+				if loaded_state.has("wave_state") and is_instance_valid(wave_spawner):
+					wave_spawner.wave_number = loaded_state["wave_state"].get("wave_number", 0)
+					wave_spawner.next_wave_day = loaded_state["wave_state"].get("next_wave_day", wave_spawner.WAVE_INTERVAL)
+					print("Game: Restored wave state — wave %d, next wave day %d" % [wave_spawner.wave_number, wave_spawner.next_wave_day])
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
 	if success:
@@ -4372,6 +4408,17 @@ func _setup_info_modals():
 	var GameOverModalScript = preload("res://scripts/ui/game_over_modal.gd")
 	game_over_modal = GameOverModalScript.new(self)
 	ui_layer.add_child(game_over_modal)
+
+	# Turn events modal — sits just above the footer
+	var TurnEventsModalScript = preload("res://scripts/ui/turn_events_modal.gd")
+	turn_events_modal = TurnEventsModalScript.new(turn_event_manager)
+	ui_layer.add_child(turn_events_modal)
+
+	# Notification panel — right-side vertical card stack above the footer
+	var NotificationPanelScript = preload("res://scripts/ui/notification_panel.gd")
+	notification_panel = NotificationPanelScript.new()
+	ui_layer.add_child(notification_panel)
+	notification_panel.notification_clicked.connect(_on_notification_clicked)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -4392,6 +4439,10 @@ func _on_end_day_pressed():
 	print("Game: End day pressed")
 	# Call turn manager to end the turn
 	if is_instance_valid(turn_manager):
+		# Clear stale events from the previous turn before processing this one
+		if is_instance_valid(turn_event_manager):
+			turn_event_manager.clear()
+
 		turn_manager.end_turn()
 		# Update the footer day label with new day
 		if game_footer:
@@ -4410,6 +4461,25 @@ func _on_end_day_pressed():
 		if building_details_modal and is_instance_valid(building_details_modal):
 			if building_details_modal.building_node and is_instance_valid(building_details_modal.building_node):
 				building_details_modal.setup_building_details(building_details_modal.building_node)
+		
+		# Tick wave spawner — may trigger a new enemy wave
+		if is_instance_valid(wave_spawner):
+			wave_spawner.on_day_end(turn_manager.get_day())
+
+func _on_notification_clicked(_event_data: Dictionary):
+	"""Open turn events modal when a notification card is clicked."""
+	if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
+		turn_events_modal.toggle()
+
+func _on_wave_spawned(wave_num: int, enemy_player_id: int, _tile: Vector2i):
+	"""Push a notification card and queue a turn event when a wave spawns."""
+	var title = "Marauders %d Discovered!" % wave_num
+	var body  = "An enemy camp has been spotted. Prepare for attack!"
+	if is_instance_valid(turn_event_manager):
+		turn_event_manager.push_event(title, body, "⚔")
+	if is_instance_valid(notification_panel):
+		notification_panel.push(title, body, "⚔", Color(0.85, 0.20, 0.10))
+	print("Game: Wave %d spawned as player %d" % [wave_num, enemy_player_id])
 
 func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 	"""Begin training for a unit. Returns false if prerequisites aren't met."""
@@ -4740,7 +4810,8 @@ func _execute_save() -> bool:
 		"buildings_data": buildings_data,
 		"environment_objects_data": environment_objects_data,
 		"players_data": players_data,
-		"current_day": turn_manager.get_day(), 
+		"current_day": turn_manager.get_day(),
+		"wave_state": _get_wave_state_for_save(),
 		"current_save_path": current_save_path 
 	}
 	var saved_path = SaveLoadManager.save_game(game_state, current_save_path)

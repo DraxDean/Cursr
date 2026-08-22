@@ -22,6 +22,10 @@ func _init():
 func _ready():
 	_setup_footer()
 
+func _notification(what: int):
+	if what == NOTIFICATION_RESIZED:
+		pass  # reserved for future layout updates
+
 func _setup_footer():
 	# Set footer size and position (full width, bottom of screen)
 	if get_viewport():

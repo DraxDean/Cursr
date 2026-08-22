@@ -207,6 +207,12 @@ func _process_command(command: String):
 			add_debug_message("Load command not yet implemented")
 		"ff", "surrender", "forfeit":
 			_cmd_forfeit()
+		"wave":
+			_cmd_spawn_wave()
+		"events":
+			_cmd_list_events()
+		"fake notification", "fake":
+			_cmd_fake_notification()
 		_:
 			add_debug_message("Unknown command: " + cmd + ". Type 'help' for commands.")
 
@@ -227,6 +233,9 @@ func _show_help():
 	add_debug_message("save - Execute save game")
 	add_debug_message("load - Load saved game")
 	add_debug_message("ff / surrender / forfeit - Immediately forfeit and return to main menu")
+	add_debug_message("wave - Force-spawn the next enemy wave immediately")
+	add_debug_message("events - List all pending turn events")
+	add_debug_message("fake notification - Push a test notification card")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -548,6 +557,46 @@ func _cmd_forfeit():
 	else:
 		# Fallback: go straight to main menu
 		get_tree().change_scene_to_file("res://scenes/main/main_menu_scene.tscn")
+
+func _cmd_spawn_wave():
+	"""Force-spawn the next enemy wave immediately."""
+	var game = get_parent().get_parent()
+	if is_instance_valid(game) and is_instance_valid(game.wave_spawner):
+		var ws = game.wave_spawner
+		ws.wave_number += 1
+		ws.next_wave_day = game.turn_manager.get_day() + ws.WAVE_INTERVAL
+		ws._spawn_wave(ws.wave_number)
+		add_debug_message("⚔ Wave %d spawned!" % ws.wave_number)
+	else:
+		add_debug_message("ERROR: wave_spawner not found on game node.")
+
+func _cmd_list_events():
+	"""List all pending turn events."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game) or not is_instance_valid(game.turn_event_manager):
+		add_debug_message("ERROR: turn_event_manager not found.")
+		return
+	var events = game.turn_event_manager.get_events()
+	if events.is_empty():
+		add_debug_message("No pending turn events.")
+		return
+	add_debug_message("\n=== PENDING TURN EVENTS (%d) ===" % events.size())
+	for ev in events:
+		add_debug_message("  %s %s — %s" % [ev.get("icon", "⚠"), ev.get("title", "?"), ev.get("body", "")])
+	add_debug_message("================================\n")
+
+func _cmd_fake_notification():
+	"""Push a fake test notification to the notification panel."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game) or not is_instance_valid(game.notification_panel):
+		add_debug_message("ERROR: notification_panel not found.")
+		return
+	var titles = ["Market Opens", "Crop Harvest Ready", "Scout Report", "Strange Rumour", "Festival Tonight"]
+	var bodies  = ["Traders have arrived at the gate.", "Fields are ready for collection.", "Unusual activity spotted to the north.", "Villagers are whispering about shadows.", "The people are in good spirits."]
+	var rng = RandomNumberGenerator.new(); rng.randomize()
+	var i = rng.randi_range(0, titles.size() - 1)
+	game.notification_panel.push(titles[i], bodies[i], "📜", Color(0.3, 0.6, 0.9))
+	add_debug_message("📜 Fake notification pushed: %s" % titles[i])
 
 func _input(event: InputEvent):
 	if is_open:
