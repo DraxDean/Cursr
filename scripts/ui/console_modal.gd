@@ -205,6 +205,8 @@ func _process_command(command: String):
 				add_debug_message("Save executed!")
 		"load":
 			add_debug_message("Load command not yet implemented")
+		"ff", "surrender", "forfeit":
+			_cmd_forfeit()
 		_:
 			add_debug_message("Unknown command: " + cmd + ". Type 'help' for commands.")
 
@@ -224,6 +226,7 @@ func _show_help():
 	add_debug_message("duplicates - Check for duplicate unit IDs and fix them")
 	add_debug_message("save - Execute save game")
 	add_debug_message("load - Load saved game")
+	add_debug_message("ff / surrender / forfeit - Immediately forfeit and return to main menu")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -534,6 +537,17 @@ func _check_for_duplicates():
 		add_debug_message("Found %d duplicate unit IDs - consider saving to trigger automatic fix" % duplicates.size())
 	
 	add_debug_message("=====================================\n")
+
+func _cmd_forfeit():
+	"""Forfeit the current game and show the game over screen."""
+	add_debug_message("⚑ Forfeit accepted. Returning to main menu...")
+	close_console()
+	var game = get_parent().get_parent()
+	if is_instance_valid(game) and game.has_method("_trigger_game_over"):
+		game._trigger_game_over()
+	else:
+		# Fallback: go straight to main menu
+		get_tree().change_scene_to_file("res://scenes/main/main_menu_scene.tscn")
 
 func _input(event: InputEvent):
 	if is_open:

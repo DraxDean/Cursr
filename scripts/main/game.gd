@@ -54,6 +54,7 @@ var army_modal: Control
 var units_modal: Control
 var science_modal: Control
 var settings_modal: Control
+var game_over_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Building System
@@ -1702,6 +1703,11 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 	# Remove building from game
 	building_node.queue_free()
 	
+	# Check for game over: did the player just lose their last town centre?
+	var building_type = _extract_building_type_from_name(building_name)
+	if building_type == "town_center":
+		_check_town_centre_game_over(owner_player, building_name)
+	
 	# TODO: Return some resources to player based on building type
 	# Could return 50% of building cost or similar
 	
@@ -1709,6 +1715,30 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 	
 	# Clear selection and close modal (modal should already be closed by demolish handler)
 	_clear_building_selection()
+
+func _check_town_centre_game_over(player_id: int, demolished_building_name: String = ""):
+	"""Trigger game over if the given player has no town_centre buildings remaining."""
+	if not map_objects_holder:
+		return
+	# Check if any town_center node belonging to this player still exists
+	# (skip the just-demolished node which may still be in the tree pending queue_free)
+	for child in map_objects_holder.get_children():
+		if child.name == demolished_building_name:
+			continue  # Skip the node being freed
+		if not _is_building_node(child):
+			continue
+		if child.get_meta("owner_player", 1) != player_id:
+			continue
+		if _extract_building_type_from_name(child.name) == "town_center":
+			return  # Still has at least one — no game over
+	# No town centres left — show game over
+	print("Game: Player ", player_id, " has no town centres remaining — GAME OVER")
+	_trigger_game_over()
+
+func _trigger_game_over():
+	"""Show the game over screen. Call this for any loss condition (town centre destroyed, forfeit, etc.)."""
+	if is_instance_valid(game_over_modal):
+		game_over_modal.show_game_over()
 
 func _unhandled_input(event: InputEvent):
 	# Handle debug console toggle
@@ -4337,6 +4367,11 @@ func _setup_info_modals():
 	ui_layer.add_child(units_modal)
 	ui_layer.add_child(science_modal)
 	ui_layer.add_child(settings_modal)
+
+	# Game over modal — full-screen overlay, added last so it renders on top
+	var GameOverModalScript = preload("res://scripts/ui/game_over_modal.gd")
+	game_over_modal = GameOverModalScript.new(self)
+	ui_layer.add_child(game_over_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
