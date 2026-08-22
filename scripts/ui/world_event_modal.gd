@@ -163,4 +163,3 @@ func _apply_effects(effects: Dictionary):
 	var pop_gain: int = effects.get("pop_gain", 0)
 	if pop_gain > 0:
 		_game.add_event_units(player_id, pop_gain)
-

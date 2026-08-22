@@ -54,6 +54,7 @@ var army_modal: Control
 var units_modal: Control
 var science_modal: Control
 var settings_modal: Control
+var encyclopedia_modal: Control
 var game_over_modal: Control
 var turn_events_modal: Control
 var turn_event_manager: Node
@@ -4232,6 +4233,7 @@ func _setup_game_header():
 	game_header.army_pressed.connect(_on_header_army_pressed)
 	game_header.units_pressed.connect(_on_header_units_pressed)
 	game_header.science_pressed.connect(_on_header_science_pressed)
+	game_header.encyclopedia_pressed.connect(_on_header_encyclopedia_pressed)
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
@@ -4580,6 +4582,7 @@ func _setup_info_modals():
 	var UnitsModalScript = preload("res://scripts/ui/units_modal.gd")
 	var ScienceModalScript = preload("res://scripts/ui/science_modal.gd")
 	var SettingsModalScript = preload("res://scripts/ui/settings_modal.gd")
+	var EncyclopediaModalScript = preload("res://scripts/ui/encyclopedia_modal.gd")
 	
 	# Calculate positions to prevent overlap
 	var base_pos = Vector2(10, 60)  # Base position under header
@@ -4593,6 +4596,7 @@ func _setup_info_modals():
 	units_modal = UnitsModalScript.new(self, base_pos + modal_offset * 5)
 	science_modal = ScienceModalScript.new(self, base_pos + modal_offset * 6)
 	settings_modal = SettingsModalScript.new(self, base_pos + modal_offset * 7)
+	encyclopedia_modal = EncyclopediaModalScript.new()
 	
 	# Add modals to UI layer
 	ui_layer.add_child(players_modal)
@@ -4603,6 +4607,7 @@ func _setup_info_modals():
 	ui_layer.add_child(units_modal)
 	ui_layer.add_child(science_modal)
 	ui_layer.add_child(settings_modal)
+	ui_layer.add_child(encyclopedia_modal)
 
 	# Game over modal — full-screen overlay, added last so it renders on top
 	var GameOverModalScript = preload("res://scripts/ui/game_over_modal.gd")
@@ -4970,6 +4975,10 @@ func _on_header_units_pressed():
 func _on_header_science_pressed():
 	if science_modal:
 		science_modal.toggle()
+
+func _on_header_encyclopedia_pressed():
+	if encyclopedia_modal:
+		encyclopedia_modal.toggle()
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")

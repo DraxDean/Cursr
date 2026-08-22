@@ -10,6 +10,7 @@ var population_button: Button
 var army_button: Button
 var science_button: Button
 var settings_button: Button
+var encyclopedia_button: Button
 
 # Signals for button presses
 signal players_pressed
@@ -20,6 +21,7 @@ signal population_pressed
 signal army_pressed
 signal science_pressed
 signal settings_pressed
+signal encyclopedia_pressed
 
 func _ready():
 	name = "GameHeader"
@@ -87,6 +89,14 @@ func _setup_header_ui():
 	settings_button.custom_minimum_size = Vector2(120, 40)
 	settings_button.pressed.connect(_on_settings_pressed)
 	right_container.add_child(settings_button)
+
+	encyclopedia_button = Button.new()
+	encyclopedia_button.name = "EncyclopediaButton"
+	encyclopedia_button.text = "?"
+	encyclopedia_button.custom_minimum_size = Vector2(40, 40)
+	encyclopedia_button.tooltip_text = "Encyclopedia — Browse game mechanics, buildings, jobs, and world objects."
+	encyclopedia_button.pressed.connect(_on_encyclopedia_pressed)
+	right_container.add_child(encyclopedia_button)
 	
 	# Add margin to right side
 	var right_margin = Control.new()
@@ -134,3 +144,6 @@ func _on_science_pressed():
 
 func _on_settings_pressed():
 	settings_pressed.emit()
+
+func _on_encyclopedia_pressed():
+	encyclopedia_pressed.emit()
