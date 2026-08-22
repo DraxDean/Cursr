@@ -211,7 +211,7 @@ func _process_command(command: String):
 			_cmd_spawn_wave()
 		"events":
 			_cmd_list_events()
-		"fake notification", "fake":
+		"fake notification", "fake", "random event":
 			_cmd_fake_notification()
 		_:
 			add_debug_message("Unknown command: " + cmd + ". Type 'help' for commands.")
@@ -586,17 +586,16 @@ func _cmd_list_events():
 	add_debug_message("================================\n")
 
 func _cmd_fake_notification():
-	"""Push a fake test notification to the notification panel."""
+	"""Push a fake world event notification (click it to open the event modal)."""
 	var game = get_parent().get_parent()
 	if not is_instance_valid(game) or not is_instance_valid(game.notification_panel):
 		add_debug_message("ERROR: notification_panel not found.")
 		return
-	var titles = ["Market Opens", "Crop Harvest Ready", "Scout Report", "Strange Rumour", "Festival Tonight"]
-	var bodies  = ["Traders have arrived at the gate.", "Fields are ready for collection.", "Unusual activity spotted to the north.", "Villagers are whispering about shadows.", "The people are in good spirits."]
-	var rng = RandomNumberGenerator.new(); rng.randomize()
-	var i = rng.randi_range(0, titles.size() - 1)
-	game.notification_panel.push(titles[i], bodies[i], "📜", Color(0.3, 0.6, 0.9))
-	add_debug_message("📜 Fake notification pushed: %s" % titles[i])
+	if not is_instance_valid(game) or not game.has_method("_fire_random_world_event"):
+		add_debug_message("ERROR: _fire_random_world_event not found.")
+		return
+	game._fire_random_world_event()
+	add_debug_message("📜 Random world event notification pushed.")
 
 func _input(event: InputEvent):
 	if is_open:

@@ -130,6 +130,16 @@ func center_camera():
 		camera_node.position = Vector2(map_pixel_width / 2.0, map_pixel_height / 2.0)
 		_clamp_camera()
 
+func pan_to(world_pos: Vector2, zoom_level: float = 2.0):
+	"""Instantly pan to a world position and optionally set zoom."""
+	if not is_instance_valid(camera_node):
+		return
+	camera_node.position = world_pos
+	if zoom_level > 0:
+		camera_node.zoom = Vector2(zoom_level, zoom_level)
+	_clamp_camera()
+	camera_moved.emit()
+
 
 func reset_drag_state():
 	is_left_dragging = false

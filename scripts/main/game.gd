@@ -58,6 +58,7 @@ var game_over_modal: Control
 var turn_events_modal: Control
 var turn_event_manager: Node
 var notification_panel: Control
+var world_event_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Building System
@@ -2335,6 +2336,139 @@ func _get_next_unit_id() -> String:
 	unit_counter += 1
 	return "unit_" + str(unit_counter)
 
+# ── Event-driven population helpers ─────────────────────────────────────────
+
+func add_event_units(player_id: int, count: int):
+	"""Spawn `count` new unassigned wandering units for a player (used by world events)."""
+	if not players_data.has(player_id):
+		return
+	if not players_data[player_id].has("units"):
+		players_data[player_id]["units"] = []
+	var player_race: String = players_data[player_id].get("race", "human")
+	var anchor: Vector2 = _get_player_town_centre_position(player_id)
+	for _i in range(count):
+		var uid: String = _get_next_unit_id()
+		var gender: String = ["male", "female"][randi() % 2]
+		var scatter_angle: float = randf() * TAU
+		var scatter_dist: float = randf_range(20.0, 60.0)
+		var spawn_pos: Vector2 = anchor + Vector2(cos(scatter_angle), sin(scatter_angle)) * scatter_dist
+		var unit_data: Dictionary = {
+			"unique_id": uid,
+			"name": _generate_random_name(player_race, gender),
+			"type": "peasant",
+			"race": player_race,
+			"gender": gender,
+			"player_id": player_id,
+			"position": spawn_pos,
+			"living_quarters": null,
+			"job": null,
+			"assigned_job_index": -1,
+			"previous_job": null,
+			"job_connections": [],
+			"current_path": [],
+			"path_index": 0,
+			"movement_state": "idle_wander",
+			"movement_target": null,
+			"movement_cycle_step": 0,
+			"work_timer": randf_range(0.0, 3.0),
+			"wander_wait_time": randf_range(1.0, 4.0),
+			"movement_speed": 25.0,
+			"speed_multiplier": randf_range(0.85, 1.15),
+			"sprite_id": uid,
+			"specialties": [],
+			"training": null
+		}
+		players_data[player_id]["units"].append(unit_data)
+		# Build sprite directly (bypass _create_unit_sprite_and_start_cycle which forces idle state)
+		_spawn_event_unit_sprite(unit_data)
+		print("Game: Event added unit %s (%s) for player %d" % [uid, unit_data["name"], player_id])
+	# Update population current count to reflect actual unit list size
+	var pop = players_data[player_id].get("population", {})
+	pop["current"] = players_data[player_id]["units"].size()
+	players_data[player_id]["population"] = pop
+
+func remove_event_units(player_id: int, count: int):
+	"""Remove `count` units from a player (prefer unassigned first), used by world events."""
+	if not players_data.has(player_id):
+		return
+	var player_units: Array = players_data[player_id].get("units", [])
+	if player_units.is_empty():
+		return
+	# Sort: remove unassigned units first, then assigned ones
+	var unassigned: Array = []
+	var assigned: Array = []
+	for u in player_units:
+		if u.get("living_quarters") == null or u.get("job") == null:
+			unassigned.append(u)
+		else:
+			assigned.append(u)
+	var removal_order: Array = unassigned + assigned
+	var removed: int = 0
+	for unit in removal_order:
+		if removed >= count:
+			break
+		# Remove sprite
+		var uid: String = unit.get("unique_id", "")
+		if uid != "" and is_instance_valid(map_objects_holder):
+			var sprite = map_objects_holder.get_node_or_null(uid)
+			if is_instance_valid(sprite):
+				sprite.queue_free()
+			var clickable = map_objects_holder.get_node_or_null(uid + "_clickable")
+			if is_instance_valid(clickable):
+				clickable.queue_free()
+		player_units.erase(unit)
+		removed += 1
+		print("Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id])
+	players_data[player_id]["units"] = player_units
+	# Recalculate current from actual array size
+	var pop = players_data[player_id].get("population", {})
+	pop["current"] = player_units.size()
+	players_data[player_id]["population"] = pop
+
+func _spawn_event_unit_sprite(unit: Dictionary):
+	"""Create a visible, wandering sprite for an event-spawned unassigned unit."""
+	if not is_instance_valid(map_objects_holder):
+		return
+	var uid: String = unit["unique_id"]
+	if map_objects_holder.get_node_or_null(uid):
+		return  # Already exists
+
+	var unit_sprite = Sprite2D.new()
+	unit_sprite.name = uid
+	unit_sprite.position = unit["position"]
+	unit_sprite.z_index = 6
+	unit_sprite.centered = true
+
+	var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
+	if ResourceLoader.exists(texture_path):
+		unit_sprite.texture = load(texture_path)
+	else:
+		var rect = ColorRect.new()
+		rect.size = Vector2(16, 16)
+		rect.color = Color.YELLOW
+		unit_sprite.add_child(rect)
+
+	unit_sprite.set_meta("unit_id", uid)
+	unit_sprite.set_meta("unit_data", unit)
+
+	var click_control = Control.new()
+	click_control.name = uid + "_clickable"
+	click_control.set_meta("unit_id", uid)
+	click_control.set_meta("unit_data", unit)
+	click_control.mouse_filter = Control.MOUSE_FILTER_PASS
+	click_control.size = Vector2(40, 40)
+	click_control.position = Vector2(-20, -20)
+	click_control.gui_input.connect(_on_unit_control_gui_input.bindv([unit]))
+	click_control.mouse_entered.connect(_on_unit_mouse_entered.bindv([unit]))
+	click_control.mouse_exited.connect(_on_unit_mouse_exited.bindv([unit]))
+	unit_sprite.add_child(click_control)
+
+	map_objects_holder.add_child(unit_sprite)
+	unit_sprite_map[uid] = unit_sprite
+	unit["sprite_id"] = uid
+	# Unit stays in idle_wander — movement process will pick it up automatically
+	print("Game: Event unit sprite spawned: %s at %s" % [uid, str(unit["position"])])
+
 func _update_unit_counter_from_existing_units():
 	"""Update the unit_counter based on all existing units in players_data.
 	Call this after loading a game to ensure new units get correct unique_ids."""
@@ -4419,6 +4553,11 @@ func _setup_info_modals():
 	notification_panel = NotificationPanelScript.new()
 	ui_layer.add_child(notification_panel)
 	notification_panel.notification_clicked.connect(_on_notification_clicked)
+
+	# World event modal — presents random events with choices
+	var WorldEventModalScript = preload("res://scripts/ui/world_event_modal.gd")
+	world_event_modal = WorldEventModalScript.new(self)
+	ui_layer.add_child(world_event_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -4466,20 +4605,69 @@ func _on_end_day_pressed():
 		if is_instance_valid(wave_spawner):
 			wave_spawner.on_day_end(turn_manager.get_day())
 
-func _on_notification_clicked(_event_data: Dictionary):
-	"""Open turn events modal when a notification card is clicked."""
-	if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
-		turn_events_modal.toggle()
+		# Fire a random world event each turn
+		_fire_random_world_event()
 
-func _on_wave_spawned(wave_num: int, enemy_player_id: int, _tile: Vector2i):
-	"""Push a notification card and queue a turn event when a wave spawns."""
-	var title = "Marauders %d Discovered!" % wave_num
-	var body  = "An enemy camp has been spotted. Prepare for attack!"
+func _on_notification_clicked(data: Dictionary):
+	var action = data.get("action", "")
+	match action:
+		"pan_to":
+			# Pan camera to the stored world position
+			var world_pos: Vector2 = data.get("world_pos", Vector2.ZERO)
+			if world_pos != Vector2.ZERO and is_instance_valid(camera_controller):
+				camera_controller.pan_to(world_pos, 2.5)
+		"open_event":
+			# Show the world event modal with the stored event data
+			var event_data: Dictionary = data.get("event_data", {})
+			if not event_data.is_empty() and is_instance_valid(world_event_modal):
+				world_event_modal.show_event(event_data)
+		_:
+			# Generic: open turn events modal
+			if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
+				turn_events_modal.toggle()
+
+func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
+	"""Push a red notification card that pans to the camp when clicked."""
+	var world_pos: Vector2 = tilemap_layer.map_to_local(tile)
+	var title = "Marauders %d Spotted!" % wave_num
+	var body  = "Click to locate the enemy camp."
 	if is_instance_valid(turn_event_manager):
 		turn_event_manager.push_event(title, body, "⚔")
 	if is_instance_valid(notification_panel):
-		notification_panel.push(title, body, "⚔", Color(0.85, 0.20, 0.10))
-	print("Game: Wave %d spawned as player %d" % [wave_num, enemy_player_id])
+		notification_panel.push(title, body, "⚔", Color(0.85, 0.18, 0.10),
+			{"action": "pan_to", "world_pos": world_pos})
+	print("Game: Wave %d spawned as player %d at %s" % [wave_num, enemy_player_id, str(tile)])
+
+func _fire_random_world_event():
+	"""Pick a weighted random human world event and show it as a notification + modal."""
+	var HumanEvents = preload("res://data/events/events_human.gd")
+	var rng = RandomNumberGenerator.new()
+	rng.randomize()
+	var event_data: Dictionary = HumanEvents.get_random_event_weighted(rng)
+	if event_data.is_empty():
+		return
+	var tier: String = event_data.get("tier", "C")
+	var tier_label: String = HumanEvents.get_tier_label(tier)
+	# Colour-code the card by tier significance
+	var card_color: Color
+	match tier:
+		"S+": card_color = Color(0.85, 0.20, 0.85)   # purple
+		"S":  card_color = Color(0.90, 0.20, 0.20)   # red
+		"A":  card_color = Color(0.90, 0.55, 0.10)   # orange
+		"B":  card_color = Color(0.85, 0.80, 0.10)   # gold
+		"C":  card_color = Color(0.30, 0.60, 0.90)   # blue
+		"D":  card_color = Color(0.40, 0.75, 0.40)   # green
+		_:    card_color = Color(0.55, 0.55, 0.55)   # grey  (F)
+	if is_instance_valid(turn_event_manager):
+		turn_event_manager.push_event(event_data["title"], event_data["body"], event_data.get("icon", "📜"))
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			"%s — %s" % [tier_label, event_data["title"]],
+			"Click to respond.",
+			event_data.get("icon", "📜"),
+			card_color,
+			{"action": "open_event", "event_data": event_data}
+		)
 
 func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 	"""Begin training for a unit. Returns false if prerequisites aren't met."""
