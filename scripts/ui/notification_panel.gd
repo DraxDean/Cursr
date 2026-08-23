@@ -133,11 +133,36 @@ func _build_card(data: Dictionary) -> Control:
 	dismiss.custom_minimum_size = Vector2(26, CARD_H)
 	dismiss.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	dismiss.add_theme_font_size_override("font_size", 11)
-	dismiss.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 	dismiss.pressed.connect(_dismiss_card.bind(card))
 	hbox.add_child(dismiss)
 
+	# Event cards must be resolved before they can be dismissed
+	var is_event_card: bool = data.get("action", "") == "open_event"
+	if is_event_card:
+		dismiss.disabled = true
+		dismiss.add_theme_color_override("font_color", Color(0.30, 0.30, 0.30))
+		dismiss.tooltip_text = "Resolve this event first."
+		# Tag for later lookup
+		var event_id: String = data.get("event_data", {}).get("id", "")
+		if event_id != "":
+			card.set_meta("event_id", event_id)
+			card.set_meta("dismiss_button", dismiss)
+	else:
+		dismiss.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
+
 	return card
+
+func mark_event_resolved(event_id: String):
+	"""Re-enable the dismiss button on the card matching event_id."""
+	for entry in _cards:
+		var panel = entry["panel"]
+		if is_instance_valid(panel) and panel.get_meta("event_id", "") == event_id:
+			var dismiss = panel.get_meta("dismiss_button", null)
+			if is_instance_valid(dismiss):
+				dismiss.disabled = false
+				dismiss.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
+				dismiss.tooltip_text = ""
+			break
 
 func _restack():
 	var y: float = -CARD_H

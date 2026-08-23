@@ -55,6 +55,9 @@ var units_modal: Control
 var science_modal: Control
 var settings_modal: Control
 var encyclopedia_modal: Control
+var log_modal: Control
+var day_transition: Control
+var game_log: Node  # GameLog manager
 var game_over_modal: Control
 var turn_events_modal: Control
 var turn_event_manager: Node
@@ -290,6 +293,10 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			print("Game: Added building ", building_name, " to player ", owner_player, " buildings list")
 		
 		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
+		if is_instance_valid(game_log):
+			var GL = preload("res://scripts/managers/game_log.gd")
+			var day: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
+			game_log.add(day, GL.Category.BUILDING, "Built %s at tile %s." % [building_type.capitalize().replace("_", " "), str(tile_coords)])
 		
 		# Calculate and cache connections for the new building (one-time, with bidirectional paths)
 		_calculate_and_cache_building_connections(building_scene)
@@ -613,6 +620,11 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 	calculate_resource_rates(player_id)
 	
 	print("Researched %s to level %d (cost %d science)" % [tech_id, current_level + 1, cost])
+	if is_instance_valid(game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
+			GL.Category.RESEARCH,
+			"Researched %s to level %d (cost %d science)." % [tech_id.capitalize().replace("_", " "), current_level + 1, cost])
 	return true
 
 func get_resource_rates(player_id: int) -> Dictionary:
@@ -1888,6 +1900,12 @@ func _ready():
 	turn_event_manager = TurnEventManagerScript.new()
 	turn_event_manager.name = "TurnEventManager"
 	add_child(turn_event_manager)
+
+	print("Game: Setting up GameLog...")
+	var GameLogScript = preload("res://scripts/managers/game_log.gd")
+	game_log = GameLogScript.new()
+	game_log.name = "GameLog"
+	add_child(game_log)
 	
 	# Load preview textures for building placement
 	# Create simple colored rectangles for overlays since we don't have overlay assets
@@ -4234,6 +4252,7 @@ func _setup_game_header():
 	game_header.units_pressed.connect(_on_header_units_pressed)
 	game_header.science_pressed.connect(_on_header_science_pressed)
 	game_header.encyclopedia_pressed.connect(_on_header_encyclopedia_pressed)
+	game_header.log_pressed.connect(_on_header_log_pressed)
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
@@ -4597,6 +4616,8 @@ func _setup_info_modals():
 	science_modal = ScienceModalScript.new(self, base_pos + modal_offset * 6)
 	settings_modal = SettingsModalScript.new(self, base_pos + modal_offset * 7)
 	encyclopedia_modal = EncyclopediaModalScript.new()
+	var LogModalScript = preload("res://scripts/ui/log_modal.gd")
+	log_modal = LogModalScript.new(game_log, self)
 	
 	# Add modals to UI layer
 	ui_layer.add_child(players_modal)
@@ -4608,6 +4629,12 @@ func _setup_info_modals():
 	ui_layer.add_child(science_modal)
 	ui_layer.add_child(settings_modal)
 	ui_layer.add_child(encyclopedia_modal)
+	ui_layer.add_child(log_modal)
+
+	# Day transition overlay — added last so it renders above everything
+	var DayTransitionScript = preload("res://scripts/ui/day_transition.gd")
+	day_transition = DayTransitionScript.new()
+	ui_layer.add_child(day_transition)
 
 	# Game over modal — full-screen overlay, added last so it renders on top
 	var GameOverModalScript = preload("res://scripts/ui/game_over_modal.gd")
@@ -4657,16 +4684,48 @@ func _on_end_day_blocked_pressed():
 
 func _on_end_day_pressed():
 	print("Game: End day pressed")
+	# Play the day wipe transition
+	if is_instance_valid(day_transition):
+		day_transition.play()
 	# Call turn manager to end the turn
 	if is_instance_valid(turn_manager):
 		# Clear stale events from the previous turn before processing this one
 		if is_instance_valid(turn_event_manager):
 			turn_event_manager.clear()
 
+		var day_before: int = turn_manager.get_day()
 		turn_manager.end_turn()
 		# Update the footer day label with new day
 		if game_footer:
 			game_footer.set_day_text(turn_manager.get_day())
+		
+		# Log resource income for the day that just ended
+		if is_instance_valid(game_log):
+			var rates = get_resource_rates(1)
+			var GL = preload("res://scripts/managers/game_log.gd")
+			var ICONS = {
+				"gold":    "[color=#C8A400]●[/color]",
+				"food":    "🍞",
+				"wood":    "🌲",
+				"stone":   "[color=#8C8C8C]■[/color]",
+				"science": "🔬"
+			}
+			var parts: Array = []
+			for key in ["gold", "food", "wood", "stone", "science"]:
+				var val: int = int(rates.get(key, 0))
+				if val != 0:
+					var sign := "+" if val > 0 else ""
+					parts.append("%s%s%d" % [ICONS.get(key, key), sign, val])
+			var totals: Array = []
+			var res = players_data.get(1, {}).get("resources", {})
+			for key in ["gold", "food", "wood", "stone", "science"]:
+				totals.append("%s%d" % [ICONS.get(key, key), int(res.get(key, 0))])
+			var msg := ""
+			if parts.is_empty():
+				msg = "📈 No income this turn.   Totals: " + "  ".join(totals)
+			else:
+				msg = "📈 Income: " + "  ".join(parts) + "   |   Totals: " + "  ".join(totals)
+			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true})
 		
 		# Process training progress for all units
 		_process_training_progress()
@@ -4718,6 +4777,11 @@ func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
 		notification_panel.push(title, body, "⚔", Color(0.85, 0.18, 0.10),
 			{"action": "pan_to", "world_pos": world_pos})
 	print("Game: Wave %d spawned as player %d at %s" % [wave_num, enemy_player_id, str(tile)])
+	if is_instance_valid(game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
+			GL.Category.COMBAT,
+			"⚔ Marauders wave %d spotted at tile %s. Prepare for attack!" % [wave_num, str(tile)])
 
 func _fire_random_world_event():
 	"""Pick a weighted random human world event and show it as a notification + modal."""
@@ -4752,6 +4816,7 @@ func _fire_random_world_event():
 	# Block End Day until the player resolves the event
 	if is_instance_valid(game_footer):
 		game_footer.set_end_day_blocked(true)
+	# End-day blocked until event resolved — no log entry yet (logged on resolve with choice)
 
 func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 	"""Begin training for a unit. Returns false if prerequisites aren't met."""
@@ -4800,6 +4865,10 @@ func _process_training_progress():
 				_update_unit_type_from_specialties(unit)
 				print("Game: %s completed %s training! Specialties: %s, Type: %s" % [
 					unit.get("name", "?"), t_type, str(unit.get("specialties", [])), unit.get("type", "?")])
+				if is_instance_valid(game_log):
+					var GL = preload("res://scripts/managers/game_log.gd")
+					game_log.add(turn_manager.get_day(), GL.Category.TRAINING,
+						"%s completed %s training." % [unit.get("name", "?"), t_type.capitalize()])
 
 func _update_unit_type_from_specialties(unit: Dictionary):
 	"""Set unit type based on their specialties (last specialty wins, peasant if none)."""
@@ -4979,6 +5048,12 @@ func _on_header_science_pressed():
 func _on_header_encyclopedia_pressed():
 	if encyclopedia_modal:
 		encyclopedia_modal.toggle()
+
+func _on_header_log_pressed():
+	if log_modal:
+		if not log_modal.is_open:
+			log_modal.refresh_content()
+		log_modal.toggle()
 
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")

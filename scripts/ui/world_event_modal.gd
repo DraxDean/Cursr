@@ -5,6 +5,7 @@ extends "res://scripts/ui/info_modal.gd"
 var _game: Node
 var _event_data: Dictionary = {}
 var _choice_made: bool = false
+var _resolved_event_ids: Dictionary = {}
 
 func _init(game_reference: Node):
 	_game = game_reference
@@ -19,8 +20,14 @@ func _ready() -> void:
 		position = Vector2((vp.x - size.x) / 2.0, (vp.y - size.y) / 2.0)
 
 func show_event(event_data: Dictionary):
-	_event_data = event_data
-	_choice_made = false
+	var event_id: String = event_data.get("id", "")
+	# If this specific event was already resolved, restore that state without resetting
+	if event_id != "" and _resolved_event_ids.has(event_id):
+		_event_data = event_data
+		_choice_made = true
+	else:
+		_event_data = event_data
+		_choice_made = false
 	if title_label:
 		var HumanEvents = preload("res://data/events/events_human.gd")
 		var tier: String = event_data.get("tier", "C")
@@ -110,6 +117,10 @@ func _on_choice_pressed(choice: Dictionary):
 		return  # Guard against double-fire
 
 	_choice_made = true
+	# Persist resolution so re-opening the same notification card never resets state
+	var event_id: String = _event_data.get("id", "")
+	if event_id != "":
+		_resolved_event_ids[event_id] = true
 
 	# Apply the chosen effects (exclusive: choice effects OR base effects)
 	var extra = choice.get("effects")
@@ -117,6 +128,19 @@ func _on_choice_pressed(choice: Dictionary):
 		_apply_effects(extra)
 	else:
 		_apply_effects(_event_data.get("effects", {}))
+
+	# Log the decision
+	if is_instance_valid(_game) and is_instance_valid(_game.game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		var day: int = _game.turn_manager.get_day() if is_instance_valid(_game.turn_manager) else 0
+		_game.game_log.add(day, GL.Category.EVENT,
+			"%s %s — %s" % [
+				_event_data.get("icon", "📜"),
+				_event_data.get("title", "?"),
+				choice.get("label", "?")
+			],
+			{"event_data": _event_data}
+		)
 
 	# Refresh open modals
 	if is_instance_valid(_game):
@@ -126,6 +150,9 @@ func _on_choice_pressed(choice: Dictionary):
 			_game.population_modal.refresh_content()
 		if is_instance_valid(_game.game_footer):
 			_game.game_footer.set_end_day_blocked(false)
+		# Unlock the notification card's dismiss button
+		if event_id != "" and is_instance_valid(_game.notification_panel):
+			_game.notification_panel.mark_event_resolved(event_id)
 
 	# Replace choice buttons with resolved message
 	refresh_content()

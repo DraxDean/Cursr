@@ -11,6 +11,7 @@ var army_button: Button
 var science_button: Button
 var settings_button: Button
 var encyclopedia_button: Button
+var log_button: Button
 
 # Signals for button presses
 signal players_pressed
@@ -22,6 +23,7 @@ signal army_pressed
 signal science_pressed
 signal settings_pressed
 signal encyclopedia_pressed
+signal log_pressed
 
 func _ready():
 	name = "GameHeader"
@@ -68,7 +70,8 @@ func _setup_header_ui():
 	population_button = _create_info_button("Population")
 	army_button = _create_info_button("Army")
 	science_button = _create_info_button("🔬 Science")
-	
+	log_button = _create_info_button("📋 Log")
+
 	left_container.add_child(players_button)
 	left_container.add_child(resources_button)
 	left_container.add_child(buildings_button)
@@ -76,6 +79,7 @@ func _setup_header_ui():
 	left_container.add_child(population_button)
 	left_container.add_child(army_button)
 	left_container.add_child(science_button)
+	left_container.add_child(log_button)
 	
 	# Right side - settings button
 	var right_container = HBoxContainer.new()
@@ -111,6 +115,7 @@ func _setup_header_ui():
 	population_button.pressed.connect(_on_population_pressed)
 	army_button.pressed.connect(_on_army_pressed)
 	science_button.pressed.connect(_on_science_pressed)
+	log_button.pressed.connect(_on_log_pressed)
 
 func _create_info_button(label_text: String) -> Button:
 	var button = Button.new()
@@ -147,3 +152,6 @@ func _on_settings_pressed():
 
 func _on_encyclopedia_pressed():
 	encyclopedia_pressed.emit()
+
+func _on_log_pressed():
+	log_pressed.emit()

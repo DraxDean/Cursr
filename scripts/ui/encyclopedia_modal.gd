@@ -22,6 +22,7 @@ func refresh_content():
 	tab_bar.add_tab("Jobs")
 	tab_bar.add_tab("Buildings")
 	tab_bar.add_tab("World Objects")
+	tab_bar.add_tab("Events")
 	tab_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_content_child(tab_bar)
 
@@ -29,7 +30,7 @@ func refresh_content():
 
 	# Content pages — one ScrollContainer per tab, only one visible at a time
 	var pages: Array = []
-	for _i in 4:
+	for _i in 5:
 		var scroll = ScrollContainer.new()
 		scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -45,6 +46,7 @@ func refresh_content():
 	_populate_jobs(pages[1]["vbox"])
 	_populate_buildings(pages[2]["vbox"])
 	_populate_world_objects(pages[3]["vbox"])
+	_populate_events(pages[4]["vbox"])
 
 	# Show only the active tab's page
 	var _show_page = func(idx: int):
@@ -202,3 +204,129 @@ func _populate_world_objects(v: VBoxContainer):
 	_section(v, "Enemy Camps")
 	_entry(v, "⚔", "Enemy Barracks",
 		"Spawned by wave events after a season (28 days). An enemy faction has made camp as far from your Town Centre as possible. Destroy it before the wave attacks.")
+
+
+func _tier_color(tier: String) -> Color:
+	match tier:
+		"S+": return Color(0.85, 0.20, 0.85)
+		"S":  return Color(0.90, 0.20, 0.20)
+		"A":  return Color(0.90, 0.55, 0.10)
+		"B":  return Color(0.85, 0.80, 0.10)
+		"C":  return Color(0.30, 0.70, 0.95)
+		"D":  return Color(0.40, 0.80, 0.40)
+		_:    return Color(0.55, 0.55, 0.55)  # F
+
+
+func _populate_events(v: VBoxContainer):
+	var HumanEvents = preload("res://data/events/events_human.gd")
+
+	# Group events by tier in display order
+	var tier_order: Array = ["S+", "S", "A", "B", "C", "D", "F"]
+	var grouped: Dictionary = {}
+	for t in tier_order:
+		grouped[t] = []
+	for ev in HumanEvents.EVENTS:
+		var t: String = ev.get("tier", "C")
+		if grouped.has(t):
+			grouped[t].append(ev)
+
+	for tier in tier_order:
+		var evs: Array = grouped[tier]
+		if evs.is_empty():
+			continue
+
+		# Tier header
+		var tier_lbl = Label.new()
+		tier_lbl.text = HumanEvents.get_tier_label(tier)
+		tier_lbl.add_theme_font_size_override("font_size", 14)
+		tier_lbl.add_theme_color_override("font_color", _tier_color(tier))
+		v.add_child(tier_lbl)
+		v.add_child(HSeparator.new())
+
+		for ev in evs:
+			var card = PanelContainer.new()
+			card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var style = StyleBoxFlat.new()
+			style.bg_color = Color(0.12, 0.12, 0.16, 0.95)
+			style.border_color = _tier_color(tier)
+			style.border_width_left = 3
+			style.corner_radius_top_left = 3
+			style.corner_radius_bottom_left = 3
+			card.add_theme_stylebox_override("panel", style)
+			v.add_child(card)
+
+			var col = VBoxContainer.new()
+			col.add_theme_constant_override("separation", 4)
+			card.add_child(col)
+
+			# Header row: icon + title
+			var hrow = HBoxContainer.new()
+			hrow.add_theme_constant_override("separation", 8)
+			col.add_child(hrow)
+
+			var ico = Label.new()
+			ico.text = ev.get("icon", "📜")
+			ico.add_theme_font_size_override("font_size", 20)
+			ico.custom_minimum_size = Vector2(28, 0)
+			ico.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			hrow.add_child(ico)
+
+			var title_lbl = Label.new()
+			title_lbl.text = ev.get("title", "")
+			title_lbl.add_theme_font_size_override("font_size", 13)
+			title_lbl.add_theme_color_override("font_color", Color.WHITE)
+			title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			hrow.add_child(title_lbl)
+
+			# Body text
+			var body_lbl = Label.new()
+			body_lbl.text = ev.get("body", "")
+			body_lbl.add_theme_font_size_override("font_size", 11)
+			body_lbl.add_theme_color_override("font_color", Color(0.72, 0.72, 0.72))
+			body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			body_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			col.add_child(body_lbl)
+
+			# Effects summary
+			var base_fx: Dictionary = ev.get("effects", {})
+			var parts: Array = []
+			for key in ["gold", "food", "wood", "stone", "science"]:
+				var val: int = base_fx.get("resources", {}).get(key, 0)
+				if val != 0:
+					parts.append("%s%d %s" % ["+" if val > 0 else "", val, key.capitalize()])
+			var pop_max: int = base_fx.get("pop_max", 0)
+			if pop_max != 0:
+				parts.append("%s%d Pop Cap" % ["+" if pop_max > 0 else "", pop_max])
+			var pop_kill: int = base_fx.get("pop_kill", 0)
+			if pop_kill != 0:
+				parts.append("-%d Villagers" % pop_kill)
+			var pop_gain: int = base_fx.get("pop_gain", 0)
+			if pop_gain != 0:
+				parts.append("+%d Villagers" % pop_gain)
+			if not parts.is_empty():
+				var fx_lbl = Label.new()
+				fx_lbl.text = "Base effects: " + ", ".join(parts)
+				fx_lbl.add_theme_font_size_override("font_size", 10)
+				fx_lbl.add_theme_color_override("font_color", Color(0.55, 0.90, 0.55))
+				col.add_child(fx_lbl)
+
+			# Choices
+			var choices: Array = ev.get("choices", [])
+			for ch in choices:
+				var ch_parts: Array = []
+				var ch_fx = ch.get("effects")
+				if ch_fx != null and ch_fx is Dictionary:
+					for key in ["gold", "food", "wood", "stone", "science"]:
+						var val: int = ch_fx.get("resources", {}).get(key, 0)
+						if val != 0:
+							ch_parts.append("%s%d %s" % ["+" if val > 0 else "", val, key.capitalize()])
+					var cpm: int = ch_fx.get("pop_max", 0)
+					if cpm != 0:
+						ch_parts.append("%s%d Pop Cap" % ["+" if cpm > 0 else "", cpm])
+				var ch_lbl = Label.new()
+				var fx_text = (" → " + ", ".join(ch_parts)) if not ch_parts.is_empty() else " (base effects)"
+				ch_lbl.text = "  • " + ch.get("label", "?") + fx_text
+				ch_lbl.add_theme_font_size_override("font_size", 10)
+				ch_lbl.add_theme_color_override("font_color", Color(0.75, 0.80, 0.95))
+				ch_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				col.add_child(ch_lbl)
