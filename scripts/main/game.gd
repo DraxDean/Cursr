@@ -2229,6 +2229,44 @@ func _create_initial_units():
 				players_data[player_id]["units"].append(unit_data)
 		
 		print("Game: Created 10 units per player for new game")
+		
+		# ── Spawn the player's named pet ──────────────────────────────────────
+		var pet_name: String = world_data.get("player_data", {}).get("pet_name", "Wilson")
+		if pet_name.strip_edges().is_empty():
+			pet_name = "Wilson"
+		var pet_id: String = _get_next_unit_id()
+		var pet_race: String = players_data.get(1, {}).get("race", "human")
+		var pet_data: Dictionary = {
+			"unique_id": pet_id,
+			"name": pet_name,
+			"type": "peasant",
+			"is_pet": true,
+			"race": pet_race,
+			"gender": "male",
+			"player_id": 1,
+			"position": Vector2.ZERO,
+			"living_quarters": null,
+			"job": null,
+			"assigned_job_index": -1,
+			"previous_job": null,
+			"job_connections": [],
+			"current_path": [],
+			"path_index": 0,
+			"movement_state": "idle_wander",
+			"movement_target": null,
+			"movement_cycle_step": 0,
+			"work_timer": 0.0,
+			"movement_speed": 20.0,
+			"speed_multiplier": 0.9,
+			"sprite_id": "",
+			"specialties": [],
+			"training": null,
+			"pet_cooldown_day": 0
+		}
+		if not players_data[1].has("units"):
+			players_data[1]["units"] = []
+		players_data[1]["units"].append(pet_data)
+		print("Game: Spawned pet '%s' (id=%s)" % [pet_name, pet_id])
 	else:
 		print("Game: Not a new game (mode: %s) - units loaded or will be restored from save" % GameManager.start_mode)
 	
@@ -2333,9 +2371,11 @@ func _spawn_unit(unit_data: Dictionary):
 		unit_sprite.name = unit_data["unique_id"]  # Use unique_id for node name
 		unit_sprite.position = unit_data["position"]
 		unit_sprite.z_index = 6  # Above buildings but below UI
+		if unit_data.get("is_pet", false):
+			unit_sprite.scale = Vector2(0.25, 0.25)
 		
 	# Load appropriate texture based on race and type
-		var texture_path = _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"))
+		var texture_path = "res://assets/units/wilson.png" if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"))
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
 		else:
@@ -2465,8 +2505,10 @@ func _spawn_event_unit_sprite(unit: Dictionary):
 	unit_sprite.position = unit["position"]
 	unit_sprite.z_index = 6
 	unit_sprite.centered = true
+	if unit.get("is_pet", false):
+		unit_sprite.scale = Vector2(0.25, 0.25)
 
-	var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
+	var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
 	if ResourceLoader.exists(texture_path):
 		unit_sprite.texture = load(texture_path)
 	else:
@@ -2871,6 +2913,9 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 		if units_assigned >= slots_to_fill:
 			break
 		
+		if unit.get("is_pet", false):
+			continue  # Pets are not assigned to buildings
+		
 		# Check if unit can be assigned to this capacity type
 		var can_assign = false
 		var living_quarters = unit.get("living_quarters", null)
@@ -3016,9 +3061,11 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		
 		unit_sprite.z_index = 6
 		unit_sprite.centered = true  # Center the sprite on its position
+		if unit.get("is_pet", false):
+			unit_sprite.scale = Vector2(0.25, 0.25)
 		
 		# Load texture based on unit's race and gender
-		var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
+		var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
 		if ResourceLoader.exists(texture_path):
 			var texture = load(texture_path)
 			unit_sprite.texture = texture
@@ -3155,6 +3202,8 @@ func _auto_assign_all_units_to_housing():
 		# Assign each unhoused unit to the next available slot
 		var slot_idx: int = 0
 		for unit in player_units:
+			if unit.get("is_pet", false):
+				continue  # Pets roam free — no housing assignment
 			if unit.get("living_quarters") != null:
 				continue  # Already housed
 			if slot_idx >= housing_slots.size():
@@ -4778,6 +4827,122 @@ func trigger_wave_from_event():
 		wave_spawner.wave_number += 1
 		wave_spawner._spawn_wave(wave_spawner.wave_number)
 
+# ─── Pet system ───────────────────────────────────────────────────────────────
+
+func _on_pet_clicked(pet: Dictionary) -> void:
+	"""Open the pet interaction prompt when the player clicks their companion."""
+	# Always look up the live dict from players_data so cooldown reads/writes persist
+	var uid: String = pet.get("unique_id", "")
+	var live_pet: Dictionary = pet
+	for unit in players_data.get(1, {}).get("units", []):
+		if unit.get("unique_id", "") == uid:
+			live_pet = unit
+			break
+	
+	var pet_name: String = live_pet.get("name", "your companion")
+	var today: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
+	var last_petted: int = live_pet.get("pet_cooldown_day", 0)
+	
+	# Build popup on UI layer
+	var popup = PanelContainer.new()
+	popup.name = "PetPopup"
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.06, 0.12, 0.97)
+	style.border_color = Color(0.7, 0.5, 0.9)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	popup.add_theme_stylebox_override("panel", style)
+	
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	popup.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "🐾  %s is nearby!" % pet_name
+	title.add_theme_color_override("font_color", Color(0.9, 0.85, 1.0))
+	title.add_theme_font_size_override("font_size", 16)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	
+	var already_today = (last_petted == today and today > 0)
+	var msg_label = Label.new()
+	if already_today:
+		msg_label.text = "%s already had enough attention today.\nCome back tomorrow!" % pet_name
+	else:
+		msg_label.text = "Take a moment to pet %s?" % pet_name
+	msg_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
+	msg_label.add_theme_font_size_override("font_size", 13)
+	msg_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg_label.custom_minimum_size = Vector2(280, 0)
+	vbox.add_child(msg_label)
+	
+	var btn_row = HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(btn_row)
+	
+	if not already_today:
+		var yes_btn = Button.new()
+		yes_btn.text = "🐾 Pet %s" % pet_name
+		yes_btn.custom_minimum_size = Vector2(130, 32)
+		btn_row.add_child(yes_btn)
+		yes_btn.pressed.connect(func():
+			_pet_the_companion(live_pet)
+			popup.queue_free()
+		)
+	
+	var no_btn = Button.new()
+	no_btn.text = "Not now"
+	no_btn.custom_minimum_size = Vector2(90, 32)
+	btn_row.add_child(no_btn)
+	no_btn.pressed.connect(func(): popup.queue_free())
+	
+	# Center on screen
+	ui_layer.add_child(popup)
+	await get_tree().process_frame
+	var vp = get_viewport().get_visible_rect().size
+	popup.position = (vp - popup.size) / 2.0
+
+func _pet_the_companion(pet: Dictionary) -> void:
+	"""Grant secret resources and log the petting. One reward per day."""
+	var today: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
+	pet["pet_cooldown_day"] = today
+	
+	# Secret resource bundle — undocumented, players discover it
+	var reward_gold  = randi_range(5, 20)
+	var reward_food  = randi_range(10, 30)
+	var reward_wood  = randi_range(5, 15)
+	
+	var res = players_data[1]["resources"]
+	res["gold"]  = res.get("gold",  0) + reward_gold
+	res["food"]  = res.get("food",  0) + reward_food
+	res["wood"]  = res.get("wood",  0) + reward_wood
+	
+	var pet_name: String = pet.get("name", "your companion")
+	
+	# Flash the pet sprite with a warm glow
+	var sprite: Node2D = unit_sprite_map.get(pet.get("unique_id", ""))
+	if is_instance_valid(sprite):
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color(2.0, 1.6, 2.0), 0.2)
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.6)
+	
+	# Notification — uses undefined flavour text so it feels like a secret
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			"Favour of the Feline",
+			"You spent a moment with %s.\nThe city took care of itself." % pet_name,
+			"🐾",
+			Color(0.6, 0.4, 0.9)
+		)
+	
+	# Silent log entry — no big announcement
+	if is_instance_valid(game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game_log.add(today, GL.Category.SYSTEM,
+			"🐾 A quiet moment with %s. Something feels a little better." % pet_name)
+
 # ─── Combat helpers ───────────────────────────────────────────────────────────
 
 func _open_combat_modal(enemy_building: Node2D) -> void:
@@ -4995,6 +5160,12 @@ func _on_unit_control_gui_input(event: InputEvent, unit: Dictionary):
 			_select_building(building)
 			get_tree().root.set_input_as_handled()
 			return
+	
+	# Pets get a special interaction instead of a unit details modal
+	if unit.get("is_pet", false):
+		_on_pet_clicked(unit)
+		get_tree().root.set_input_as_handled()
+		return
 	
 	_open_unit_details_modal(unit)
 	get_tree().root.set_input_as_handled()

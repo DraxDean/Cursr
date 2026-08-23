@@ -18,16 +18,63 @@ func refresh_content():
 	header_label.add_theme_font_size_override("font_size", 16)
 	add_content_child(header_label)
 	
-	# Get all players' units
+	# Separate pets from regular units
 	var all_units = []
+	var pets = []
 	for player_id in game_ref.players_data:
 		if str(player_id) == "environment":
 			continue
 		var player_data = game_ref.players_data[player_id]
 		if player_data.has("units"):
 			for unit in player_data["units"]:
-				all_units.append(unit)
+				if unit.get("is_pet", false):
+					pets.append(unit)
+				else:
+					all_units.append(unit)
 	
+	# ── Pets section ─────────────────────────────────────────────────────────
+	var pets_header = Label.new()
+	pets_header.text = "🐾 Companions"
+	pets_header.add_theme_color_override("font_color", Color(0.8, 0.6, 1.0))
+	pets_header.add_theme_font_size_override("font_size", 14)
+	add_content_child(pets_header)
+	
+	if pets.is_empty():
+		var no_pets = Label.new()
+		no_pets.text = "  No companions yet."
+		no_pets.add_theme_color_override("font_color", Color.GRAY)
+		no_pets.add_theme_font_size_override("font_size", 12)
+		add_content_child(no_pets)
+	else:
+		for pet in pets:
+			var pet_row = HBoxContainer.new()
+			add_content_child(pet_row)
+			
+			var icon = Label.new()
+			icon.text = "🐾"
+			icon.custom_minimum_size = Vector2(24, 20)
+			pet_row.add_child(icon)
+			
+			var name_lbl = Label.new()
+			name_lbl.text = pet.get("name", "Companion")
+			name_lbl.custom_minimum_size = Vector2(100, 20)
+			name_lbl.add_theme_color_override("font_color", Color(0.9, 0.8, 1.0))
+			name_lbl.add_theme_font_size_override("font_size", 12)
+			pet_row.add_child(name_lbl)
+			
+			var status_lbl = Label.new()
+			var last_petted = pet.get("pet_cooldown_day", 0)
+			var today = game_ref.turn_manager.get_day() if is_instance_valid(game_ref.turn_manager) else 0
+			status_lbl.text = "Petted today ✓" if last_petted == today and today > 0 else "Wandering nearby"
+			status_lbl.add_theme_color_override("font_color",
+				Color(0.5, 1.0, 0.5) if (last_petted == today and today > 0) else Color.GRAY)
+			status_lbl.add_theme_font_size_override("font_size", 11)
+			pet_row.add_child(status_lbl)
+	
+	var pets_sep = HSeparator.new()
+	add_content_child(pets_sep)
+	
+	# ── Regular units section ─────────────────────────────────────────────────
 	if all_units.is_empty():
 		var no_units_label = Label.new()
 		no_units_label.text = "No units found."
@@ -80,7 +127,7 @@ func refresh_content():
 	add_content_child(summary_separator)
 	
 	var summary_label = Label.new()
-	summary_label.text = "Total Units: " + str(all_units.size())
+	summary_label.text = "Units: %d  |  Companions: %d" % [all_units.size(), pets.size()]
 	summary_label.add_theme_color_override("font_color", Color.YELLOW)
 	summary_label.add_theme_font_size_override("font_size", 12)
 	add_content_child(summary_label)

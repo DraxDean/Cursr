@@ -46,6 +46,7 @@ var race_buttons: Array[Button] = []
 var race_info_container: VBoxContainer
 var building_selected_container: VBoxContainer
 var buildings_grid: GridContainer
+var pet_name_field: LineEdit
 
 func setup_integrated(game_ref: Node, world_creation_ref: Node, ui_layer: CanvasLayer):
 	game_node = game_ref
@@ -147,6 +148,41 @@ func _create_race_ui_content(parent_container: VBoxContainer):
 	buildings_grid.add_theme_constant_override("h_separation", 10)
 	buildings_grid.add_theme_constant_override("v_separation", 10)
 	grid_scroll.add_child(buildings_grid)
+	
+	# ── Pet section ──────────────────────────────────────────────────────────
+	var pet_sep = HSeparator.new()
+	pet_sep.add_theme_constant_override("separation", 8)
+	parent_container.add_child(pet_sep)
+	
+	var pet_row = HBoxContainer.new()
+	pet_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pet_row.add_theme_constant_override("separation", 12)
+	parent_container.add_child(pet_row)
+	
+	var pet_icon = Label.new()
+	pet_icon.text = "🐾"
+	pet_icon.add_theme_font_size_override("font_size", 22)
+	pet_row.add_child(pet_icon)
+	
+	var pet_label = Label.new()
+	pet_label.text = "Your companion's name:"
+	pet_label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+	pet_label.add_theme_font_size_override("font_size", 14)
+	pet_row.add_child(pet_label)
+	
+	pet_name_field = LineEdit.new()
+	pet_name_field.text = "Wilson"
+	pet_name_field.placeholder_text = "Wilson"
+	pet_name_field.custom_minimum_size = Vector2(140, 32)
+	pet_name_field.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pet_name_field.add_theme_font_size_override("font_size", 14)
+	pet_row.add_child(pet_name_field)
+	
+	var pet_hint = Label.new()
+	pet_hint.text = "(will join your settlement)"
+	pet_hint.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	pet_hint.add_theme_font_size_override("font_size", 11)
+	pet_row.add_child(pet_hint)
 
 func _update_race_info():
 	# Clear existing info
@@ -339,15 +375,21 @@ func _finish_race_selection():
 
 func _finish_race_selection_internal():
 	# Store race and building selection in world data
+	var pet_name = "Wilson"
+	if is_instance_valid(pet_name_field) and pet_name_field.text.strip_edges() != "":
+		pet_name = pet_name_field.text.strip_edges()
+	
 	if world_creation_modal.world_data.has("player_data"):
 		world_creation_modal.world_data["player_data"].merge({
 			"race": selected_race,
-			"starting_building": selected_building
+			"starting_building": selected_building,
+			"pet_name": pet_name
 		})
 	else:
 		world_creation_modal.world_data["player_data"] = {
 			"race": selected_race,
-			"starting_building": selected_building
+			"starting_building": selected_building,
+			"pet_name": pet_name
 		}
 	
 	# Clean up and let the normal step progression handle the next steps
