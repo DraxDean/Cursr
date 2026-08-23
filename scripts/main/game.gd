@@ -1628,6 +1628,12 @@ func _clear_building_highlight():
 		sprite.modulate = Color.WHITE
 
 func _select_building(building: Node2D):
+	# Enemy buildings (owner_player >= 1000) open the combat modal instead.
+	var owner = building.get_meta("owner_player", 1)
+	if owner >= 1000:
+		_open_combat_modal(building)
+		return
+
 	_clear_building_selection()
 	selected_building = building
 	
@@ -4771,6 +4777,66 @@ func trigger_wave_from_event():
 	if is_instance_valid(wave_spawner):
 		wave_spawner.wave_number += 1
 		wave_spawner._spawn_wave(wave_spawner.wave_number)
+
+# ─── Combat helpers ───────────────────────────────────────────────────────────
+
+func _open_combat_modal(enemy_building: Node2D) -> void:
+	"""Open the combat modal when the player clicks an enemy barracks."""
+	# Pick the best available combat unit for player 1
+	var best_unit: Dictionary = {}
+	for unit in players_data.get(1, {}).get("units", []):
+		if unit.get("type") == "soldier":
+			best_unit = unit
+			break
+	if best_unit.is_empty():
+		var all_units: Array = players_data.get(1, {}).get("units", [])
+		if not all_units.is_empty():
+			best_unit = all_units[0]
+	if best_unit.is_empty():
+		if is_instance_valid(notification_panel):
+			notification_panel.push("No Units", "You have no units to send into battle!", "⚔", Color(0.7, 0.3, 0.1))
+		return
+
+	var CombatModalScript = preload("res://scripts/ui/combat_modal.gd")
+	var modal = CombatModalScript.new(self)
+	ui_layer.add_child(modal)
+	modal.start_combat(best_unit, enemy_building)
+
+func remove_enemy_barracks_node(building_node: Node2D) -> void:
+	"""Remove an enemy barracks from the map and player data after combat victory."""
+	if not is_instance_valid(building_node):
+		return
+	var owner_player: int = building_node.get_meta("owner_player", -1)
+	var bname: String = building_node.name
+	remove_building_from_player(bname, owner_player)
+	building_node.queue_free()
+	if is_instance_valid(game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
+			GL.Category.COMBAT, "⚔ Enemy barracks '%s' destroyed." % bname)
+
+func remove_unit_from_combat(unit: Dictionary) -> void:
+	"""Remove a player unit that was killed in combat."""
+	var player_id: int = unit.get("player_id", 1)
+	if not players_data.has(player_id):
+		return
+	var player_units: Array = players_data[player_id].get("units", [])
+	var uid: String = unit.get("unique_id", "")
+	# Remove sprite
+	if uid != "" and is_instance_valid(map_objects_holder):
+		var sprite = map_objects_holder.get_node_or_null(uid)
+		if is_instance_valid(sprite):
+			sprite.queue_free()
+	unit_sprite_map.erase(uid)
+	player_units.erase(unit)
+	players_data[player_id]["units"] = player_units
+	var pop = players_data[player_id].get("population", {})
+	pop["current"] = player_units.size()
+	players_data[player_id]["population"] = pop
+	if is_instance_valid(game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
+			GL.Category.COMBAT, "☠ %s fell in combat." % unit.get("name", "Unit"))
 
 func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
 	"""Push a red notification card that pans to the camp when clicked."""
