@@ -213,6 +213,8 @@ func _process_command(command: String):
 			_cmd_list_events()
 		"fake notification", "fake", "random event":
 			_cmd_fake_notification()
+		"the path", "cipher":
+			_cmd_fire_secret_event()
 		_:
 			add_debug_message("Unknown command: " + cmd + ". Type 'help' for commands.")
 
@@ -596,6 +598,30 @@ func _cmd_fake_notification():
 		return
 	game._fire_random_world_event()
 	add_debug_message("📜 Random world event notification pushed.")
+
+func _cmd_fire_secret_event():
+	"""Fire the secret encoded legendary event by ID."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game):
+		add_debug_message("ERROR: game node not found.")
+		return
+	var HumanEvents = preload("res://data/events/events_human.gd")
+	var event_data: Dictionary = HumanEvents.get_event_by_id("event_human_sp7")
+	if event_data.is_empty():
+		add_debug_message("ERROR: secret event not found.")
+		return
+	var tier_label: String = HumanEvents.get_tier_label(event_data.get("tier", "S+"))
+	if is_instance_valid(game.notification_panel):
+		game.notification_panel.push(
+			"%s — %s" % [tier_label, event_data.get("title", "?")],
+			"⊙",
+			event_data.get("icon", "⊙"),
+			Color(0.85, 0.20, 0.85),
+			{"action": "open_event", "event_data": event_data}
+		)
+	if is_instance_valid(game.game_footer):
+		game.game_footer.set_end_day_blocked(true)
+	add_debug_message("⊙ " + event_data.get("title", "?"))
 
 func _input(event: InputEvent):
 	if is_open:

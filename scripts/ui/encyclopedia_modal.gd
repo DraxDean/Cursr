@@ -214,7 +214,17 @@ func _tier_color(tier: String) -> Color:
 		"B":  return Color(0.85, 0.80, 0.10)
 		"C":  return Color(0.30, 0.70, 0.95)
 		"D":  return Color(0.40, 0.80, 0.40)
-		_:    return Color(0.55, 0.55, 0.55)  # F
+		_:    return Color(0.55, 0.55, 0.55)
+
+func _category_color(cat: String) -> Color:
+	match cat:
+		"divine_light": return Color(1.00, 0.95, 0.40)
+		"divine_dark":  return Color(0.70, 0.30, 0.90)
+		"migration":    return Color(0.40, 0.80, 0.75)
+		"military":     return Color(0.95, 0.35, 0.35)
+		"natural":      return Color(0.40, 0.85, 0.40)
+		"economy":      return Color(0.85, 0.75, 0.30)
+		_:              return Color(0.60, 0.60, 0.60)  # mundane
 
 
 func _populate_events(v: VBoxContainer):
@@ -278,6 +288,13 @@ func _populate_events(v: VBoxContainer):
 			title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			hrow.add_child(title_lbl)
 
+			var cat_lbl = Label.new()
+			cat_lbl.text = ev.get("category", "").replace("_", " ").capitalize()
+			cat_lbl.add_theme_font_size_override("font_size", 9)
+			cat_lbl.add_theme_color_override("font_color", _category_color(ev.get("category", "")))
+			cat_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			hrow.add_child(cat_lbl)
+
 			# Body text
 			var body_lbl = Label.new()
 			body_lbl.text = ev.get("body", "")
@@ -300,9 +317,15 @@ func _populate_events(v: VBoxContainer):
 			var pop_kill: int = base_fx.get("pop_kill", 0)
 			if pop_kill != 0:
 				parts.append("-%d Villagers" % pop_kill)
+			var pop_kill_pct: float = base_fx.get("pop_kill_pct", 0.0)
+			if pop_kill_pct > 0.0:
+				parts.append("-%.0f%% Pop" % pop_kill_pct)
 			var pop_gain: int = base_fx.get("pop_gain", 0)
 			if pop_gain != 0:
 				parts.append("+%d Villagers" % pop_gain)
+			var pop_gain_pct: float = base_fx.get("pop_gain_pct", 0.0)
+			if pop_gain_pct > 0.0:
+				parts.append("+%.0f%% Pop" % pop_gain_pct)
 			if not parts.is_empty():
 				var fx_lbl = Label.new()
 				fx_lbl.text = "Base effects: " + ", ".join(parts)

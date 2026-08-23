@@ -4760,11 +4760,17 @@ func _on_notification_clicked(data: Dictionary):
 			# Show the world event modal with the stored event data
 			var event_data: Dictionary = data.get("event_data", {})
 			if not event_data.is_empty() and is_instance_valid(world_event_modal):
-				world_event_modal.show_event(event_data)
+				world_event_modal.show_event(event_data, true)
 		_:
 			# Generic: open turn events modal
 			if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
 				turn_events_modal.toggle()
+
+func trigger_wave_from_event():
+	"""Spawn an unscheduled marauder barracks immediately (called from world event effects)."""
+	if is_instance_valid(wave_spawner):
+		wave_spawner.wave_number += 1
+		wave_spawner._spawn_wave(wave_spawner.wave_number)
 
 func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
 	"""Push a red notification card that pans to the camp when clicked."""

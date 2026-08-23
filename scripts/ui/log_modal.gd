@@ -114,7 +114,7 @@ func _build_entry_row(vbox: VBoxContainer, entry: Dictionary):
 		row.gui_input.connect(func(event: InputEvent):
 			if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 				if is_instance_valid(_game) and is_instance_valid(_game.world_event_modal):
-					_game.world_event_modal.show_event(event_data)
+					_game.world_event_modal.show_event(event_data, true)
 		)
 
 	vbox.add_child(row)

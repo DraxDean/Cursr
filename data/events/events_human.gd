@@ -426,6 +426,56 @@ const EVENTS: Array = [
 			{"label": "Absorb Only the Skilled (+8 people, Pop Cap +12, half cost)", "effects": {"resources": {"gold": 0, "food": -250, "wood": -100, "stone": -75, "science": 30}, "pop_max": 12, "pop_gain": 8}}
 		]
 	},
+
+	# ════════════════════════════════════════════════════════════
+	# A  TIER — marauder event
+	# ════════════════════════════════════════════════════════════
+	{
+		"id": "event_human_a9",
+		"tier": "A",
+		"category": "military",
+		"title": "Marauder Scouts Spotted",
+		"body": "Riders report a large warband setting up camp on the outskirts. You may pay tribute to delay them — or let them dig in. Either way, they are watching.",
+		"icon": "🏕",
+		"effects": {"resources": {"gold": -150, "food": -100, "wood": 0, "stone": 0, "science": 0}, "pop_max": 0},
+		"choices": [
+			{"label": "Pay Tribute (Gold -150, Food -100 — they withdraw for now)", "effects": {"resources": {"gold": -150, "food": -100, "wood": 0, "stone": 0, "science": 0}, "pop_max": 0}},
+			{"label": "Let Them Camp (a marauder barracks spawns on the map)", "effects": {"resources": {"gold": 0, "food": 0, "wood": 0, "stone": 0, "science": 0}, "pop_max": 0, "spawn_wave": true}}
+		]
+	},
+
+	# ════════════════════════════════════════════════════════════
+	# S  TIER — unavoidable marauder event
+	# ════════════════════════════════════════════════════════════
+	{
+		"id": "event_human_s5",
+		"tier": "S",
+		"category": "military",
+		"title": "The War Party Descends",
+		"body": "A disciplined enemy war party has crossed the border and erected a fortified barracks on your doorstep. There is no sending them away — only preparing for what comes next.",
+		"icon": "⚔",
+		"effects": {"resources": {"gold": -80, "food": -60, "wood": -80, "stone": -60, "science": 0}, "pop_max": 0, "spawn_wave": true},
+		"choices": [
+			{"label": "Fortify the Walls (resource cost, barracks spawns)", "effects": null},
+			{"label": "Arm the People (Gold -120, barracks spawns)", "effects": {"resources": {"gold": -120, "food": 0, "wood": 0, "stone": 0, "science": 0}, "pop_max": 0, "spawn_wave": true}}
+		]
+	},
+
+	# ════════════════════════════════════════════════════════════
+	# S+ TIER — secret encoded event
+	# ════════════════════════════════════════════════════════════
+	{
+		"id": "event_human_sp5",
+		"tier": "S+",
+		"category": "divine_light",
+		"title": "Μονινγ τηρουγη τηε συν",
+		"body": "Μονινγ τηρουγη τηε συν? Ωελλ δονε βυτ ψουρ ιουρνεψ ις νοτ ονερ ψετ.",
+		"icon": "☉",
+		"effects": {"resources": {"gold": 300, "food": 300, "wood": 300, "stone": 300, "science": 300}, "pop_max": 10, "pop_gain_pct": 30.0},
+		"choices": [
+			{"label": "Ωελλ δονε. Τηε πατη γοες ον.", "effects": null}
+		]
+	},
 ]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

@@ -19,14 +19,13 @@ func _ready() -> void:
 		size = custom_minimum_size
 		position = Vector2((vp.x - size.x) / 2.0, (vp.y - size.y) / 2.0)
 
-func show_event(event_data: Dictionary):
+func show_event(event_data: Dictionary, reopen: bool = false):
 	var event_id: String = event_data.get("id", "")
-	# If this specific event was already resolved, restore that state without resetting
-	if event_id != "" and _resolved_event_ids.has(event_id):
-		_event_data = event_data
+	_event_data = event_data
+	# Only restore resolved state when re-opening an existing card, not on a new firing
+	if reopen and event_id != "" and _resolved_event_ids.has(event_id):
 		_choice_made = true
 	else:
-		_event_data = event_data
 		_choice_made = false
 	if title_label:
 		var HumanEvents = preload("res://data/events/events_human.gd")
@@ -188,5 +187,19 @@ func _apply_effects(effects: Dictionary):
 		_game.remove_event_units(player_id, pop_kill)
 
 	var pop_gain: int = effects.get("pop_gain", 0)
+	# pop_gain_pct: gain this % of current population (rounded up, minimum 1)
+	var pop_gain_pct: float = effects.get("pop_gain_pct", 0.0)
+	if pop_gain_pct > 0.0:
+		var current_pop: int = _game.players_data[player_id].get("population", {}).get("total", 1)
+		pop_gain += max(1, int(ceil(current_pop * pop_gain_pct / 100.0)))
 	if pop_gain > 0:
 		_game.add_event_units(player_id, pop_gain)
+
+	var pop_kill_pct: float = effects.get("pop_kill_pct", 0.0)
+	if pop_kill_pct > 0.0:
+		var current_pop: int = _game.players_data[player_id].get("population", {}).get("total", 1)
+		var extra_kill: int = max(1, int(ceil(current_pop * pop_kill_pct / 100.0)))
+		_game.remove_event_units(player_id, extra_kill)
+
+	if effects.get("spawn_wave", false):
+		_game.trigger_wave_from_event()
