@@ -44,6 +44,7 @@ const TRAINING_DEFINITIONS: Dictionary = {
 # UI Components
 var game_header: Control
 var game_footer: Control
+var resource_bar: Control
 
 # Info Modals
 var players_modal: Control
@@ -2106,6 +2107,9 @@ func initialize_map():
 			print("Game: Queued unit sprite restoration for loaded game")
 		
 		camera_controller.center_camera()
+		# Refresh resource bar with loaded data
+		if resource_bar:
+			resource_bar.refresh()
 		print("Game: Map ready.")
 	else: print("Game: Map initialization failed.")
 	print("Game: --- Map Initialization Finished ---")
@@ -4078,6 +4082,8 @@ func _start_world_creation_mode():
 	# Hide game header during world creation
 	if game_header:
 		game_header.visible = false
+	if resource_bar:
+		resource_bar.visible = false
 	
 	# Hide game footer during world creation
 	if game_footer:
@@ -4177,6 +4183,10 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	if game_header:
 		game_header.visible = true
 		print("Game: Game header now visible after world creation")
+	
+	if resource_bar:
+		resource_bar.visible = true
+		resource_bar.refresh()
 	
 	# Show game footer now that the game has started
 	if game_footer:
@@ -4311,6 +4321,12 @@ func _setup_game_header():
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
+	
+	# Setup resource bar (sits directly under header)
+	var ResourceBarScript = preload("res://scripts/managers/resource_bar.gd")
+	resource_bar = ResourceBarScript.new()
+	resource_bar.game_ref = self
+	ui_layer.add_child(resource_bar)
 	
 	# Setup info modals
 	_setup_info_modals()
@@ -4795,6 +4811,9 @@ func _on_end_day_pressed():
 		if building_details_modal and is_instance_valid(building_details_modal):
 			if building_details_modal.building_node and is_instance_valid(building_details_modal.building_node):
 				building_details_modal.setup_building_details(building_details_modal.building_node)
+		# Always refresh the resource bar
+		if resource_bar:
+			resource_bar.refresh()
 		
 		# Tick wave spawner — may trigger a new enemy wave
 		if is_instance_valid(wave_spawner):
