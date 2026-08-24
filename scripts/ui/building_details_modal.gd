@@ -474,7 +474,8 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 		"farmhouse": ["town_center", "house"],
 		"stoneworker": ["house", "town_center"],
 		"lumberjack": ["house", "town_center"],
-		"lumber_mill": ["town_center"]
+		"lumber_mill": ["town_center"],
+		"farm": ["farmhouse"]
 	}
 	
 	# Get connection range (max 50 tiles)
@@ -1060,6 +1061,9 @@ func _populate_building_info():
 			print("UI DEBUG: Creating barracks capacity controls")
 			_create_capacity_control(capacity_container, "Station:", 5, "station")
 			_create_capacity_control(capacity_container, "Training:", 5, "training")
+		elif building_type == "farm":
+			# Farm tile — show current growth state and worker assignment
+			_create_farm_state_display(capacity_container)
 		else:
 			# Living capacity controls
 			var living_capacity = _get_living_capacity(building_type)
@@ -1179,6 +1183,7 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 			"town_center": "Scientist",
 			"barracks": "Soldier",
 			"farmhouse": "Farmer",
+			"farm": "Farmer",
 		}
 		var slot_prefix = slot_label_map.get(building_type, "Worker")
 		path_button.text = slot_prefix + " " + str(job_index + 1)
@@ -1533,6 +1538,7 @@ func _draw_all_job_paths():
 		"trees": Color.GREEN,
 		"mountains": Color.GRAY,
 		"fish": Color.DEEP_SKY_BLUE,
+		"farm": Color(0.9, 0.75, 0.2),  # wheat yellow
 		"unknown": Color.LIGHT_GRAY
 	}
 	
@@ -1662,10 +1668,33 @@ func _get_building_production() -> String:
 		"barracks":
 			return "Barracks (no production)"
 		"farm":
-			# Farms special handling - placeholder for now
-			return "Farm (special - to implement)"
+			var state: String = ""
+			if building_node:
+				state = building_node.get_meta("farm_state", "tilled")
+			var has_worker: bool = building_node.get_meta("farm_worker_assigned", false) if building_node else false
+			if has_worker and state == "grown":
+				return "+25 Food on harvest (ready!)"
+			elif has_worker:
+				return "Growing... (%s)" % state.capitalize()
+			else:
+				return "No worker assigned"
 		"farmhouse":
-			return "Farmhouse (no production)"
+			# Count how many farm tiles this farmhouse is working
+			var worked := 0
+			var grown := 0
+			if building_node:
+				var fh_jobs: Array = building_node.get_meta("resource_jobs", [])
+				var game_node = _get_game_node()
+				for job in fh_jobs:
+					if job.get("resource_type", "") == "farm" and job.get("unit_assigned") != null:
+						worked += 1
+						if game_node and is_instance_valid(game_node.map_objects_holder):
+							var farm_nd = game_node.map_objects_holder.get_node_or_null(NodePath(job.get("resource_id", "")))
+							if is_instance_valid(farm_nd) and farm_nd.get_meta("farm_state", "") == "grown":
+								grown += 1
+			if worked == 0:
+				return "No farms being worked"
+			return "Working %d farm(s) — %d ready to harvest" % [worked, grown]
 		"stoneworker":
 			var stone_production = worker_occupancy * 1  # +1 stone per worker
 			return "+" + str(stone_production) + " Stone/day (" + str(worker_occupancy) + " workers)"
@@ -1721,10 +1750,6 @@ func _get_living_capacity(building_type: String) -> int:
 			return 7  # Family of up to 7
 		"town_center":
 			return 20  # 20 people living
-		"farmhouse":
-			return 2  # Small farmhouse living quarters
-		"barracks":
-			return 0  # Barracks uses station/training job types instead
 		_:
 			return 0
 
@@ -1919,6 +1944,78 @@ func _find_node_recursive(node: Node, target_name: String) -> Node:
 			return result
 	
 	return null
+
+func _create_farm_state_display(parent: Container) -> void:
+	"""Show the farm tile's growth stage and worker assignment in the capacity panel."""
+	if not building_node:
+		return
+
+	var state: String = building_node.get_meta("farm_state", "tilled")
+	var has_worker: bool = building_node.get_meta("farm_worker_assigned", false)
+
+	# Growth stage row
+	var state_row = HBoxContainer.new()
+	state_row.add_theme_constant_override("separation", 10)
+	parent.add_child(state_row)
+
+	var state_lbl = Label.new()
+	state_lbl.text = "Growth Stage:"
+	state_lbl.custom_minimum_size.x = 120
+	state_row.add_child(state_lbl)
+
+	const STAGE_COLORS := {
+		"tilled":  Color(0.6, 0.45, 0.25),
+		"sown":    Color(0.8, 0.75, 0.3),
+		"growing": Color(0.4, 0.85, 0.3),
+		"grown":   Color(0.2, 1.0, 0.2),
+	}
+	var stage_val = Label.new()
+	stage_val.text = state.capitalize()
+	stage_val.add_theme_color_override("font_color", STAGE_COLORS.get(state, Color.WHITE))
+	state_row.add_child(stage_val)
+
+	# Worker assignment row
+	var worker_row = HBoxContainer.new()
+	worker_row.add_theme_constant_override("separation", 10)
+	parent.add_child(worker_row)
+
+	var worker_lbl = Label.new()
+	worker_lbl.text = "Worker:"
+	worker_lbl.custom_minimum_size.x = 120
+	worker_row.add_child(worker_lbl)
+
+	var worker_val = Label.new()
+	if has_worker:
+		worker_val.text = "✓ Assigned"
+		worker_val.add_theme_color_override("font_color", Color(0.3, 1.0, 0.4))
+	else:
+		worker_val.text = "None"
+		worker_val.add_theme_color_override("font_color", Color.GRAY)
+	worker_row.add_child(worker_val)
+
+	# Which farmhouse is working this tile
+	var game_node = _get_game_node()
+	if game_node and is_instance_valid(game_node.map_objects_holder):
+		for child in game_node.map_objects_holder.get_children():
+			if not game_node._is_building_node(child):
+				continue
+			if child.get_meta("building_type", "") != "farmhouse":
+				continue
+			var fh_jobs: Array = child.get_meta("resource_jobs", [])
+			for job in fh_jobs:
+				if job.get("resource_id", "") == building_node.name:
+					var fh_row = HBoxContainer.new()
+					fh_row.add_theme_constant_override("separation", 10)
+					parent.add_child(fh_row)
+					var fh_lbl = Label.new()
+					fh_lbl.text = "Managed by:"
+					fh_lbl.custom_minimum_size.x = 120
+					fh_row.add_child(fh_lbl)
+					var fh_val = Label.new()
+					fh_val.text = child.get_meta("display_name", child.name)
+					fh_val.add_theme_color_override("font_color", Color(0.8, 0.7, 0.4))
+					fh_row.add_child(fh_val)
+					break
 
 func _create_capacity_control(parent: Container, label_text: String, max_capacity: int, capacity_type: String):
 	# Create horizontal container for the capacity control

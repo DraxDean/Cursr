@@ -255,6 +255,8 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		# Add farm-specific state if it's a farm
 		if building_type == "farm":
 			setup_data["farm_state"] = "tilled"  # Start in tilled state
+			building_scene.set_meta("farm_state", "tilled")
+			building_scene.set_meta("farm_worker_assigned", false)
 		
 		# Add barracks-specific occupancy types
 		if building_type == "barracks":
@@ -303,7 +305,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		_calculate_and_cache_building_connections(building_scene)
 		
 		# Create jobs for work buildings
-		var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
+		var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "farmhouse", "town_center"]
 		print("DEBUG: Checking if ", building_type, " is a work building. Is in list: ", building_type in work_buildings)
 		if building_type in work_buildings:
 			print("DEBUG: Creating jobs for work building ", building_type)
@@ -317,15 +319,13 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 				print("DEBUG: Job creation completed")
 			else:
 				print("DEBUG: Worker capacity is 0, skipping job creation")
+		elif building_type == "farm":
+			# Farm tile placed — initialize its state and notify nearby farmhouses to add a job
+			building_scene.set_meta("farm_state", "tilled")
+			building_scene.set_meta("farm_worker_assigned", false)
+			_register_farm_with_nearby_farmhouse(building_scene)
 		else:
 			print("DEBUG: Not a work building, skipping job creation")
-		
-		# Auto-save after placing building
-		print("Game: Auto-saving after building placement...")
-		if _execute_save():
-			print("Game: Auto-save successful!")
-		else:
-			print("Game: Auto-save failed, but continuing game...")
 	else:
 		print("Warning: Could not find building texture: ", building_texture_path)
 
@@ -353,16 +353,12 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_towncentre-export.png"
 
 func _get_living_capacity(building_type: String) -> int:
-	"""Get the living capacity for a building type"""
+	"""Get the living capacity for a building type. Only houses and town_center provide housing."""
 	match building_type:
 		"house":
 			return 7
 		"town_center":
 			return 12
-		"farmhouse":
-			return 2
-		"barracks":
-			return 0
 		_:
 			return 0
 
@@ -514,8 +510,9 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 			"research":
 				rates["science"] += worker_count * 3  # +3 science per researcher
 			"farm":
-				# Farms are special - will implement later
-				pass
+				# Per-farm contribution: +FARM_HARVEST_FOOD only if this tile is grown with a worker
+				if child.get_meta("farm_worker_assigned", false) and child.get_meta("farm_state", "tilled") == "grown":
+					rates["food"] += FARM_HARVEST_FOOD
 			"barracks":
 				# Barracks don't produce resources
 				pass
@@ -1185,6 +1182,15 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 					if job.get("unit_assigned") == unit_id:
 						job["unit_assigned"] = null
 						job["assigned_job_index"] = -1
+						# If this was a farm job, release the farm tile's worker lock and clear mirror
+						if job.get("resource_type", "") == "farm":
+							var farm_node = map_objects_holder.get_node_or_null(NodePath(job.get("resource_id", "")))
+							if is_instance_valid(farm_node):
+								farm_node.set_meta("farm_worker_assigned", false)
+								# Remove the display mirror from the farm tile
+								var fm_jobs: Array = farm_node.get_meta("resource_jobs", [])
+								fm_jobs = fm_jobs.filter(func(j): return j.get("resource_type", "") != "farm_mirror")
+								farm_node.set_meta("resource_jobs", fm_jobs)
 						print("DEBUG: Cleared job slot unit_assigned for unit ", unit_id)
 						break
 			
@@ -1210,8 +1216,8 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	
 	var building_type = building_node.get_meta("building_type", "unknown")
 	
-	# Only create jobs for work buildings
-	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "barracks"]
+	# Only create jobs for work buildings (farmhouse jobs are farm-specific — created by _initialize_farmhouse_paths)
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "barracks", "town_center"]
 	if not building_type in work_buildings:
 		print("DEBUG: Building type ", building_type, " is not a work building, skipping job creation")
 		return
@@ -1256,10 +1262,15 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 	
 	print("DEBUG: Initializing job paths for ", building_type, " (", building_node.name, ")")
 	
-	# Only initialize paths for work buildings
+	# Farmhouse paths to nearby farm tile buildings — separate logic
+	if building_type == "farmhouse":
+		_initialize_farmhouse_paths(building_node)
+		return
+	
+	# Only initialize paths for work buildings that harvest map resources
 	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
 	if not building_type in work_buildings:
-		print("DEBUG: Not a work building, skipping path init")
+		print("DEBUG: Not a resource-harvesting work building, skipping path init")
 		return
 	
 	var jobs = building_node.get_meta("resource_jobs", [])
@@ -2996,6 +3007,35 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			# CRITICAL: Save the updated jobs back to building metadata
 			building_node.set_meta("resource_jobs", jobs)
 			
+			# Mark farm tile as having a worker and mirror the job so its modal shows the unit
+			if assigned_job and assigned_job.get("resource_type", "") == "farm":
+				var farm_node = map_objects_holder.get_node_or_null(NodePath(assigned_job.get("resource_id", "")))
+				if is_instance_valid(farm_node):
+					farm_node.set_meta("farm_worker_assigned", true)
+					# Mirror a display-only job entry on the farm so its modal shows the assigned unit
+					var farm_jobs: Array = farm_node.get_meta("resource_jobs", [])
+					# Replace existing mirror or append
+					var mirror_inserted := false
+					for fi in range(farm_jobs.size()):
+						if farm_jobs[fi].get("resource_type", "") == "farm_mirror":
+							farm_jobs[fi]["unit_assigned"] = unit["unique_id"]
+							farm_jobs[fi]["farmhouse_id"] = building_id
+							mirror_inserted = true
+							break
+					if not mirror_inserted:
+						farm_jobs.append({
+							"job_id":        "mirror_" + building_id + "_" + unit["unique_id"],
+							"path_id":       "",
+							"resource_id":   building_id,
+							"resource_type": "farm_mirror",
+							"farmhouse_id":  building_id,
+							"tile_path":     [],
+							"world_path":    [],
+							"unit_assigned": unit["unique_id"],
+							"created_day":   0
+						})
+					farm_node.set_meta("resource_jobs", farm_jobs)
+			
 			# If this is the first assignment to a workplace, rename it with the worker's surname + work name
 			if is_first_assignment and capacity_type == "worker":
 				print("DEBUG: About to call rename - building name before: %s" % building_node.name)
@@ -3133,54 +3173,34 @@ func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String
 func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 	"""Assign a unit to living quarters if available"""
 	print("DEBUG: Assigning living quarters for unit ", unit_data["unique_id"])
-	# Find a house with available space
+	# Find a house or town_center with available space
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
 			if _is_building_node(child) and child.get_meta("owner_player", 1) == owner_player:
 				var building_type = child.get_meta("building_type", "unknown")
-				if building_type == "house":
+				if building_type in ["house", "town_center"]:
 					var living_occupancy = child.get_meta("living_occupancy", 0)
 					var living_capacity = _get_living_capacity(building_type)
-					print("DEBUG: Found house ", child.name, " - occupancy:", living_occupancy, " capacity:", living_capacity)
+					print("DEBUG: Found %s %s - occupancy:%d capacity:%d" % [building_type, child.name, living_occupancy, living_capacity])
 					if living_occupancy < living_capacity:
 						unit_data["living_quarters"] = child.name
-						unit_data["position"] = child.position  # Position unit at home
-						# Update building occupancy
+						unit_data["position"] = child.position
 						child.set_meta("living_occupancy", living_occupancy + 1)
 						update_player_population(owner_player)
 						print("DEBUG: Assigned unit ", unit_data["unique_id"], " to living quarters at ", child.name)
-						return
-	
-	print("DEBUG: No house with space found")
-	# If no house space, try farmhouse
-	if map_objects_holder:
-		for child in map_objects_holder.get_children():
-			if _is_building_node(child) and child.get_meta("owner_player", 1) == owner_player:
-				var building_type = child.get_meta("building_type", "unknown")
-				if building_type == "farmhouse":
-					var living_occupancy = child.get_meta("living_occupancy", 0)
-					var living_capacity = _get_living_capacity(building_type)
-					print("DEBUG: Found farmhouse ", child.name, " - occupancy:", living_occupancy, " capacity:", living_capacity)
-					if living_occupancy < living_capacity:
-						unit_data["living_quarters"] = child.name
-						unit_data["position"] = child.position  # Position unit at home
-						# Update building occupancy
-						child.set_meta("living_occupancy", living_occupancy + 1)
-						update_player_population(owner_player)
-						print("DEBUG: Assigned unit ", unit_data["unique_id"], " to farmhouse at ", child.name)
 						return
 	
 	print("DEBUG: No housing available for unit ", unit_data["unique_id"])
 
 func _auto_assign_all_units_to_housing():
 	"""Assign all unhoused units to available living-capacity buildings.
-	Priority: town_center → house → farmhouse.
+	Priority: town_center → house.
 	Called once after _create_initial_units on new game."""
 	if not map_objects_holder:
 		return
 
-	# Priority order for living buildings
-	var priority: Array = ["town_center", "house", "farmhouse"]
+	# Priority order for living buildings (only house and town_center provide housing)
+	var priority: Array = ["town_center", "house"]
 
 	for player_id in players_data.keys():
 		if str(player_id) == "environment":
@@ -3341,9 +3361,9 @@ func _building_provides_capacity(building_type: String, capacity_type: String) -
 	"""Check if a building type provides a specific capacity type"""
 	match capacity_type:
 		"living":
-			return building_type in ["house", "town_center", "farmhouse"]
+			return building_type in ["house", "town_center"]
 		"worker":
-			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "research", "lumber_mill", "lumberjack"]
+			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "research", "lumber_mill", "lumberjack", "town_center"]
 	return false
 
 func _get_building_max_capacity(building_type: String, capacity_type: String) -> int:
@@ -3351,8 +3371,8 @@ func _get_building_max_capacity(building_type: String, capacity_type: String) ->
 	# Define capacity limits for different building types
 	var capacity_limits = {
 		"house": {"living": 7, "worker": 0},
-		"farmhouse": {"living": 2, "worker": 6},
-		"town_center": {"living": 12, "worker": 0},
+		"farmhouse": {"living": 0, "worker": 6},
+		"town_center": {"living": 12, "worker": 2},
 		"barracks": {"living": 0, "worker": 8},
 		"fishing_hut": {"living": 0, "worker": 5},
 		"stoneworker": {"living": 0, "worker": 10},
@@ -4008,6 +4028,238 @@ func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_
 	print("Game: Found ", found_resources.size(), " resources of type ", search_resource_type)
 	return found_resources
 
+# ─── Farmhouse / farm-cycle system ───────────────────────────────────────────
+
+const FARM_CYCLE := ["tilled", "sown", "growing", "grown"]
+const FARM_TEXTURES := {
+	"tilled":  "res://assets/buildings/human_farm_tilled.png",
+	"sown":    "res://assets/buildings/human_farm_sown.png",
+	"growing": "res://assets/buildings/human_farm_growing.png",
+	"grown":   "res://assets/buildings/human_farm_grown.png",
+}
+const FARM_HARVEST_FOOD := 25
+
+func _initialize_farmhouse_paths(farmhouse_node: Node2D) -> void:
+	"""Find nearby unassigned farm tiles and create one job path per farm (max 1 worker/farm)."""
+	if not is_instance_valid(farmhouse_node) or not is_instance_valid(map_objects_holder):
+		return
+	var jobs: Array = farmhouse_node.get_meta("resource_jobs", [])
+	var max_workers: int = _get_worker_capacity("farmhouse")  # 6
+	var assigned_farms: Array = []  # Track farm node names already pathed
+
+	# Collect already-assigned farm targets from existing jobs
+	for job in jobs:
+		var rid: String = job.get("resource_id", "")
+		if rid != "":
+			assigned_farms.append(rid)
+
+	var fh_tile: Vector2i = tilemap_layer.local_to_map(farmhouse_node.position)
+
+	# BFS outward from farmhouse, pick unassigned farm buildings
+	var visited := {}
+	var queue: Array = [fh_tile]
+	var found_farms: Array = []
+	var max_radius := 30
+
+	while queue.size() > 0 and found_farms.size() < (max_workers - assigned_farms.size()):
+		var cur: Vector2i = queue.pop_front()
+		if visited.has(cur):
+			continue
+		visited[cur] = true
+		if _hex_distance(fh_tile, cur) > max_radius:
+			continue
+
+		# Check if there is a farm building node at this tile
+		for child in map_objects_holder.get_children():
+			if not _is_building_node(child):
+				continue
+			if child.get_meta("building_type", "") != "farm":
+				continue
+			var child_tile: Vector2i = tilemap_layer.local_to_map(child.position)
+			if child_tile == cur and not (child.name in assigned_farms):
+				# Only 1 worker per farm — skip if already assigned to another farmhouse
+				if not child.get_meta("farm_worker_assigned", false):
+					found_farms.append(child)
+					assigned_farms.append(child.name)
+					break
+
+		for nb in _get_hex_neighbors(cur):
+			if not visited.has(nb):
+				queue.append(nb)
+
+	# Create job entries for each found farm
+	for farm_node in found_farms:
+		var farm_tile: Vector2i = tilemap_layer.local_to_map(farm_node.position)
+		var tile_path: Array = _astar_pathfind_for_game(fh_tile, farm_tile)
+		var world_path: Array = []
+		for t in tile_path:
+			world_path.append(tilemap_layer.map_to_local(t))
+
+		var job_idx: int = jobs.size()
+		var job := {
+			"job_id":       "job_" + farmhouse_node.name + "_farm_" + str(job_idx),
+			"path_id":      "path_" + farmhouse_node.name + "_farm_" + str(job_idx),
+			"resource_id":  farm_node.name,
+			"resource_type": "farm",
+			"tile_path":    tile_path,
+			"world_path":   world_path,
+			"unit_assigned": null,
+			"created_day":  0
+		}
+		jobs.append(job)
+		farm_node.set_meta("farm_worker_assigned", true)
+		print("Game: Farmhouse %s -> farm job to %s (%d tiles)" % [farmhouse_node.name, farm_node.name, tile_path.size()])
+
+	farmhouse_node.set_meta("resource_jobs", jobs)
+	building_jobs_updated.emit(farmhouse_node.name)
+
+
+func _register_farm_with_nearby_farmhouse(farm_node: Node2D) -> void:
+	"""When a farm tile is placed, find the nearest farmhouse with a free job slot and add a path to it."""
+	if not is_instance_valid(map_objects_holder):
+		return
+	var farm_tile: Vector2i = tilemap_layer.local_to_map(farm_node.position)
+	var best_farmhouse: Node2D = null
+	var best_dist: float = INF
+
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		if child.get_meta("building_type", "") != "farmhouse":
+			continue
+		var jobs: Array = child.get_meta("resource_jobs", [])
+		var max_cap: int = _get_worker_capacity("farmhouse")
+		# Count only farm-type jobs (generic empty slots don't count against capacity)
+		var farm_job_count := 0
+		var already_claimed := false
+		for j in jobs:
+			if j.get("resource_type", "") == "farm":
+				farm_job_count += 1
+				if j.get("resource_id", "") == farm_node.name:
+					already_claimed = true
+		if already_claimed or farm_job_count >= max_cap:
+			continue
+		var dist: float = farm_node.position.distance_to(child.position)
+		if dist < best_dist:
+			best_dist = dist
+			best_farmhouse = child
+
+	if not is_instance_valid(best_farmhouse):
+		print("Game: No available farmhouse found for new farm ", farm_node.name)
+		return
+
+	var fh_tile: Vector2i = tilemap_layer.local_to_map(best_farmhouse.position)
+	var tile_path: Array = _astar_pathfind_for_game(fh_tile, farm_tile)
+	var world_path: Array = []
+	for t in tile_path:
+		world_path.append(tilemap_layer.map_to_local(t))
+
+	var jobs: Array = best_farmhouse.get_meta("resource_jobs", [])
+	# Replace the first empty non-farm slot, or append if none
+	var inserted := false
+	for i in range(jobs.size()):
+		if jobs[i].get("resource_type", "") == "" and jobs[i].get("unit_assigned") == null:
+			jobs[i] = {
+				"job_id":        "job_" + best_farmhouse.name + "_farm_" + str(i),
+				"path_id":       "path_" + best_farmhouse.name + "_farm_" + str(i),
+				"resource_id":   farm_node.name,
+				"resource_type": "farm",
+				"tile_path":     tile_path,
+				"world_path":    world_path,
+				"unit_assigned": null,
+				"created_day":   0
+			}
+			inserted = true
+			break
+	if not inserted:
+		jobs.append({
+			"job_id":        "job_" + best_farmhouse.name + "_farm_" + str(jobs.size()),
+			"path_id":       "path_" + best_farmhouse.name + "_farm_" + str(jobs.size()),
+			"resource_id":   farm_node.name,
+			"resource_type": "farm",
+			"tile_path":     tile_path,
+			"world_path":    world_path,
+			"unit_assigned": null,
+			"created_day":   0
+		})
+	best_farmhouse.set_meta("resource_jobs", jobs)
+	farm_node.set_meta("farm_worker_assigned", false)
+	building_jobs_updated.emit(best_farmhouse.name)
+	print("Game: Registered farm %s with farmhouse %s (%d tiles)" % [farm_node.name, best_farmhouse.name, tile_path.size()])
+
+
+func _process_farm_states() -> void:
+	"""Called each end-of-day. Advances farm tile states and harvests grown farms with workers."""
+	if not is_instance_valid(map_objects_holder):
+		return
+
+	var total_food_harvested := 0
+
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		if child.get_meta("building_type", "") != "farm":
+			continue
+
+		var state: String = child.get_meta("farm_state", "tilled")
+		var has_worker: bool = child.get_meta("farm_worker_assigned", false)
+
+		# Only cycle if a worker is assigned to this farm tile
+		if not has_worker:
+			continue
+
+		if state == "grown":
+			# Harvest!
+			total_food_harvested += FARM_HARVEST_FOOD
+			state = "tilled"
+		else:
+			var idx: int = FARM_CYCLE.find(state)
+			if idx >= 0 and idx < FARM_CYCLE.size() - 1:
+				state = FARM_CYCLE[idx + 1]
+
+		child.set_meta("farm_state", state)
+		_update_farm_texture(child, state)
+
+	if total_food_harvested > 0:
+		var res = players_data.get(1, {}).get("resources", {})
+		res["food"] = res.get("food", 0) + total_food_harvested
+		if is_instance_valid(game_log):
+			var GL = preload("res://scripts/managers/game_log.gd")
+			var day: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
+			game_log.add(day, GL.Category.INCOME,
+				"🍞 Farms yielded +%d food this harvest." % total_food_harvested)
+		print("Game: Farm harvest — +%d food" % total_food_harvested)
+
+
+func _update_farm_texture(farm_node: Node2D, state: String) -> void:
+	"""Swap the Sprite2D texture on a farm building to match its current state."""
+	var tex_path: String = FARM_TEXTURES.get(state, FARM_TEXTURES["tilled"])
+	if not ResourceLoader.exists(tex_path):
+		return
+	var sprite: Node = farm_node.get_node_or_null("Sprite2D")
+	if is_instance_valid(sprite) and sprite is Sprite2D:
+		sprite.texture = load(tex_path)
+	elif farm_node is Sprite2D:
+		farm_node.texture = load(tex_path)
+
+
+func _get_farm_food_rate_for_player(player_id: int) -> int:
+	"""Count grown farms with workers assigned to farmhouses owned by this player.
+	Used to show a prospective harvest rate in the resource bar."""
+	if not is_instance_valid(map_objects_holder):
+		return 0
+	var count := 0
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		if child.get_meta("building_type", "") != "farm":
+			continue
+		if child.get_meta("owner_player", 1) != player_id:
+			continue
+		if child.get_meta("farm_worker_assigned", false) and child.get_meta("farm_state", "tilled") == "grown":
+			count += 1
+	return count * FARM_HARVEST_FOOD
+
 func _get_hex_neighbors(tile: Vector2i) -> Array:
 	"""Get the 6 neighboring hex tiles"""
 	var neighbors = []
@@ -4289,13 +4541,6 @@ func _place_town_center_building(tile_coords: Vector2i):
 			print("Game: Added town center ", building_name, " to player ", owner_player, " buildings list")
 		
 		print("Game: Successfully placed ", starting_building, " at world position: ", world_pos)
-		
-		# Auto-save after placing town center
-		print("Game: Auto-saving after town center placement...")
-		if _execute_save():
-			print("Game: Auto-save successful!")
-		else:
-			print("Game: Auto-save failed, but continuing game...")
 	else:
 		print("Warning: Could not find building texture: ", building_texture_path)
 
@@ -4402,6 +4647,16 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			if building_type == "barracks":
 				building_scene.set_meta("station_occupancy", building_info.get("station_occupancy", 0))
 				building_scene.set_meta("training_occupancy", building_info.get("training_occupancy", 0))
+			
+			# Restore farm state if it's a farm tile
+			if building_type == "farm":
+				var saved_state: String = building_info.get("farm_state", "tilled")
+				if saved_state.is_empty():
+					saved_state = "tilled"
+				building_scene.set_meta("farm_state", saved_state)
+				building_scene.set_meta("farm_worker_assigned", building_info.get("farm_worker_assigned", false))
+				# Apply the correct texture for the restored state
+				_update_farm_texture(building_scene, saved_state)
 			
 			# Initialize jobs array (load from save if available, otherwise create empty)
 			var saved_jobs = building_info.get("resource_jobs", [])
@@ -4769,6 +5024,9 @@ func _on_end_day_pressed():
 		# Update the footer day label with new day
 		if game_footer:
 			game_footer.set_day_text(turn_manager.get_day())
+		
+		# Process farm state cycle and harvest grown farms
+		_process_farm_states()
 		
 		# Log resource income for the day that just ended
 		if is_instance_valid(game_log):
@@ -5398,7 +5656,9 @@ func _execute_save() -> bool:
 					"living_occupancy": child.get_meta("living_occupancy", 0),
 					"worker_occupancy": child.get_meta("worker_occupancy", 0),
 					"resource_jobs": child.get_meta("resource_jobs", []),
-					"display_name": child.get_meta("display_name", "")  # Save lore-based display name
+					"display_name": child.get_meta("display_name", ""),
+					"farm_state": child.get_meta("farm_state", ""),
+					"farm_worker_assigned": child.get_meta("farm_worker_assigned", false)
 				}
 				
 				buildings_data.append(building_info)
