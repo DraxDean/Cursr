@@ -57,6 +57,7 @@ var science_modal: Control
 var settings_modal: Control
 var encyclopedia_modal: Control
 var log_modal: Control
+var graphs_modal: Control
 var day_transition: Control
 var game_log: Node  # GameLog manager
 var game_over_modal: Control
@@ -498,11 +499,11 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 		# Each building type produces different resources based on worker count
 		match building_type:
 			"lumberjack":
-				rates["wood"] += worker_count * 1  # +1 wood per worker
+				rates["wood"] += worker_count * 5  # +5 wood per worker
 			"lumber_mill":
-				rates["wood"] += worker_count * 1  # +1 wood per worker
+				rates["wood"] += worker_count * 5  # +5 wood per worker
 			"stoneworker":
-				rates["stone"] += worker_count * 1  # +1 stone per worker
+				rates["stone"] += worker_count * 5  # +5 stone per worker
 			"fishing_hut":
 				rates["food"] += worker_count * 5  # +5 food per worker
 			"town_center":
@@ -526,6 +527,13 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 	
 	# Apply technology bonuses (post-calculation multipliers)
 	_apply_tech_bonuses_to_rates(player_id, rates)
+	
+	# Subtract food upkeep from food rate so bar shows the net (-1 per citizen)
+	var pop_total: int = players_data.get(player_id, {}).get("population", {}).get("total", 0)
+	rates["food"] = rates.get("food", 0) - pop_total
+	# Persist net rate
+	if players_data.has(player_id):
+		players_data[player_id]["resource_rates"]["food"] = rates["food"]
 	
 	return rates
 
@@ -638,7 +646,7 @@ func get_resource_rates(player_id: int) -> Dictionary:
 	return {"gold": 0, "food": 0, "wood": 0, "stone": 0, "science": 0}
 
 func apply_resource_production(player_id: int):
-	"""Apply resource production based on current rates"""
+	"""Apply resource production based on current rates, then deduct food upkeep (1 per citizen)"""
 	if not players_data.has(player_id):
 		return
 	
@@ -656,6 +664,14 @@ func apply_resource_production(player_id: int):
 		resources[resource_type] += rates[resource_type]
 		if rates[resource_type] != 0:
 			print("Player ", player_id, " produced +", rates[resource_type], " ", resource_type)
+	
+	# Food upkeep: -1 food per citizen per day
+	var pop_total: int = player_data.get("population", {}).get("total", 0)
+	if pop_total > 0:
+		if not resources.has("food"):
+			resources["food"] = 0
+		resources["food"] = max(0, resources["food"] - pop_total)
+		print("Player ", player_id, " food upkeep: -", pop_total, " (population)")
 
 func _deduct_building_cost(player_id: int, building_type: String):
 	"""Deduct building cost from player resources"""
@@ -961,22 +977,18 @@ func update_player_population(player_id: int):
 	# Clean up unit sprites that lost assignments
 	_cleanup_unassigned_unit_sprites(player_id)
 
-	# Calculate housed and working population from actual building data
+	# Calculate housed population from actual building data
 	var total_housed = 0
-	var total_working = 0
-	# Get all buildings for this player and sum their occupancy
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
 			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
-				# Get building occupancy from metadata
-				var building_living_occupancy = child.get_meta("living_occupancy", 0)
-				var building_worker_occupancy = child.get_meta("worker_occupancy", 0)
-				var building_station_occupancy = child.get_meta("station_occupancy", 0)
-				var building_training_occupancy = child.get_meta("training_occupancy", 0)
-				
-				total_housed += building_living_occupancy
-				# Count worker, station, and training as "working" people
-				total_working += building_worker_occupancy + building_station_occupancy + building_training_occupancy
+				total_housed += child.get_meta("living_occupancy", 0)
+	
+	# Calculate working population directly from units (job field is the source of truth)
+	var total_working = 0
+	for unit in player_data.get("units", []):
+		if not unit.get("is_pet", false) and unit.get("job", null) != null:
+			total_working += 1
 	
 	# Update population data
 	pop_data["housed"] = total_housed
@@ -996,7 +1008,7 @@ func update_player_population(player_id: int):
 	_check_and_create_missing_sprites(player_id)
 
 func apply_population_growth(player_id: int):
-	"""Apply population growth per turn (current_total * 0.1)"""
+	"""Apply population growth per turn (current_total * 0.34, ~1 new villager every 3 turns)"""
 	if not players_data.has(player_id):
 		return
 	
@@ -1009,8 +1021,8 @@ func apply_population_growth(player_id: int):
 	var current_total = pop_data.get("total", 10)
 	var growth_accumulator = pop_data.get("growth_accumulator", 0.0)
 	
-	# Calculate growth: 1% of current population per turn
-	var daily_growth = current_total * 0.01
+	# Calculate growth: 34% of current population per turn (~1 new unit every 3 turns)
+	var daily_growth = current_total * 0.34
 	growth_accumulator += daily_growth
 	
 	# Convert accumulated growth to actual population increase
@@ -2070,6 +2082,10 @@ func initialize_map():
 					wave_spawner.wave_number = loaded_state["wave_state"].get("wave_number", 0)
 					wave_spawner.next_wave_day = loaded_state["wave_state"].get("next_wave_day", wave_spawner.WAVE_INTERVAL)
 					print("Game: Restored wave state — wave %d, next wave day %d" % [wave_spawner.wave_number, wave_spawner.next_wave_day])
+				# Restore game log entries
+				if loaded_state.has("log_entries") and is_instance_valid(game_log):
+					game_log.entries = loaded_state["log_entries"].duplicate()
+					print("Game: Restored %d log entries" % game_log.entries.size())
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
 	if success:
@@ -4563,6 +4579,7 @@ func _setup_game_header():
 	game_header.science_pressed.connect(_on_header_science_pressed)
 	game_header.encyclopedia_pressed.connect(_on_header_encyclopedia_pressed)
 	game_header.log_pressed.connect(_on_header_log_pressed)
+	game_header.graphs_pressed.connect(_on_header_graphs_pressed)
 	
 	# No need to update values anymore
 	print("Game: Game header created and connected")
@@ -4572,6 +4589,8 @@ func _setup_game_header():
 	resource_bar = ResourceBarScript.new()
 	resource_bar.game_ref = self
 	ui_layer.add_child(resource_bar)
+	# Refresh resource bar whenever any building's jobs change
+	building_jobs_updated.connect(func(_bname: String): if is_instance_valid(resource_bar): resource_bar.refresh())
 	
 	# Setup info modals
 	_setup_info_modals()
@@ -4944,6 +4963,8 @@ func _setup_info_modals():
 	encyclopedia_modal = EncyclopediaModalScript.new()
 	var LogModalScript = preload("res://scripts/ui/log_modal.gd")
 	log_modal = LogModalScript.new(game_log, self)
+	var GraphsModalScript = preload("res://scripts/ui/graphs_modal.gd")
+	graphs_modal = GraphsModalScript.new(game_log)
 	
 	# Add modals to UI layer
 	ui_layer.add_child(players_modal)
@@ -4956,6 +4977,7 @@ func _setup_info_modals():
 	ui_layer.add_child(settings_modal)
 	ui_layer.add_child(encyclopedia_modal)
 	ui_layer.add_child(log_modal)
+	ui_layer.add_child(graphs_modal)
 
 	# Day transition overlay — added last so it renders above everything
 	var DayTransitionScript = preload("res://scripts/ui/day_transition.gd")
@@ -5054,7 +5076,11 @@ func _on_end_day_pressed():
 				msg = "📈 No income this turn.   Totals: " + "  ".join(totals)
 			else:
 				msg = "📈 Income: " + "  ".join(parts) + "   |   Totals: " + "  ".join(totals)
-			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true})
+			# Snapshot of current resource totals for the graphs modal
+			var snap := {}
+			for rk in ["food", "wood", "stone", "gold", "science"]:
+				snap[rk] = int(res.get(rk, 0))
+			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true, "resource_snapshot": snap})
 		
 		# Process training progress for all units
 		_process_training_progress()
@@ -5575,6 +5601,12 @@ func _on_header_log_pressed():
 			log_modal.refresh_content()
 		log_modal.toggle()
 
+func _on_header_graphs_pressed():
+	if graphs_modal:
+		if not graphs_modal.is_open:
+			graphs_modal.refresh_content()
+		graphs_modal.toggle()
+
 func _cancel_world_creation():
 	print("Game: Cancelling world creation")
 	is_in_world_creation = false
@@ -5685,7 +5717,8 @@ func _execute_save() -> bool:
 		"players_data": players_data,
 		"current_day": turn_manager.get_day(),
 		"wave_state": _get_wave_state_for_save(),
-		"current_save_path": current_save_path 
+		"current_save_path": current_save_path,
+		"log_entries": game_log.entries.duplicate() if is_instance_valid(game_log) else []
 	}
 	var saved_path = SaveLoadManager.save_game(game_state, current_save_path)
 	if not saved_path.is_empty():
