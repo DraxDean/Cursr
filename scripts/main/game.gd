@@ -225,7 +225,7 @@ func _try_place_building(_mouse_pos: Vector2):
 			_cancel_building_placement()
 		# If in build more mode, placement continues with same preview
 	else:
-		print("Cannot place building at this location")
+		DebugConfig.dprint("buildings", ["Cannot place building at this location"])
 
 func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 	# Get building texture path
@@ -282,7 +282,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		# Initialize empty jobs array for work buildings
 		building_scene.set_meta("resource_jobs", [])
 		
-		print("Game: Placing building at tile ", tile_coords, " world pos ", world_pos)
+		DebugConfig.dprint("buildings", ["Game: Placing building at tile ", tile_coords, " world pos ", world_pos])
 		
 		# Deduct building costs from player resources
 		var owner_player = setup_data.get("owner_player", 1)
@@ -297,9 +297,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			if not player_data.has("buildings"):
 				player_data["buildings"] = []
 			player_data["buildings"].append(building_name)
-			print("Game: Added building ", building_name, " to player ", owner_player, " buildings list")
+			DebugConfig.dprint("buildings", ["Game: Added building ", building_name, " to player ", owner_player, " buildings list"])
 		
-		print("Game: Successfully placed ", building_type, " at world position: ", world_pos)
+		DebugConfig.dprint("buildings", ["Game: Successfully placed ", building_type, " at world position: ", world_pos])
 		if is_instance_valid(game_log):
 			var GL = preload("res://scripts/managers/game_log.gd")
 			var day: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
@@ -310,26 +310,26 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		
 		# Create jobs for work buildings
 		var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "farmhouse", "town_center"]
-		print("DEBUG: Checking if ", building_type, " is a work building. Is in list: ", building_type in work_buildings)
+		DebugConfig.dprint("buildings", ["DEBUG: Checking if ", building_type, " is a work building. Is in list: ", building_type in work_buildings])
 		if building_type in work_buildings:
-			print("DEBUG: Creating jobs for work building ", building_type)
+			DebugConfig.dprint("buildings", ["DEBUG: Creating jobs for work building ", building_type])
 			# Get the worker capacity for this building type
 			var worker_capacity = _get_worker_capacity(building_type)
-			print("DEBUG: Worker capacity for ", building_type, " is ", worker_capacity)
+			DebugConfig.dprint("buildings", ["DEBUG: Worker capacity for ", building_type, " is ", worker_capacity])
 			if worker_capacity > 0:
-				print("DEBUG: About to create ", worker_capacity, " jobs")
+				DebugConfig.dprint("buildings", ["DEBUG: About to create ", worker_capacity, " jobs"])
 				_create_jobs_for_worker_capacity(building_scene, worker_capacity)
 				_initialize_job_paths_on_load(building_scene)
-				print("DEBUG: Job creation completed")
+				DebugConfig.dprint("buildings", ["DEBUG: Job creation completed"])
 			else:
-				print("DEBUG: Worker capacity is 0, skipping job creation")
+				DebugConfig.dprint("buildings", ["DEBUG: Worker capacity is 0, skipping job creation"])
 		elif building_type == "farm":
 			# Farm tile placed — initialize its state and notify nearby farmhouses to add a job
 			building_scene.set_meta("farm_state", "tilled")
 			building_scene.set_meta("farm_worker_assigned", false)
 			_register_farm_with_nearby_farmhouse(building_scene)
 		else:
-			print("DEBUG: Not a work building, skipping job creation")
+			DebugConfig.dprint("buildings", ["DEBUG: Not a work building, skipping job creation"])
 		
 		# Refresh resource bar so housing/employment capacity updates immediately
 		if is_instance_valid(resource_bar):
@@ -338,7 +338,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		check_building_achievements()
 		check_workforce_achievements()
 	else:
-		print("Warning: Could not find building texture: ", building_texture_path)
+		DebugConfig.dprint("buildings", ["Warning: Could not find building texture: ", building_texture_path])
 
 func _get_building_texture_path(building_type: String) -> String:
 	match building_type:
@@ -452,23 +452,23 @@ func remove_building_from_player(building_name: String, player_id: int):
 		var index = buildings.find(building_name)
 		if index >= 0:
 			buildings.remove_at(index)
-			print("Game: Removed building ", building_name, " from player ", player_id, " buildings list")
+			DebugConfig.dprint("buildings", ["Game: Removed building ", building_name, " from player ", player_id, " buildings list"])
 
 func debug_print_all_buildings():
 	# Debug function to print all buildings and their status
-	print("=== BUILDING DEBUG INFO ===")
-	print("Player 1 buildings list: ", players_data.get(1, {}).get("buildings", []))
+	DebugConfig.dprint("buildings", ["=== BUILDING DEBUG INFO ==="])
+	DebugConfig.dprint("buildings", ["Player 1 buildings list: ", players_data.get(1, {}).get("buildings", [])])
 	
 	if map_objects_holder:
-		print("All objects in map_objects_holder:")
+		DebugConfig.dprint("buildings", ["All objects in map_objects_holder:"])
 		for child in map_objects_holder.get_children():
-			print("  - Name: ", child.name, " | Is Building: ", _is_building_node(child))
+			DebugConfig.dprint("buildings", ["  - Name: ", child.name, " | Is Building: ", _is_building_node(child)])
 			if _is_building_node(child):
 				var building_type = _extract_building_type_from_name(child.name)
-				print("    Type: ", building_type, " | Position: ", child.position)
+				DebugConfig.dprint("buildings", ["    Type: ", building_type, " | Position: ", child.position])
 	
-	print("Building counters: ", building_counter)
-	print("===========================")
+	DebugConfig.dprint("buildings", ["Building counters: ", building_counter])
+	DebugConfig.dprint("buildings", ["==========================="])
 
 func calculate_resource_rates(player_id: int) -> Dictionary:
 	"""Calculate per-day resource production/consumption rates based on buildings and workers"""
@@ -603,7 +603,7 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 	
 	var current_level = player_data["technologies"].get(tech_id, 0)
 	if current_level >= max_level:
-		print("Tech %s already at max level %d" % [tech_id, max_level])
+		DebugConfig.dprint("general", ["Tech %s already at max level %d" % [tech_id, max_level]])
 		return false
 	
 	# Check prerequisites: fishing/woodcutting/stoneworking require work_ethic >= 1
@@ -615,7 +615,7 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 	if prereqs.has(tech_id):
 		var req = prereqs[tech_id]
 		if player_data["technologies"].get(req, 0) < 1:
-			print("Tech %s requires %s level 1+" % [tech_id, req])
+			DebugConfig.dprint("general", ["Tech %s requires %s level 1+" % [tech_id, req]])
 			return false
 	
 	var cost = get_tech_cost(current_level)
@@ -623,7 +623,7 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 	var current_science = resources.get("science", 0)
 	
 	if current_science < cost:
-		print("Not enough science: need %d, have %d" % [cost, current_science])
+		DebugConfig.dprint("general", ["Not enough science: need %d, have %d" % [cost, current_science]])
 		return false
 	
 	# Deduct science and apply upgrade
@@ -635,7 +635,7 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 	# Recalculate rates with new bonus
 	calculate_resource_rates(player_id)
 	
-	print("Researched %s to level %d (cost %d science)" % [tech_id, current_level + 1, cost])
+	DebugConfig.dprint("general", ["Researched %s to level %d (cost %d science)" % [tech_id, current_level + 1, cost]])
 	if is_instance_valid(game_log):
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
@@ -683,7 +683,7 @@ func apply_resource_production(player_id: int):
 	for resource_type in rates.keys():
 		resources[resource_type] += rates[resource_type]
 		if rates[resource_type] != 0:
-			print("Player ", player_id, " produced +", rates[resource_type], " ", resource_type)
+			DebugConfig.dprint("general", ["Player ", player_id, " produced +", rates[resource_type], " ", resource_type])
 	
 	# Food upkeep: -1 food per citizen per day
 	var pop_total: int = player_data.get("population", {}).get("total", 0)
@@ -691,7 +691,7 @@ func apply_resource_production(player_id: int):
 		if not resources.has("food"):
 			resources["food"] = 0
 		resources["food"] = max(0, resources["food"] - pop_total)
-		print("Player ", player_id, " food upkeep: -", pop_total, " (population)")
+		DebugConfig.dprint("general", ["Player ", player_id, " food upkeep: -", pop_total, " (population)"])
 
 func _deduct_building_cost(player_id: int, building_type: String):
 	"""Deduct building cost from player resources"""
@@ -723,7 +723,7 @@ func _deduct_building_cost(player_id: int, building_type: String):
 	# Deduct costs
 	for resource_type in costs.keys():
 		resources[resource_type] -= costs[resource_type]
-		print("Player ", player_id, " paid -", costs[resource_type], " ", resource_type, " for ", building_type)
+		DebugConfig.dprint("buildings", ["Player ", player_id, " paid -", costs[resource_type], " ", resource_type, " for ", building_type])
 
 func log_to_console(message: String):
 	# Send message to debug console
@@ -873,7 +873,7 @@ func _clear_all_resource_job_markers():
 				total_cleared += 1
 	
 	if total_cleared > 0:
-		print("Game: Cleared ", total_cleared, " resource job markers before pathfinding")
+		DebugConfig.dprint("jobs", ["Game: Cleared ", total_cleared, " resource job markers before pathfinding"])
 
 func _count_actual_occupancy(building_name: String, capacity_type: String, owner_player: int) -> int:
 	"""Count actual number of units assigned to a building for a specific capacity type"""
@@ -918,13 +918,13 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 		var max_jobs = jobs.size()
 		var difference = new_value - filled_count
 		
-		print("DEBUG: Worker capacity change - filled jobs: ", filled_count, " -> new: ", new_value, ", max jobs available: ", max_jobs, " (diff: ", difference, ")")
+		DebugConfig.dprint("population", ["DEBUG: Worker capacity change - filled jobs: ", filled_count, " -> new: ", new_value, ", max jobs available: ", max_jobs, " (diff: ", difference, ")"])
 		
 		if difference > 0:
 			# Need to assign more units to existing job slots
 			var available_pop = get_player_population_data(owner_player).get("unemployed", 0)
 			if available_pop < difference:
-				print("Not enough unemployed population to fill ", difference, " jobs. Available: ", available_pop)
+				DebugConfig.dprint("population", ["Not enough unemployed population to fill ", difference, " jobs. Available: ", available_pop])
 				return false
 			# Auto-assign units to empty job slots
 			_auto_assign_units_to_building(building_node, capacity_type, difference)
@@ -957,10 +957,10 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 			# For barracks jobs, check unemployed population
 			available = pop_data.get("unemployed", 0)
 		
-		print("DEBUG: Capacity check for ", capacity_type, " - need ", occupancy_difference, ", available ", available)
+		DebugConfig.dprint("population", ["DEBUG: Capacity check for ", capacity_type, " - need ", occupancy_difference, ", available ", available])
 		
 		if available < occupancy_difference:
-			print("Not enough ", capacity_type, " population available. Need ", occupancy_difference, ", have ", available)
+			DebugConfig.dprint("population", ["Not enough ", capacity_type, " population available. Need ", occupancy_difference, ", have ", available])
 			return false
 	
 	# Update building occupancy
@@ -1023,7 +1023,7 @@ func update_player_population(player_id: int):
 	pop_data["unhoused"] = total_pop - total_housed
 	pop_data["unemployed"] = total_pop - total_working
 	
-	print("DEBUG: Population update - Total: ", total_pop, " | Housed: ", total_housed, " (unhoused: ", pop_data["unhoused"], ") | Working: ", total_working, " (unemployed: ", pop_data["unemployed"], ")")
+	DebugConfig.dprint("population", ["DEBUG: Population update - Total: ", total_pop, " | Housed: ", total_housed, " (unhoused: ", pop_data["unhoused"], ") | Working: ", total_working, " (unemployed: ", pop_data["unemployed"], ")"])
 	
 	player_data["population"] = pop_data
 	
@@ -1070,7 +1070,7 @@ func apply_population_growth(player_id: int):
 	var pop_to_add: int = min(int(growth_accumulator), free_housing)
 	if pop_to_add > 0:
 		growth_accumulator -= pop_to_add  # Keep the fractional part
-		print("Player ", player_id, " population grew by ", pop_to_add)
+		DebugConfig.dprint("population", ["Player ", player_id, " population grew by ", pop_to_add])
 		# Create actual unit entries (handles sprite, housing, pop count update)
 		add_event_units(player_id, pop_to_add)
 		var new_total: int = players_data[player_id].get("population", {}).get("total", 0)
@@ -1097,7 +1097,7 @@ func _check_and_create_missing_sprites(player_id: int):
 	var player_data = players_data[player_id]
 	var player_units = player_data.get("units", [])
 	
-	print("DEBUG: _check_and_create_missing_sprites for player ", player_id, " - checking ", player_units.size(), " units")
+	DebugConfig.dprint("population", ["DEBUG: _check_and_create_missing_sprites for player ", player_id, " - checking ", player_units.size(), " units"])
 	
 	for unit in player_units:
 		var unit_id = unit["unique_id"]
@@ -1190,13 +1190,13 @@ func _remove_unit_assignments_for_building(building_name: String, owner_player: 
 		if unit.get("living_quarters", null) == building_name:
 			unit["living_quarters"] = null
 			assignments_removed = true
-			print("Removed living assignment for unit ", unit_id, " from demolished building ", building_name)
+			DebugConfig.dprint("buildings", ["Removed living assignment for unit ", unit_id, " from demolished building ", building_name])
 		
 		# Check if unit was working in this building
 		if unit.get("job", null) == building_name:
 			unit["job"] = null
 			assignments_removed = true
-			print("Removed job assignment for unit ", unit_id, " from demolished building ", building_name)
+			DebugConfig.dprint("buildings", ["Removed job assignment for unit ", unit_id, " from demolished building ", building_name])
 		
 		# If assignments were removed, path back home first, then idle_wander
 		if assignments_removed:
@@ -1253,7 +1253,7 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 								var fm_jobs: Array = farm_node.get_meta("resource_jobs", [])
 								fm_jobs = fm_jobs.filter(func(j): return j.get("resource_type", "") != "farm_mirror")
 								farm_node.set_meta("resource_jobs", fm_jobs)
-						print("DEBUG: Cleared job slot unit_assigned for unit ", unit_id)
+						DebugConfig.dprint("population", ["DEBUG: Cleared job slot unit_assigned for unit ", unit_id])
 						break
 			
 			# Remove the specific assignment from the unit
@@ -1265,7 +1265,7 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 				unit["job"] = null
 			
 			assignments_removed += 1
-			print("Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name)
+			DebugConfig.dprint("population", ["Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name])
 			
 			# Path back home first, then idle_wander on arrival
 			unit["movement_cycle_step"] = 0
@@ -1281,7 +1281,7 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	# Only create jobs for work buildings (farmhouse jobs are farm-specific — created by _initialize_farmhouse_paths)
 	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "barracks", "town_center"]
 	if not building_type in work_buildings:
-		print("DEBUG: Building type ", building_type, " is not a work building, skipping job creation")
+		DebugConfig.dprint("jobs", ["DEBUG: Building type ", building_type, " is not a work building, skipping job creation"])
 		return
 	
 	# Get existing jobs or create new array
@@ -1289,10 +1289,10 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	var current_job_count = jobs.size()
 	var new_jobs_needed = new_capacity - current_job_count
 	
-	print("DEBUG: Creating jobs for ", building_type, " - capacity: ", new_capacity, ", current jobs: ", current_job_count, ", need: ", new_jobs_needed)
+	DebugConfig.dprint("jobs", ["DEBUG: Creating jobs for ", building_type, " - capacity: ", new_capacity, ", current jobs: ", current_job_count, ", need: ", new_jobs_needed])
 	
 	if new_jobs_needed <= 0:
-		print("DEBUG: No new jobs needed (", new_jobs_needed, ")")
+		DebugConfig.dprint("jobs", ["DEBUG: No new jobs needed (", new_jobs_needed, ")"])
 		return  # No new jobs to create
 	
 	# Create simple job entries without pathfinding
@@ -1313,7 +1313,7 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	building_node.set_meta("resource_jobs", jobs)
 	# Notify modal that jobs have been updated
 	building_jobs_updated.emit(building_node.name)
-	print("DEBUG: Successfully created %d empty job slots for %s (building: %s). Total jobs now: %d" % [new_jobs_needed, building_type, building_node.name, jobs.size()])
+	DebugConfig.dprint("jobs", ["DEBUG: Successfully created %d empty job slots for %s (building: %s). Total jobs now: %d" % [new_jobs_needed, building_type, building_node.name, jobs.size()]])
 
 func _initialize_job_paths_on_load(building_node: Node2D):
 	"""Initialize paths for jobs on load by finding nearby resources"""
@@ -1322,7 +1322,7 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 	
 	var building_type = building_node.get_meta("building_type", "unknown")
 	
-	print("DEBUG: Initializing job paths for ", building_type, " (", building_node.name, ")")
+	DebugConfig.dprint("jobs", ["DEBUG: Initializing job paths for ", building_type, " (", building_node.name, ")"])
 	
 	# Farmhouse paths to nearby farm tile buildings — separate logic
 	if building_type == "farmhouse":
@@ -1332,14 +1332,14 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 	# Only initialize paths for work buildings that harvest map resources
 	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill"]
 	if not building_type in work_buildings:
-		print("DEBUG: Not a resource-harvesting work building, skipping path init")
+		DebugConfig.dprint("jobs", ["DEBUG: Not a resource-harvesting work building, skipping path init"])
 		return
 	
 	var jobs = building_node.get_meta("resource_jobs", [])
-	print("DEBUG: Found ", jobs.size(), " jobs to initialize")
+	DebugConfig.dprint("jobs", ["DEBUG: Found ", jobs.size(), " jobs to initialize"])
 	
 	if jobs.is_empty():
-		print("DEBUG: No jobs found, skipping path init")
+		DebugConfig.dprint("jobs", ["DEBUG: No jobs found, skipping path init"])
 		return
 	
 	# Determine resource type based on building type
@@ -1353,19 +1353,19 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 			resource_type = "fish"
 		"research":
 			# Research buildings don't target specific resources
-			print("DEBUG: Research building doesn't target resources, skipping")
+			DebugConfig.dprint("jobs", ["DEBUG: Research building doesn't target resources, skipping"])
 			return
 	
 	# Get building tile coordinates
 	var building_tile = tilemap_layer.local_to_map(building_node.position)
 	var job_count = jobs.size()
 	
-	print("DEBUG: Searching for ", job_count, " resources of type ", resource_type, " from tile ", building_tile)
+	DebugConfig.dprint("jobs", ["DEBUG: Searching for ", job_count, " resources of type ", resource_type, " from tile ", building_tile])
 	
 	# Find nearby resources up to the job count
 	var nearby_resources = _find_nearby_resources(building_tile, resource_type, job_count)
 	
-	print("DEBUG: Found ", nearby_resources.size(), " nearby resources")
+	DebugConfig.dprint("jobs", ["DEBUG: Found ", nearby_resources.size(), " nearby resources"])
 	
 	# If we found resources, calculate paths to them
 	var resource_paths = []
@@ -1391,13 +1391,13 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 			var job_id = job.get("job_id", "")
 			if resource_id and resource_id in objects:
 				objects[resource_id]["job"] = job_id
-				print("Game: Marked resource ", resource_id, " as assigned to job ", job_id)
+				DebugConfig.dprint("jobs", ["Game: Marked resource ", resource_id, " as assigned to job ", job_id])
 	
 	# Update building metadata
 	building_node.set_meta("resource_jobs", jobs)
 	# Notify modal that jobs have been updated
 	building_jobs_updated.emit(building_node.name)
-	print("DEBUG: Initialized %d job paths for %s (building: %s). Total jobs: %d" % [resource_paths.size(), building_type, building_node.name, jobs.size()])
+	DebugConfig.dprint("jobs", ["DEBUG: Initialized %d job paths for %s (building: %s). Total jobs: %d" % [resource_paths.size(), building_type, building_node.name, jobs.size()]])
 
 func get_nearest_environment_objects(position: Vector2, object_type: String, max_count: int = -1) -> Array:
 	# Get environment objects sorted by distance from a position
@@ -1424,27 +1424,27 @@ func get_nearest_environment_objects(position: Vector2, object_type: String, max
 
 func debug_print_environment_objects():
 	# Debug function to print environment object counts and data
-	print("=== ENVIRONMENT DEBUG INFO ===")
+	DebugConfig.dprint("map_objects", ["=== ENVIRONMENT DEBUG INFO ==="])
 	if players_data.has("environment"):
 		var env_data = players_data["environment"]
-		print("Mountain count: ", env_data["counts"]["mountains"])
-		print("Tree count: ", env_data["counts"]["trees"])
-		print("Mountains: ", env_data["objects"]["mountains"].keys())
-		print("Trees: ", env_data["objects"]["trees"].keys())
+		DebugConfig.dprint("map_objects", ["Mountain count: ", env_data["counts"]["mountains"]])
+		DebugConfig.dprint("map_objects", ["Tree count: ", env_data["counts"]["trees"]])
+		DebugConfig.dprint("map_objects", ["Mountains: ", env_data["objects"]["mountains"].keys()])
+		DebugConfig.dprint("map_objects", ["Trees: ", env_data["objects"]["trees"].keys()])
 	else:
-		print("No environment data found!")
-	print("===============================")
+		DebugConfig.dprint("map_objects", ["No environment data found!"])
+	DebugConfig.dprint("map_objects", ["==============================="])
 
 func _migrate_players_data_structure():
 	# Migrate old save files to include the environment player structure
-	print("Game: Migrating players_data structure...")
+	DebugConfig.dprint("save_load", ["Game: Migrating players_data structure..."])
 	
 	# Check for duplicate unit IDs first
 	_fix_duplicate_unit_ids()
 	
 	# Check if environment player exists
 	if not players_data.has("environment"):
-		print("Game: Adding missing environment player to save data")
+		DebugConfig.dprint("save_load", ["Game: Adding missing environment player to save data"])
 		players_data["environment"] = {
 			"name": "Environment",
 			"type": "environment",
@@ -1475,7 +1475,7 @@ func _migrate_players_data_structure():
 					"unhoused": 10,  # total - housed
 					"unemployed": 10  # total - working
 				}
-				print("Game: Migrated player ", player_id, " population to new structure")
+				DebugConfig.dprint("save_load", ["Game: Migrated player ", player_id, " population to new structure"])
 			elif not pop_data.has("total"):
 				# New structure but missing fields
 				pop_data["total"] = pop_data.get("total", 10)
@@ -1483,7 +1483,7 @@ func _migrate_players_data_structure():
 				pop_data["working"] = pop_data.get("working", 0)
 				pop_data["unhoused"] = pop_data["total"] - pop_data["housed"]
 				pop_data["unemployed"] = pop_data["total"] - pop_data["working"]
-				print("Game: Updated player ", player_id, " population structure")
+				DebugConfig.dprint("save_load", ["Game: Updated player ", player_id, " population structure"])
 			
 			player_data["population"] = pop_data
 	
@@ -1535,11 +1535,11 @@ func _migrate_players_data_structure():
 		if typeof(player_id) == TYPE_INT:
 			update_player_population(player_id)
 	
-	print("Game: Players data migration complete")
+	DebugConfig.dprint("save_load", ["Game: Players data migration complete"])
 
 func migrate_old_building_names():
 	# Migrate buildings with old coordinate-based names to new system
-	print("Game: Checking for buildings with old naming system...")
+	DebugConfig.dprint("save_load", ["Game: Checking for buildings with old naming system..."])
 	
 	var buildings_to_migrate = []
 	if map_objects_holder:
@@ -1550,7 +1550,7 @@ func migrate_old_building_names():
 				buildings_to_migrate.append(child)
 	
 	if buildings_to_migrate.size() > 0:
-		print("Game: Found ", buildings_to_migrate.size(), " buildings with old names, migrating...")
+		DebugConfig.dprint("save_load", ["Game: Found ", buildings_to_migrate.size(), " buildings with old names, migrating..."])
 		
 		# Clear player buildings list and rebuild
 		if players_data.has(1):
@@ -1576,7 +1576,7 @@ func migrate_old_building_names():
 			elif old_name.contains("Building_fishing_hut"):
 				building_type = "fishing_hut"
 			else:
-				print("Warning: Could not determine building type for: ", old_name)
+				DebugConfig.dprint("save_load", ["Warning: Could not determine building type for: ", old_name])
 				continue
 			
 			# Generate new name
@@ -1590,12 +1590,12 @@ func migrate_old_building_names():
 			if players_data.has(1):
 				players_data[1]["buildings"].append(new_name)
 			
-			print("Game: Migrated building: ", old_name, " -> ", new_name)
+			DebugConfig.dprint("save_load", ["Game: Migrated building: ", old_name, " -> ", new_name])
 		
-		print("Game: Migration complete, auto-saving...")
+		DebugConfig.dprint("save_load", ["Game: Migration complete, auto-saving..."])
 		_execute_save()
 	else:
-		print("Game: No buildings need migration")
+		DebugConfig.dprint("save_load", ["Game: No buildings need migration"])
 
 func _start_building_placement(building_type: String):
 	# Clear any existing building selection
@@ -1616,16 +1616,16 @@ func _start_building_placement(building_type: String):
 		
 		add_child(building_preview_sprite)
 		
-		print("Game: Building texture size: ", building_texture.get_size())
-		print("Game: Tile size: ", str(tilemap_layer.tile_set.tile_size) if tilemap_layer.tile_set else "No tileset")
+		DebugConfig.dprint("buildings", ["Game: Building texture size: ", building_texture.get_size()])
+		DebugConfig.dprint("buildings", ["Game: Tile size: ", str(tilemap_layer.tile_set.tile_size) if tilemap_layer.tile_set else "No tileset"])
 		
 		# Calculate scale to fit tile if needed
 		if tilemap_layer.tile_set:
 			var tile_size = tilemap_layer.tile_set.tile_size
 			var texture_size = building_texture.get_size()
-			print("Game: Texture vs Tile size ratio: ", texture_size.x / tile_size.x, ", ", texture_size.y / tile_size.y)
+			DebugConfig.dprint("buildings", ["Game: Texture vs Tile size ratio: ", texture_size.x / tile_size.x, ", ", texture_size.y / tile_size.y])
 	
-	print("Game: Started building placement mode for: ", building_type)
+	DebugConfig.dprint("buildings", ["Game: Started building placement mode for: ", building_type])
 
 func _cancel_building_placement():
 	is_placing_building = false
@@ -1637,7 +1637,7 @@ func _cancel_building_placement():
 		building_preview_sprite.queue_free()
 		building_preview_sprite = null
 	
-	print("Game: Cancelled building placement mode")
+	DebugConfig.dprint("buildings", ["Game: Cancelled building placement mode"])
 
 func _update_building_hover(_mouse_pos: Vector2):
 	# Convert screen position to world position
@@ -1733,7 +1733,7 @@ func _clear_building_selection():
 func _open_building_details_modal(building: Node2D):
 	# Close and cleanup existing modal if open
 	if building_details_modal:
-		print("Game: Closing old building details modal before opening new one")
+		DebugConfig.dprint("buildings", ["Game: Closing old building details modal before opening new one"])
 		building_details_modal.close_modal()  # This clears lines and unregisters from stack
 		building_details_modal.queue_free()
 	
@@ -1741,12 +1741,12 @@ func _open_building_details_modal(building: Node2D):
 	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
 	building_details_modal = BuildingDetailsModalScript.new()
 	
-	print("Game: Created building details modal: ", building_details_modal)
+	DebugConfig.dprint("buildings", ["Game: Created building details modal: ", building_details_modal])
 	
 	# Add to UI layer first so it can get proper positioning
 	ui_layer.add_child(building_details_modal)
 	
-	print("Game: Added modal to UI layer, calling setup...")
+	DebugConfig.dprint("buildings", ["Game: Added modal to UI layer, calling setup..."])
 	
 	# Then setup the building details
 	building_details_modal.setup_building_details(building)
@@ -1757,7 +1757,7 @@ func _open_building_details_modal(building: Node2D):
 	# Connect demolish signal
 	building_details_modal.demolish_confirmed.connect(_on_building_demolish_confirmed)
 	
-	print("Game: Building details modal setup complete")
+	DebugConfig.dprint("buildings", ["Game: Building details modal setup complete"])
 
 func _on_building_details_closed():
 	# Clean up building selection and free the modal
@@ -1767,22 +1767,22 @@ func _on_building_details_closed():
 	building_details_modal = null
 
 func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
-	print("Game: Demolishing building: ", building_data_to_delete)
+	DebugConfig.dprint("buildings", ["Game: Demolishing building: ", building_data_to_delete])
 	
 	# Find the building node to delete
 	var building_name = building_data_to_delete.get("name", "")
 	if building_name == "":
-		print("Error: No building name provided for demolish")
+		DebugConfig.dprint("buildings", ["Error: No building name provided for demolish"])
 		return
 	
 	# Find building in the map objects holder
 	if not map_objects_holder:
-		print("Error: MapObjects holder not found")
+		DebugConfig.dprint("buildings", ["Error: MapObjects holder not found"])
 		return
 	
 	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
 	if not building_node:
-		print("Error: Building node not found: ", building_name)
+		DebugConfig.dprint("buildings", ["Error: Building node not found: ", building_name])
 		return
 	
 	# Update population counts before deletion
@@ -1811,7 +1811,7 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 	# TODO: Return some resources to player based on building type
 	# Could return 50% of building cost or similar
 	
-	print("Game: Building demolished successfully: ", building_name)
+	DebugConfig.dprint("buildings", ["Game: Building demolished successfully: ", building_name])
 	
 	# Clear selection and close modal (modal should already be closed by demolish handler)
 	_clear_building_selection()
@@ -1832,7 +1832,7 @@ func _check_town_centre_game_over(player_id: int, demolished_building_name: Stri
 		if _extract_building_type_from_name(child.name) == "town_center":
 			return  # Still has at least one — no game over
 	# No town centres left — show game over
-	print("Game: Player ", player_id, " has no town centres remaining — GAME OVER")
+	DebugConfig.dprint("buildings", ["Game: Player ", player_id, " has no town centres remaining — GAME OVER"])
 	_trigger_game_over()
 
 func _trigger_game_over():
@@ -1893,7 +1893,7 @@ func _unhandled_input(event: InputEvent):
 		camera_controller.handle_input(event, get_tree().paused)
 
 func _ready():
-	print("game.gd: _ready started.")
+	DebugConfig.dprint("general", ["game.gd: _ready started."])
 	# --- Node Validation ---
 	# ... (Keep validation) ...
 	if not is_instance_valid(camera_controller) or not is_instance_valid(ui_manager) \
@@ -1906,14 +1906,14 @@ func _ready():
 # --- Calculate Map Bounds ---
 	var map_pixel_width = 0
 	var map_pixel_height = 0
-	print("Game: Checking TileSet...") # Debug Print
+	DebugConfig.dprint("general", ["Game: Checking TileSet..."]) # Debug Print
 	if is_instance_valid(tilemap_layer) and is_instance_valid(tilemap_layer.tile_set):
 		var tile_size = tilemap_layer.tile_set.tile_size
-		print("Game: Found TileSet, Tile Size: ", tile_size) # Debug Print
+		DebugConfig.dprint("general", ["Game: Found TileSet, Tile Size: ", tile_size]) # Debug Print
 		if tile_size.x > 0 and tile_size.y > 0:
 			map_pixel_width = MAP_WIDTH * tile_size.x
 			map_pixel_height = MAP_HEIGHT * tile_size.y
-			print("Game: Calculated map pixel dimensions: %d x %d" % [map_pixel_width, map_pixel_height]) # Debug Print
+			DebugConfig.dprint("general", ["Game: Calculated map pixel dimensions: %d x %d" % [map_pixel_width, map_pixel_height]]) # Debug Print
 		else:
 			push_error("Game: TileSet has invalid tile_size (<= 0): %s" % str(tile_size))
 			# Stop execution potentially? Or default sizes? For now, error is enough.
@@ -1931,10 +1931,10 @@ func _ready():
 		return # Stop further execution in _ready if bounds failed
 
 	# --- Setup Managers ---
-	print("Game: Setting up CameraController...")
+	DebugConfig.dprint("general", ["Game: Setting up CameraController..."])
 	camera_controller.setup(camera, map_pixel_width, map_pixel_height)
 
-	print("Game: Setting up UIManager...")
+	DebugConfig.dprint("general", ["Game: Setting up UIManager..."])
 	var ui_nodes = { # Verify these paths carefully!
 		"modal_menu_panel": $UI_Layer/ModalMenuPanel,
 		"world_creation_panel": $UI_Layer/WorldCreationPanel,
@@ -1949,24 +1949,24 @@ func _ready():
 	# Store ui_manager reference for modals to access
 	set_meta("ui_manager", ui_manager)
 
-	print("Game: Setting up MapObjectManager...")
+	DebugConfig.dprint("general", ["Game: Setting up MapObjectManager..."])
 	var forest_coords = Vector2i(0, 4); var mountain_coords = Vector2i(0, 3); var ocean_coords = Vector2i(0, 2) # Corrected coords
-	print("Game: fish_scene before setup = %s" % fish_scene)
+	DebugConfig.dprint("general", ["Game: fish_scene before setup = %s" % fish_scene])
 	
 	# Fallback: if fish_scene is not assigned, load it
 	if not fish_scene:
 		fish_scene = preload("res://scenes/objects/fish.tscn")
-		print("Game: Fish scene was null, loaded via preload: %s" % fish_scene)
+		DebugConfig.dprint("general", ["Game: Fish scene was null, loaded via preload: %s" % fish_scene])
 	
 	map_object_manager.setup(map_objects_holder, tilemap_layer, tree_scene, mountain_scene, forest_coords, mountain_coords, self, fish_scene, ocean_coords)
-	print("Game: map_object_manager.fish_scene after setup = %s" % map_object_manager.fish_scene)
+	DebugConfig.dprint("general", ["Game: map_object_manager.fish_scene after setup = %s" % map_object_manager.fish_scene])
 
-	print("Game: Setting up TurnManager...")
+	DebugConfig.dprint("general", ["Game: Setting up TurnManager..."])
 	var day_label = $UI_Layer/TurnControlsContainer/TurnVBox/DayCounterLabel
 	if not is_instance_valid(day_label): push_error("Game: Day counter label node not found!")
 	turn_manager.setup(day_label)
 
-	print("Game: Setting up WaveSpawner...")
+	DebugConfig.dprint("general", ["Game: Setting up WaveSpawner..."])
 	var WaveSpawnerScript = preload("res://scripts/managers/wave_spawner.gd")
 	wave_spawner = WaveSpawnerScript.new()
 	wave_spawner.name = "WaveSpawner"
@@ -1975,13 +1975,13 @@ func _ready():
 	# Connect wave signal so we can fire a turn event when a wave spawns
 	wave_spawner.wave_spawned.connect(_on_wave_spawned)
 
-	print("Game: Setting up TurnEventManager...")
+	DebugConfig.dprint("general", ["Game: Setting up TurnEventManager..."])
 	var TurnEventManagerScript = preload("res://scripts/managers/turn_event_manager.gd")
 	turn_event_manager = TurnEventManagerScript.new()
 	turn_event_manager.name = "TurnEventManager"
 	add_child(turn_event_manager)
 
-	print("Game: Setting up GameLog...")
+	DebugConfig.dprint("general", ["Game: Setting up GameLog..."])
 	var GameLogScript = preload("res://scripts/managers/game_log.gd")
 	game_log = GameLogScript.new()
 	game_log.name = "GameLog"
@@ -1989,11 +1989,11 @@ func _ready():
 	
 	# Load preview textures for building placement
 	# Create simple colored rectangles for overlays since we don't have overlay assets
-	print("Game: Setting up building placement preview system")
+	DebugConfig.dprint("general", ["Game: Setting up building placement preview system"])
 
 
 	# --- Connect Signals ---
-	print("Game: Connecting signals...")
+	DebugConfig.dprint("general", ["Game: Connecting signals..."])
 	# Connect UI buttons to UIManager requests / TurnManager
 	# Using get_node for safety in case @onready vars haven't resolved (unlikely but safe)
 
@@ -2024,24 +2024,24 @@ func _ready():
 
 
 	# --- DEBUG: Connect signals *from* UIManager back to game.gd ---
-	print("Game: Connecting signals FROM UIManager...")
+	DebugConfig.dprint("general", ["Game: Connecting signals FROM UIManager..."])
 	if is_instance_valid(ui_manager):
 		if not ui_manager.is_connected("save_requested", Callable(self, "_on_save_requested_from_ui")):
 			var err_save_req = ui_manager.save_requested.connect(_on_save_requested_from_ui)
-			if err_save_req == OK: print("Game: Connected ui_manager.save_requested to _on_save_requested_from_ui")
+			if err_save_req == OK: DebugConfig.dprint("general", ["Game: Connected ui_manager.save_requested to _on_save_requested_from_ui"])
 			else: push_error("Game: FAILED to connect ui_manager.save_requested. Error: %d" % err_save_req)
-		else: print("Game: ui_manager.save_requested ALREADY connected.")
+		else: DebugConfig.dprint("general", ["Game: ui_manager.save_requested ALREADY connected."])
 
 		if not ui_manager.is_connected("action_confirmed", Callable(self, "_on_action_confirmed_from_ui")):
 			var err_action_conf = ui_manager.action_confirmed.connect(_on_action_confirmed_from_ui)
-			if err_action_conf == OK: print("Game: Connected ui_manager.action_confirmed to _on_action_confirmed_from_ui")
+			if err_action_conf == OK: DebugConfig.dprint("general", ["Game: Connected ui_manager.action_confirmed to _on_action_confirmed_from_ui"])
 			else: push_error("Game: FAILED to connect ui_manager.action_confirmed. Error: %d" % err_action_conf)
-		else: print("Game: ui_manager.action_confirmed ALREADY connected.")
+		else: DebugConfig.dprint("general", ["Game: ui_manager.action_confirmed ALREADY connected."])
 	else:
 		push_error("Game: Cannot connect UIManager signals, ui_manager node is invalid!")
 	# --- END DEBUG ---
 
-	print("Game: Connecting signals complete.")
+	DebugConfig.dprint("general", ["Game: Connecting signals complete."])
 
 	# --- Setup Game Header ---
 	_setup_game_header()
@@ -2057,7 +2057,7 @@ func _ready():
 
 	# --- Initialize Map ---
 	initialize_map()
-	print("game.gd: _ready finished.")
+	DebugConfig.dprint("general", ["game.gd: _ready finished."])
 
 
 func _process(delta: float):
@@ -2070,15 +2070,15 @@ func _process(delta: float):
 
 # --- Map Initialization ---
 func initialize_map():
-	print("Game: Initializing Map..."); print("Game: Start Mode: %s" % GameManager.start_mode)
+	DebugConfig.dprint("general", ["Game: Initializing Map..."]); DebugConfig.dprint("general", ["Game: Start Mode: %s" % GameManager.start_mode])
 	var success = false; var loaded_day = 1
 	
 	if GameManager.start_mode == "world_creation":
-		print("Game: Mode: World Creation")
+		DebugConfig.dprint("general", ["Game: Mode: World Creation"])
 		_start_world_creation_mode()
 		return  # Don't proceed with normal map initialization
 	elif GameManager.start_mode == "new":
-		print("Game: Mode: New Game"); current_save_path = ""
+		DebugConfig.dprint("general", ["Game: Mode: New Game"]); current_save_path = ""
 		unit_counter = 0  # Reset unit counter for new games
 		if generate_world_data(): 
 			success = true
@@ -2088,7 +2088,7 @@ func initialize_map():
 			_create_initial_units_from_population()
 		else: push_error("Game: Failed to generate world data.")
 	elif GameManager.start_mode == "new_with_data":
-		print("Game: Mode: New Game with Generated Data")
+		DebugConfig.dprint("general", ["Game: Mode: New Game with Generated Data"])
 		current_save_path = ""
 		unit_counter = 0  # Reset unit counter for new games
 		if not GameManager.generated_world_data.is_empty():
@@ -2104,7 +2104,7 @@ func initialize_map():
 				# Initialize population data for new games
 				_migrate_players_data_structure()
 	elif GameManager.start_mode == "load":
-		print("Game: Mode: Load Game from Path: ", GameManager.load_file_path)
+		DebugConfig.dprint("general", ["Game: Mode: Load Game from Path: ", GameManager.load_file_path])
 		if GameManager.load_file_path.is_empty(): push_error("Game: Load mode selected but no load_file_path provided! Starting new game."); GameManager.start_mode = "new"; initialize_map(); return
 		else:
 			var loaded_state = SaveLoadManager.load_game(GameManager.load_file_path)
@@ -2126,20 +2126,20 @@ func initialize_map():
 					_update_unit_counter_from_existing_units()
 					# Don't create new units - they should already exist in the save file with assignments
 					# Sprite restoration will happen after buildings are restored
-					print("Game: Restored player data for ", players_data.size(), " players")
+					DebugConfig.dprint("general", ["Game: Restored player data for ", players_data.size(), " players"])
 				# Restore wave spawner state
 				if loaded_state.has("wave_state") and is_instance_valid(wave_spawner):
 					wave_spawner.wave_number = loaded_state["wave_state"].get("wave_number", 0)
 					wave_spawner.next_wave_day = loaded_state["wave_state"].get("next_wave_day", wave_spawner.WAVE_INTERVAL)
-					print("Game: Restored wave state — wave %d, next wave day %d" % [wave_spawner.wave_number, wave_spawner.next_wave_day])
+					DebugConfig.dprint("general", ["Game: Restored wave state — wave %d, next wave day %d" % [wave_spawner.wave_number, wave_spawner.next_wave_day]])
 				# Restore game log entries
 				if loaded_state.has("log_entries") and is_instance_valid(game_log):
 					game_log.entries = loaded_state["log_entries"].duplicate()
-					print("Game: Restored %d log entries" % game_log.entries.size())
+					DebugConfig.dprint("general", ["Game: Restored %d log entries" % game_log.entries.size()])
 			else: push_error("Game: Failed to load state from %s. Starting new game." % GameManager.load_file_path); GameManager.start_mode = "new"; initialize_map(); return
 	else: push_error("Game: Invalid start mode: %s. Starting new game." % GameManager.start_mode); GameManager.start_mode = "new"; initialize_map(); return
 	if success:
-		print("Game: Map state ready. Updating managers...")
+		DebugConfig.dprint("general", ["Game: Map state ready. Updating managers..."])
 		# Reset environment data for new games (not loaded games)
 		if GameManager.start_mode == "new" or loaded_environment_objects_data.is_empty():
 			_reset_environment_data()
@@ -2164,7 +2164,7 @@ func initialize_map():
 			_restore_environment_objects(loaded_environment_objects_data)
 			loaded_environment_objects_data = []  # Clear after restoration
 		else:
-			print("Game: No environment objects to restore (new game or empty save)")
+			DebugConfig.dprint("general", ["Game: No environment objects to restore (new game or empty save)"])
 		
 		# Migrate any old building names to new system
 		migrate_old_building_names()
@@ -2181,22 +2181,22 @@ func initialize_map():
 		# This is especially important for loaded games where units exist but have no sprites yet
 		if GameManager.start_mode == "load":
 			call_deferred("_restore_unit_sprites_on_load")
-			print("Game: Queued unit sprite restoration for loaded game")
+			DebugConfig.dprint("general", ["Game: Queued unit sprite restoration for loaded game"])
 		
 		camera_controller.center_camera()
 		# Refresh resource bar with loaded data
 		if resource_bar:
 			resource_bar.refresh()
-		print("Game: Map ready.")
-	else: print("Game: Map initialization failed.")
-	print("Game: --- Map Initialization Finished ---")
+		DebugConfig.dprint("general", ["Game: Map ready."])
+	else: DebugConfig.dprint("general", ["Game: Map initialization failed."])
+	DebugConfig.dprint("general", ["Game: --- Map Initialization Finished ---"])
 
 
 # --- World Creation Functions ---
 
 func _reset_environment_data():
 	# Reset environment object tracking for new games
-	print("Game: Resetting environment data for new game")
+	DebugConfig.dprint("map_objects", ["Game: Resetting environment data for new game"])
 	players_data["environment"] = {
 		"name": "Environment",
 		"type": "environment",
@@ -2244,7 +2244,7 @@ func _fix_duplicate_unit_ids():
 		var occurrences = all_unit_ids[unit_id]
 		
 		if occurrences.size() > 1:
-			print("Game: Found %d units with duplicate ID: %s" % [occurrences.size(), unit_id])
+			DebugConfig.dprint("save_load", ["Game: Found %d units with duplicate ID: %s" % [occurrences.size(), unit_id]])
 			duplicates_found += occurrences.size() - 1  # Count extras
 			
 			# Keep the first one, reassign the others
@@ -2254,19 +2254,19 @@ func _fix_duplicate_unit_ids():
 				var new_id = _get_next_unit_id()
 				
 				duplicate_unit["unique_id"] = new_id
-				print("Game: Fixed duplicate unit - reassigned %s -> %s (name: %s)" % [old_id, new_id, duplicate_unit.get("name", "Unknown")])
+				DebugConfig.dprint("save_load", ["Game: Fixed duplicate unit - reassigned %s -> %s (name: %s)" % [old_id, new_id, duplicate_unit.get("name", "Unknown")]])
 	
 	if duplicates_found > 0:
-		print("Game: Fixed %d duplicate unit IDs" % duplicates_found)
+		DebugConfig.dprint("save_load", ["Game: Fixed %d duplicate unit IDs" % duplicates_found])
 	else:
-		print("Game: No duplicate unit IDs found")
+		DebugConfig.dprint("save_load", ["Game: No duplicate unit IDs found"])
 
 func _create_initial_units():
 	"""Create initial unit population for new games, or restore sprites for loaded games"""
 	
 	if GameManager.start_mode == "new" or GameManager.start_mode == "new_with_data":
 		# NEW GAME: Create 10 units per player upfront
-		print("Game: Creating initial unit population for new game")
+		DebugConfig.dprint("population", ["Game: Creating initial unit population for new game"])
 		for player_id in players_data.keys():
 			if str(player_id) == "environment":
 				continue
@@ -2309,7 +2309,7 @@ func _create_initial_units():
 				
 				players_data[player_id]["units"].append(unit_data)
 		
-		print("Game: Created 10 units per player for new game")
+		DebugConfig.dprint("population", ["Game: Created 10 units per player for new game"])
 		
 		# ── Spawn the player's named pet ──────────────────────────────────────
 		var pet_name: String = world_data.get("player_data", {}).get("pet_name", "Wilson")
@@ -2347,9 +2347,9 @@ func _create_initial_units():
 		if not players_data[1].has("units"):
 			players_data[1]["units"] = []
 		players_data[1]["units"].append(pet_data)
-		print("Game: Spawned pet '%s' (id=%s)" % [pet_name, pet_id])
+		DebugConfig.dprint("population", ["Game: Spawned pet '%s' (id=%s)" % [pet_name, pet_id]])
 	else:
-		print("Game: Not a new game (mode: %s) - units loaded or will be restored from save" % GameManager.start_mode)
+		DebugConfig.dprint("population", ["Game: Not a new game (mode: %s) - units loaded or will be restored from save" % GameManager.start_mode])
 	
 	# For both new and loaded games: restore sprites for units that meet conditions
 	_restore_unit_sprites_on_load()
@@ -2362,7 +2362,7 @@ func _clear_existing_unit_sprites():
 	# Remove any existing unit sprites (nodes with unit_X names)
 	for child in map_objects_holder.get_children():
 		if child.name.begins_with("unit_"):
-			print("Removing existing unit sprite: ", child.name)
+			DebugConfig.dprint("general", ["Removing existing unit sprite: ", child.name])
 			child.queue_free()
 
 func _restore_unit_sprites_on_load():
@@ -2411,7 +2411,7 @@ func _restore_unit_sprites_on_load():
 			else:
 				units_already_have_sprites += 1
 	
-	print("Unit sprite restoration complete: %d created, %d checked, %d with assignments, %d without sprites, %d already had sprites" % [sprites_created, units_checked, units_with_assignments, units_without_sprites, units_already_have_sprites])
+	DebugConfig.dprint("save_load", ["Unit sprite restoration complete: %d created, %d checked, %d with assignments, %d without sprites, %d already had sprites" % [sprites_created, units_checked, units_with_assignments, units_without_sprites, units_already_have_sprites]])
 
 func _ensure_unit_movement_properties(unit: Dictionary):
 	"""Ensure unit has all required movement properties for backward compatibility"""
@@ -2460,13 +2460,13 @@ func _spawn_unit(unit_data: Dictionary):
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
 		else:
-			print("Warning: Unit texture not found: ", texture_path)
+			DebugConfig.dprint("population", ["Warning: Unit texture not found: ", texture_path])
 		
 		# Add to map objects holder
 		map_objects_holder.add_child(unit_sprite)
-		print("Game: Spawned unit sprite: ", unit_data["unique_id"], " (both living and job assigned)")
+		DebugConfig.dprint("population", ["Game: Spawned unit sprite: ", unit_data["unique_id"], " (both living and job assigned)"])
 	else:
-		print("Game: Unit created but no sprite (missing living or job assignment): ", unit_data["unique_id"])
+		DebugConfig.dprint("population", ["Game: Unit created but no sprite (missing living or job assignment): ", unit_data["unique_id"]])
 	
 	# Store unit in player data
 	var player_id = unit_data.get("player_id", 1)
@@ -2475,7 +2475,7 @@ func _spawn_unit(unit_data: Dictionary):
 	if players_data.has(player_id):
 		players_data[player_id]["units"].append(unit_data)
 	
-	print("Game: Spawned unit: ", unit_data["unique_id"], " (", unit_data["name"], ") at ", unit_data["position"])
+	DebugConfig.dprint("population", ["Game: Spawned unit: ", unit_data["unique_id"], " (", unit_data["name"], ") at ", unit_data["position"]])
 
 func _get_next_unit_id() -> String:
 	# Generate unique unit ID
@@ -2527,7 +2527,7 @@ func add_event_units(player_id: int, count: int):
 		players_data[player_id]["units"].append(unit_data)
 		# Build sprite directly (bypass _create_unit_sprite_and_start_cycle which forces idle state)
 		_spawn_event_unit_sprite(unit_data)
-		print("Game: Event added unit %s (%s) for player %d" % [uid, unit_data["name"], player_id])
+		DebugConfig.dprint("general", ["Game: Event added unit %s (%s) for player %d" % [uid, unit_data["name"], player_id]])
 	# Try to house the new arrivals in any spare capacity
 	_auto_assign_all_units_to_housing()
 	# Update population current count to reflect actual unit list size
@@ -2566,7 +2566,7 @@ func remove_event_units(player_id: int, count: int):
 				clickable.queue_free()
 		player_units.erase(unit)
 		removed += 1
-		print("Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id])
+		DebugConfig.dprint("general", ["Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id]])
 	players_data[player_id]["units"] = player_units
 	# Recalculate current from actual array size
 	var pop = players_data[player_id].get("population", {})
@@ -2621,7 +2621,7 @@ func _spawn_event_unit_sprite(unit: Dictionary):
 	unit_sprite_map[uid] = unit_sprite
 	unit["sprite_id"] = uid
 	# Unit stays in idle_wander — movement process will pick it up automatically
-	print("Game: Event unit sprite spawned: %s at %s" % [uid, str(unit["position"])])
+	DebugConfig.dprint("general", ["Game: Event unit sprite spawned: %s at %s" % [uid, str(unit["position"])]])
 
 func _update_unit_counter_from_existing_units():
 	"""Update the unit_counter based on all existing units in players_data.
@@ -2644,11 +2644,11 @@ func _update_unit_counter_from_existing_units():
 	
 	# Set counter to the next number after the highest found
 	unit_counter = max_unit_num
-	print("Game: Updated unit_counter to %d (next unit will be unit_%d)" % [unit_counter, unit_counter + 1])
+	DebugConfig.dprint("naming", ["Game: Updated unit_counter to %d (next unit will be unit_%d)" % [unit_counter, unit_counter + 1]])
 
 func _load_race_names():
 	"""Load name lists for each race from asset files"""
-	print("Game: ===== STARTING NAME LOADING =====")
+	DebugConfig.dprint("naming", ["Game: ===== STARTING NAME LOADING ====="])
 	var races = ["human", "elf"]
 	
 	for race in races:
@@ -2656,7 +2656,7 @@ func _load_race_names():
 		
 		# Load male given names
 		var male_names_path = "res://assets/names/%ss/male_given_names.txt" % race
-		print("Game: Attempting to load male given names from: %s" % male_names_path)
+		DebugConfig.dprint("naming", ["Game: Attempting to load male given names from: %s" % male_names_path])
 		
 		var male_file = FileAccess.open(male_names_path, FileAccess.READ)
 		if male_file:
@@ -2669,13 +2669,13 @@ func _load_race_names():
 				if not trimmed.is_empty():
 					filtered_names.append(trimmed)
 			race_names[race]["given"]["male"] = filtered_names
-			print("Game: Loaded %d male given names for %s" % [filtered_names.size(), race])
+			DebugConfig.dprint("naming", ["Game: Loaded %d male given names for %s" % [filtered_names.size(), race]])
 		else:
 			push_error("Game: Failed to open male given names file: %s" % male_names_path)
 		
 		# Load female given names
 		var female_names_path = "res://assets/names/%ss/female_given_names.txt" % race
-		print("Game: Attempting to load female given names from: %s" % female_names_path)
+		DebugConfig.dprint("naming", ["Game: Attempting to load female given names from: %s" % female_names_path])
 		
 		var female_file = FileAccess.open(female_names_path, FileAccess.READ)
 		if female_file:
@@ -2688,18 +2688,18 @@ func _load_race_names():
 				if not trimmed.is_empty():
 					filtered_names.append(trimmed)
 			race_names[race]["given"]["female"] = filtered_names
-			print("Game: Loaded %d female given names for %s" % [filtered_names.size(), race])
+			DebugConfig.dprint("naming", ["Game: Loaded %d female given names for %s" % [filtered_names.size(), race]])
 		else:
 			push_error("Game: Failed to open female given names file: %s" % female_names_path)
 		
 		# Load surnames - use direct file path without ResourceLoader
 		var surnames_path = "res://assets/names/%ss/surnames.txt" % race
-		print("Game: Attempting to load surnames from: %s" % surnames_path)
+		DebugConfig.dprint("naming", ["Game: Attempting to load surnames from: %s" % surnames_path])
 		
 		var surnames_file = FileAccess.open(surnames_path, FileAccess.READ)
 		if surnames_file:
 			var content = surnames_file.get_as_text().strip_edges()
-			print("Game: File content length for surnames: %d" % content.length())
+			DebugConfig.dprint("naming", ["Game: File content length for surnames: %d" % content.length()])
 			var surnames_array = content.split("\n")
 			# Filter out empty strings
 			var filtered_surnames = []
@@ -2708,14 +2708,14 @@ func _load_race_names():
 				if not trimmed.is_empty():
 					filtered_surnames.append(trimmed)
 			race_names[race]["surnames"] = filtered_surnames
-			print("Game: Loaded %d surnames for %s (filtered from %d)" % [filtered_surnames.size(), race, surnames_array.size()])
+			DebugConfig.dprint("naming", ["Game: Loaded %d surnames for %s (filtered from %d)" % [filtered_surnames.size(), race, surnames_array.size()]])
 			if filtered_surnames.size() > 0:
-				print("Game: First surname: %s, Last surname: %s" % [filtered_surnames[0], filtered_surnames[filtered_surnames.size()-1]])
+				DebugConfig.dprint("naming", ["Game: First surname: %s, Last surname: %s" % [filtered_surnames[0], filtered_surnames[filtered_surnames.size()-1]]])
 		else:
 			push_error("Game: Failed to open surnames file: %s" % surnames_path)
-			print("Game: FileAccess error: %d" % FileAccess.get_open_error())
+			DebugConfig.dprint("naming", ["Game: FileAccess error: %d" % FileAccess.get_open_error()])
 	
-	print("Game: ===== NAME LOADING COMPLETE =====")
+	DebugConfig.dprint("naming", ["Game: ===== NAME LOADING COMPLETE ====="])
 
 func _generate_random_name(race: String, gender: String = "male") -> String:
 	"""Generate a random name for a unit of the given race and gender"""
@@ -2773,14 +2773,14 @@ func _restore_missing_unit_names():
 			if not unit.has("name") or unit.get("name", "").is_empty():
 				unit["name"] = _generate_random_name(race)
 				units_without_names += 1
-				print("Game: Assigned name '%s' to unit %s" % [unit["name"], unit.get("unique_id", "unknown")])
+				DebugConfig.dprint("naming", ["Game: Assigned name '%s' to unit %s" % [unit["name"], unit.get("unique_id", "unknown")]])
 	
 	if units_without_names > 0:
-		print("Game: Restored names for %d units from old save" % units_without_names)
+		DebugConfig.dprint("naming", ["Game: Restored names for %d units from old save" % units_without_names])
 
 func _load_building_work_names():
 	"""Load work-related names for each workplace building type"""
-	print("Game: Loading building work names...")
+	DebugConfig.dprint("naming", ["Game: Loading building work names..."])
 	
 	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker"]
 	
@@ -2797,7 +2797,7 @@ func _load_building_work_names():
 				if not trimmed.is_empty():
 					filtered_names.append(trimmed)
 			building_work_names[building_type] = filtered_names
-			print("Game: Loaded %d work names for %s" % [filtered_names.size(), building_type])
+			DebugConfig.dprint("naming", ["Game: Loaded %d work names for %s" % [filtered_names.size(), building_type]])
 		else:
 			push_error("Game: Failed to load work names for %s from %s" % [building_type, names_path])
 			building_work_names[building_type] = []
@@ -2805,52 +2805,52 @@ func _load_building_work_names():
 func _rename_workplace_on_first_assignment(building_node: Node2D, unit: Dictionary):
 	"""Rename a workplace when the first worker is assigned, combining surname + work name"""
 	if not building_node or not unit:
-		print("DEBUG RENAME: Failed - building_node or unit is null")
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - building_node or unit is null"])
 		return false
 	
 	var building_type = building_node.get_meta("building_type", "")
 	var building_id = building_node.name
-	print("DEBUG RENAME: Starting rename check for %s (type: %s)" % [building_id, building_type])
+	DebugConfig.dprint("naming", ["DEBUG RENAME: Starting rename check for %s (type: %s)" % [building_id, building_type]])
 	
 	# Only rename workplaces (fishing_hut, lumberjack, stoneworker, research, lumber_mill)
 	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker", "research", "lumber_mill"]
 	if building_type not in workplace_types:
-		print("DEBUG RENAME: Failed - %s not in workplace_types" % building_type)
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - %s not in workplace_types" % building_type])
 		return false
 	
 	# Check if already renamed (would have a name like "Surname WorkName" instead of "building_type#")
 	# Default format is building_type followed by digits (e.g., "lumberjack1", "town_center1")
 	if not building_id.begins_with(building_type):
-		print("DEBUG RENAME: Failed - building ID doesn't start with type")
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - building ID doesn't start with type"])
 		return false
 	
 	var after_type = building_id.substr(building_type.length())
 	if not after_type.is_valid_int():
-		print("DEBUG RENAME: Failed - building already has non-default name (%s after type %s is not just digits)" % [after_type, building_type])
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - building already has non-default name (%s after type %s is not just digits)" % [after_type, building_type]])
 		return false
 	
-	print("DEBUG RENAME: Pattern check passed - ID: %s has default format (type + digits)" % building_id)
+	DebugConfig.dprint("naming", ["DEBUG RENAME: Pattern check passed - ID: %s has default format (type + digits)" % building_id])
 	
 	# Extract surname from unit name (e.g., "John Gonzalez" -> "Gonzalez")
 	var unit_name = unit.get("name", "")
 	if unit_name.is_empty():
-		print("DEBUG RENAME: Failed - unit has no name")
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - unit has no name"])
 		return false
 	
 	var name_parts = unit_name.split(" ")
 	var surname = name_parts[-1] if name_parts.size() > 0 else unit_name
-	print("DEBUG RENAME: Unit name: %s, Surname: %s" % [unit_name, surname])
+	DebugConfig.dprint("naming", ["DEBUG RENAME: Unit name: %s, Surname: %s" % [unit_name, surname]])
 	
 	# Load building work names if not already loaded
 	if not building_work_names.has(building_type) or building_work_names[building_type].is_empty():
-		print("DEBUG RENAME: Loading work names for %s" % building_type)
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Loading work names for %s" % building_type])
 		_load_building_work_names()
 	
 	# Get work names for this building type
 	var work_names = building_work_names.get(building_type, [])
-	print("DEBUG RENAME: Available work names for %s: %d names" % [building_type, work_names.size()])
+	DebugConfig.dprint("naming", ["DEBUG RENAME: Available work names for %s: %d names" % [building_type, work_names.size()]])
 	if work_names.is_empty():
-		print("DEBUG RENAME: Failed - No work names available for %s" % building_type)
+		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - No work names available for %s" % building_type])
 		return false
 	
 	# Select a random work name
@@ -2883,7 +2883,7 @@ func _rename_workplace_on_first_assignment(building_node: Node2D, unit: Dictiona
 	# Only the display_name metadata was changed
 	var owner_player = building_node.get_meta("owner_player", 1)
 	
-	print("Game: Renamed workplace from '%s' to '%s' (display name only) after assigning %s" % [old_name, new_building_name, unit.get("unique_id")])
+	DebugConfig.dprint("naming", ["Game: Renamed workplace from '%s' to '%s' (display name only) after assigning %s" % [old_name, new_building_name, unit.get("unique_id")]])
 	return true
 
 func _cache_job_connections_for_unit(unit: Dictionary):
@@ -2901,7 +2901,7 @@ func _cache_job_connections_for_unit(unit: Dictionary):
 	# Check if job building's connections are already cached
 	if buildings_connections_cache.has(job_building):
 		unit["job_connections"] = buildings_connections_cache[job_building]
-		print("Game: Used cached connections for unit ", unit.get("unique_id"), " at job ", job)
+		DebugConfig.dprint("jobs", ["Game: Used cached connections for unit ", unit.get("unique_id"), " at job ", job])
 	else:
 		var job_building_node = map_objects_holder.get_node_or_null(NodePath(job_building))
 		if job_building_node:
@@ -2910,9 +2910,9 @@ func _cache_job_connections_for_unit(unit: Dictionary):
 			unit["job_connections"] = connections
 			# Also cache it for future use
 			buildings_connections_cache[job_building] = connections
-			print("Game: Calculated and cached connections for unit ", unit.get("unique_id"), " at job ", job)
+			DebugConfig.dprint("jobs", ["Game: Calculated and cached connections for unit ", unit.get("unique_id"), " at job ", job])
 		else:
-			print("Game: Warning - could not find job building node: ", job)
+			DebugConfig.dprint("jobs", ["Game: Warning - could not find job building node: ", job])
 
 func _recalculate_affected_unit_paths_after_building_placement(new_building_name: String, owner_player: int):
 	"""Recalculate paths for all units with jobs after a new building is placed.
@@ -2933,7 +2933,7 @@ func _recalculate_affected_unit_paths_after_building_placement(new_building_name
 			units_updated += 1
 	
 	if units_updated > 0:
-		print("Game: Updated paths for ", units_updated, " units after building ", new_building_name, " was placed")
+		DebugConfig.dprint("buildings", ["Game: Updated paths for ", units_updated, " units after building ", new_building_name, " was placed"])
 
 func _calculate_and_cache_building_connections(new_building: Node2D):
 	"""Calculate connections for a new building ONCE and cache them with paths bidirectionally.
@@ -2975,7 +2975,7 @@ func _calculate_and_cache_building_connections(new_building: Node2D):
 			if not already_exists:
 				buildings_connections_cache[target_building_name].append(reverse_connection)
 	
-	print("Game: Cached connections for building ", building_name, " (", connections.size(), " connections)")
+	DebugConfig.dprint("buildings", ["Game: Cached connections for building ", building_name, " (", connections.size(), " connections)"])
 
 func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String, slots_to_fill: int):
 	"""Automatically assign available units to a building when capacity is increased"""
@@ -2985,13 +2985,13 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 	var owner_player = building_node.get_meta("owner_player", 1)
 	var building_id = building_node.name
 	
-	print("Auto-assigning ", slots_to_fill, " units to ", capacity_type, " capacity at ", building_id)
+	DebugConfig.dprint("jobs", ["Auto-assigning ", slots_to_fill, " units to ", capacity_type, " capacity at ", building_id])
 	
 	# Get all unassigned units for this player
 	var player_units = players_data.get(owner_player, {}).get("units", [])
 	var units_assigned = 0
 	
-	print("Player ", owner_player, " has ", player_units.size(), " total units")
+	DebugConfig.dprint("jobs", ["Player ", owner_player, " has ", player_units.size(), " total units"])
 	
 	# First, try to assign existing unassigned units
 	for unit in player_units:
@@ -3064,7 +3064,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 				# Store the index of the job within the building's resource_jobs array
 				unit["assigned_job_index"] = job_index
 				unit["previous_job"] = building_id  # Initialize previous_job when assigning
-				print("DEBUG: Assigned unit ", unit["unique_id"], " to job with path containing ", assigned_job.get("tile_path", []).size(), " tiles")
+				DebugConfig.dprint("jobs", ["DEBUG: Assigned unit ", unit["unique_id"], " to job with path containing ", assigned_job.get("tile_path", []).size(), " tiles"])
 				
 				# Update unit position to home if it now has both assignments
 				var current_living_quarters = unit.get("living_quarters", null)
@@ -3072,7 +3072,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 					var living_building = map_objects_holder.get_node_or_null(NodePath(current_living_quarters))
 					if living_building:
 						unit["position"] = living_building.position
-						print("DEBUG: Updated unit ", unit["unique_id"], " position to home at ", current_living_quarters)
+						DebugConfig.dprint("jobs", ["DEBUG: Updated unit ", unit["unique_id"], " position to home at ", current_living_quarters])
 			
 			# CRITICAL: Save the updated jobs back to building metadata
 			building_node.set_meta("resource_jobs", jobs)
@@ -3108,25 +3108,25 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			
 			# If this is the first assignment to a workplace, rename it with the worker's surname + work name
 			if is_first_assignment and capacity_type == "worker":
-				print("DEBUG: About to call rename - building name before: %s" % building_node.name)
+				DebugConfig.dprint("jobs", ["DEBUG: About to call rename - building name before: %s" % building_node.name])
 				var rename_result = _rename_workplace_on_first_assignment(building_node, unit)
-				print("DEBUG: Rename result: %s, building name after: %s" % [rename_result, building_node.name])
+				DebugConfig.dprint("jobs", ["DEBUG: Rename result: %s, building name after: %s" % [rename_result, building_node.name]])
 			
 			# Notify modal that jobs have been updated (use updated building name)
 			building_jobs_updated.emit(building_node.name)
 			units_assigned += 1
-			print("Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id)
+			DebugConfig.dprint("jobs", ["Auto-assigned unit ", unit["unique_id"], " to ", capacity_type, " at ", building_id])
 	
 	var remaining_slots = slots_to_fill - units_assigned
 	if remaining_slots > 0:
-		print("Creating ", remaining_slots, " new units for ", capacity_type, " capacity")
+		DebugConfig.dprint("jobs", ["Creating ", remaining_slots, " new units for ", capacity_type, " capacity"])
 		_create_new_units_for_capacity(building_node, capacity_type, remaining_slots, owner_player)
 	
 	# After all assignments, check for units that now have both living quarters and jobs
 	_check_and_create_missing_sprites(owner_player)
 	check_workforce_achievements()
 	
-	print("Auto-assigned ", units_assigned, " units and created ", (slots_to_fill - units_assigned), " new units for ", capacity_type, " capacity")
+	DebugConfig.dprint("jobs", ["Auto-assigned ", units_assigned, " units and created ", (slots_to_fill - units_assigned), " new units for ", capacity_type, " capacity"])
 
 func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 	"""Create sprite for a fully assigned unit and start its movement cycle"""
@@ -3184,9 +3184,9 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		if ResourceLoader.exists(texture_path):
 			var texture = load(texture_path)
 			unit_sprite.texture = texture
-			print("Unit %s: Loaded texture %s (size: %s)" % [unit_id, texture_path, str(texture.get_size())])
+			DebugConfig.dprint("population", ["Unit %s: Loaded texture %s (size: %s)" % [unit_id, texture_path, str(texture.get_size())]])
 		else:
-			print("Unit %s: Texture not found at %s - using fallback" % [unit_id, texture_path])
+			DebugConfig.dprint("population", ["Unit %s: Texture not found at %s - using fallback" % [unit_id, texture_path]])
 			# Create a colored rectangle as fallback
 			var rect = ColorRect.new()
 			rect.size = Vector2(16, 16)
@@ -3218,16 +3218,16 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		
 		if map_objects_holder:
 			map_objects_holder.add_child(unit_sprite)
-			print("Unit %s sprite added to scene at position: %s" % [unit_id, str(unit_sprite.position)])
+			DebugConfig.dprint("population", ["Unit %s sprite added to scene at position: %s" % [unit_id, str(unit_sprite.position)]])
 		else:
-			print("ERROR: map_objects_holder is null, cannot add sprite")
+			DebugConfig.dprint("population", ["ERROR: map_objects_holder is null, cannot add sprite"])
 		
 		existing_sprite = unit_sprite  # Store reference for tracking below
 	
 	# ALWAYS set sprite_id in unit data, whether sprite was just created or already existed
 	unit["sprite_id"] = unit_id  # Unit data tracks its sprite ID
 	unit_sprite_map[unit_id] = existing_sprite  # Game tracks unit -> sprite mapping
-	print("Unit %s: Sprite tracking added to map" % unit_id)
+	DebugConfig.dprint("population", ["Unit %s: Sprite tracking added to map" % unit_id])
 	
 	# Initialize unit at home and start movement cycle
 	unit["movement_cycle_step"] = 0  # Start at home
@@ -3237,13 +3237,13 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 func _create_new_units_for_capacity(building_node: Node2D, capacity_type: String, count: int, owner_player: int):
 	"""DEPRECATED: Units are now created upfront during game initialization and stored in players_data.
 	This function is kept for compatibility but does not create new units."""
-	print("Game: Note - Units created at game start, not when capacity increases. No new units created for remaining capacity slots.")
+	DebugConfig.dprint("population", ["Game: Note - Units created at game start, not when capacity increases. No new units created for remaining capacity slots."])
 	# Units exist from game initialization - they get assigned to buildings via _auto_assign_units_to_building()
 	# If there aren't enough unassigned units for the capacity increase, the capacity will simply be partially filled
 
 func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 	"""Assign a unit to living quarters if available"""
-	print("DEBUG: Assigning living quarters for unit ", unit_data["unique_id"])
+	DebugConfig.dprint("population", ["DEBUG: Assigning living quarters for unit ", unit_data["unique_id"]])
 	# Find a house or town_center with available space
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
@@ -3252,16 +3252,16 @@ func _assign_unit_to_living_quarters(unit_data: Dictionary, owner_player: int):
 				if building_type in ["house", "town_center"]:
 					var living_occupancy = child.get_meta("living_occupancy", 0)
 					var living_capacity = _get_living_capacity(building_type)
-					print("DEBUG: Found %s %s - occupancy:%d capacity:%d" % [building_type, child.name, living_occupancy, living_capacity])
+					DebugConfig.dprint("population", ["DEBUG: Found %s %s - occupancy:%d capacity:%d" % [building_type, child.name, living_occupancy, living_capacity]])
 					if living_occupancy < living_capacity:
 						unit_data["living_quarters"] = child.name
 						unit_data["position"] = child.position
 						child.set_meta("living_occupancy", living_occupancy + 1)
 						update_player_population(owner_player)
-						print("DEBUG: Assigned unit ", unit_data["unique_id"], " to living quarters at ", child.name)
+						DebugConfig.dprint("population", ["DEBUG: Assigned unit ", unit_data["unique_id"], " to living quarters at ", child.name])
 						return
 	
-	print("DEBUG: No housing available for unit ", unit_data["unique_id"])
+	DebugConfig.dprint("population", ["DEBUG: No housing available for unit ", unit_data["unique_id"]])
 
 func _auto_assign_all_units_to_housing():
 	"""Assign all unhoused units to available living-capacity buildings.
@@ -3318,11 +3318,11 @@ func _auto_assign_all_units_to_housing():
 			if slot["remaining"] <= 0:
 				slot_idx += 1
 
-			print("Game: Auto-housed %s in %s" % [unit["unique_id"], building_node.name])
+			DebugConfig.dprint("population", ["Game: Auto-housed %s in %s" % [unit["unique_id"], building_node.name]])
 
 		# Refresh population data now occupancy is accurate
 		update_player_population(player_id)
-		print("Game: Auto-housing complete for player %d — %d units housed" % [player_id, player_units.filter(func(u): return u.get("living_quarters") != null).size()])
+		DebugConfig.dprint("population", ["Game: Auto-housing complete for player %d — %d units housed" % [player_id, player_units.filter(func(u): return u.get("living_quarters") != null).size()]])
 
 func _get_unit_spawn_position_near_building(building_node: Node2D) -> Vector2:
 	"""Get a spawn position near a building"""
@@ -3379,10 +3379,10 @@ func _try_to_complete_unit_assignment(unit_data: Dictionary, owner_player: int):
 			# Create sprite since unit now has both assignments
 			_create_unit_sprite_and_start_cycle(unit_data)
 			
-			print("Auto-matched unit ", unit_data["unique_id"], " to ", needed_capacity_type, " at ", child.name)
+			DebugConfig.dprint("population", ["Auto-matched unit ", unit_data["unique_id"], " to ", needed_capacity_type, " at ", child.name])
 			return
 	
-	print("No available ", needed_capacity_type, " capacity found for unit ", unit_data["unique_id"])
+	DebugConfig.dprint("population", ["No available ", needed_capacity_type, " capacity found for unit ", unit_data["unique_id"]])
 
 func _create_initial_units_from_population():
 	"""Dynamically create units based on population total for new games and loaded games"""
@@ -3398,7 +3398,7 @@ func _create_initial_units_from_population():
 		# Clear existing units array and create new ones based on population
 		player_data["units"] = []
 		
-		print("Creating ", total_population, " units for player ", player_id, " based on population total")
+		DebugConfig.dprint("population", ["Creating ", total_population, " units for player ", player_id, " based on population total"])
 		
 		# Create unassigned units at default spawn position
 		for i in range(total_population):
@@ -3423,10 +3423,10 @@ func _create_initial_units_from_population():
 				"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
 			}
 			
-			print("Game: Created unit %s with name '%s' for player %d" % [unit_data["unique_id"], unit_data["name"], player_id])
+			DebugConfig.dprint("population", ["Game: Created unit %s with name '%s' for player %d" % [unit_data["unique_id"], unit_data["name"], player_id]])
 			player_data["units"].append(unit_data)
 		
-		print("Created ", total_population, " unassigned units for player ", player_id)
+		DebugConfig.dprint("population", ["Created ", total_population, " unassigned units for player ", player_id])
 
 func _building_provides_capacity(building_type: String, capacity_type: String) -> bool:
 	"""Check if a building type provides a specific capacity type"""
@@ -3608,7 +3608,7 @@ func _start_unit_movement_cycle(unit: Dictionary):
 	if job.contains("_station") or job.contains("_training"):
 		job_building = job.substr(0, job.rfind("_"))
 	
-	print("Starting movement cycle for unit ", unit["unique_id"], " step: ", cycle_step, " (job: ", job, " -> building: ", job_building, ")")
+	DebugConfig.dprint("movement", ["Starting movement cycle for unit ", unit["unique_id"], " step: ", cycle_step, " (job: ", job, " -> building: ", job_building, ")"])
 	
 	match cycle_step:
 		0:  # At home - go to work
@@ -3751,15 +3751,15 @@ func _start_idle_wander(unit: Dictionary):
 
 func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: int):
 	"""Move unit to a specific building using pre-calculated paths from connections"""
-	print("DEBUG: _move_unit_to_building called - unit: ", unit["unique_id"], " to building: ", building_name, " next_step: ", next_step)
+	DebugConfig.dprint("movement", ["DEBUG: _move_unit_to_building called - unit: ", unit["unique_id"], " to building: ", building_name, " next_step: ", next_step])
 	
 	if building_name == null:
-		print("DEBUG: Building name is null, returning")
+		DebugConfig.dprint("movement", ["DEBUG: Building name is null, returning"])
 		return
 	
 	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
 	if not building_node:
-		print("Building not found: ", building_name)
+		DebugConfig.dprint("movement", ["Building not found: ", building_name])
 		return
 	
 	# Check if this is a return trip (next_step > current step would indicate return)
@@ -3773,26 +3773,26 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 		var resource_path = unit.get("resource_path", [])
 		if not resource_path.is_empty():
 			path = _reverse_path(resource_path)
-			print("DEBUG: Using reversed resource path for return to workplace (", path.size(), " waypoints)")
+			DebugConfig.dprint("movement", ["DEBUG: Using reversed resource path for return to workplace (", path.size(), " waypoints)"])
 	elif is_return_trip and next_step == 4:
 		# Returning from workplace to home - reverse the home path
 		var home_path = unit.get("home_path", [])
 		if not home_path.is_empty():
 			path = _reverse_path(home_path)
-			print("DEBUG: Using reversed home path for return to living quarters (", path.size(), " waypoints)")
+			DebugConfig.dprint("movement", ["DEBUG: Using reversed home path for return to living quarters (", path.size(), " waypoints)"])
 	
 	# If we didn't get a reversed path, try connections
 	if path.is_empty():
 		# Try to find the pre-calculated path from job connections
 		var connections = unit.get("job_connections", [])
 		
-		print("DEBUG: Looking for path in job_connections (", connections.size(), " connections available)")
+		DebugConfig.dprint("movement", ["DEBUG: Looking for path in job_connections (", connections.size(), " connections available)"])
 		
 		# Look for a connection to this building
 		for connection in connections:
 			if connection.get("name") == building_name and connection.has("path"):
 				path = connection.get("path", [])
-				print("DEBUG: Found path in job_connections to ", building_name, " with ", path.size(), " waypoints")
+				DebugConfig.dprint("movement", ["DEBUG: Found path in job_connections to ", building_name, " with ", path.size(), " waypoints"])
 				# Store this path for potential reversal later
 				if next_step == 1:
 					# This is the home to workplace path - store for reversal
@@ -3801,7 +3801,7 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 		
 		# Fallback: if no pre-calculated path found, calculate it
 		if path.is_empty():
-			print("DEBUG: No path found in job_connections, calculating...")
+			DebugConfig.dprint("movement", ["DEBUG: No path found in job_connections, calculating..."])
 			var unit_pos = unit["position"]
 			var target_pos = building_node.position
 			
@@ -3810,9 +3810,9 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 			if path.is_empty():
 				# Fallback to direct path if pathfinding fails
 				path = [target_pos]
-				print("DEBUG: Calculated path empty, using direct path to ", target_pos)
+				DebugConfig.dprint("movement", ["DEBUG: Calculated path empty, using direct path to ", target_pos])
 			else:
-				print("DEBUG: Calculated path with ", path.size(), " waypoints")
+				DebugConfig.dprint("movement", ["DEBUG: Calculated path with ", path.size(), " waypoints"])
 			
 			# Store for potential reversal
 			if next_step == 1:
@@ -3824,9 +3824,9 @@ func _move_unit_to_building(unit: Dictionary, building_name: String, next_step: 
 	unit["movement_target"] = building_name
 	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
 	
-	print("Unit ", unit["unique_id"], " moving to ", building_name, " (", path.size(), " waypoints)")
+	DebugConfig.dprint("movement", ["Unit ", unit["unique_id"], " moving to ", building_name, " (", path.size(), " waypoints)"])
 	
-	print("Unit ", unit["unique_id"], " moving to building: ", building_name, " with ", path.size(), " waypoints")
+	DebugConfig.dprint("movement", ["Unit ", unit["unique_id"], " moving to building: ", building_name, " with ", path.size(), " waypoints"])
 
 func _get_assigned_job(unit: Dictionary) -> Dictionary:
 	"""Retrieve the assigned job for a unit from the building's metadata"""
@@ -3850,7 +3850,7 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	"""Move unit to the resource specified in their assigned job using the job's pre-calculated tile_path"""
 	var assigned_job = _get_assigned_job(unit)
 	if assigned_job.is_empty():
-		print("Unit ", unit["unique_id"], " has no assigned job - skipping resource step")
+		DebugConfig.dprint("movement", ["Unit ", unit["unique_id"], " has no assigned job - skipping resource step"])
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
@@ -3858,14 +3858,14 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	# Use the tile_path from the assigned job
 	var tile_path = assigned_job.get("tile_path", [])
 	if tile_path.is_empty():
-		print("Unit ", unit["unique_id"], " has no resource path in job - skipping resource step")
+		DebugConfig.dprint("movement", ["Unit ", unit["unique_id"], " has no resource path in job - skipping resource step"])
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
 	
 	# Convert tile coordinates to world coordinates
 	if not tilemap_layer:
-		print("ERROR: TileMapLayer not found")
+		DebugConfig.dprint("movement", ["ERROR: TileMapLayer not found"])
 		unit["movement_cycle_step"] = next_step
 		unit["movement_state"] = "idle"
 		return
@@ -3882,7 +3882,7 @@ func _move_unit_to_resource(unit: Dictionary, next_step: int):
 	unit["movement_target"] = assigned_job.get("resource_id", "unknown")
 	unit["movement_cycle_step"] = next_step - 1  # Will be incremented when reached
 	
-	print("Unit ", unit["unique_id"], " moving to resource ", assigned_job.get("resource_id"), " with path of ", world_path.size(), " waypoints")
+	DebugConfig.dprint("movement", ["Unit ", unit["unique_id"], " moving to resource ", assigned_job.get("resource_id"), " with path of ", world_path.size(), " waypoints"])
 
 func _reverse_path(path: Array) -> Array:
 	"""Reverse a path array for return trips"""
@@ -3926,7 +3926,7 @@ func _calculate_building_connections_directly(building: Node2D) -> Array:
 	var connections = []
 	var building_type = building.get_meta("building_type", "unknown")
 	
-	print("Finding connections for building type: ", building_type)
+	DebugConfig.dprint("buildings", ["Finding connections for building type: ", building_type])
 	
 	# Define building-to-building connection rules only
 	var connection_rules = {
@@ -3954,7 +3954,7 @@ func _calculate_building_connections_directly(building: Node2D) -> Array:
 	# Get buildings only (no resource connections)
 	if has_method("get_player_buildings"):
 		var all_buildings = get_player_buildings(1)
-		print("Checking connections for ", building.name, " at tile ", building_tile_coords, " - found ", all_buildings.size(), " total buildings")
+		DebugConfig.dprint("buildings", ["Checking connections for ", building.name, " at tile ", building_tile_coords, " - found ", all_buildings.size(), " total buildings"])
 		
 		for building_name in all_buildings:
 			if building_name == building.name:
@@ -3976,7 +3976,7 @@ func _calculate_building_connections_directly(building: Node2D) -> Array:
 						"object_type": "building",
 						"tile_coords": other_tile_coords
 					})
-					print("Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away")
+					DebugConfig.dprint("buildings", ["Added connection: ", building_name, " (", other_type, ") at ", tile_distance, " tiles away"])
 	
 	return connections
 
@@ -4049,7 +4049,7 @@ func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_
 	var queue = [building_tile]
 	var max_radius = 20  # Maximum search radius in tiles
 	
-	print("Game: Searching for ", max_count, " nearby ", resource_type, " starting from tile ", building_tile)
+	DebugConfig.dprint("movement", ["Game: Searching for ", max_count, " nearby ", resource_type, " starting from tile ", building_tile])
 	
 	# Map building type to resource type if needed
 	var search_resource_type = resource_type  # "mountains", "trees", "fish"
@@ -4077,7 +4077,7 @@ func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_
 				if obj_data.get("tile_coords") == current_tile:
 					# Skip resources already assigned to jobs (conflict avoidance)
 					if obj_data.get("job") != null:
-						print("Game: Resource ", obj_id, " already assigned to job, skipping")
+						DebugConfig.dprint("movement", ["Game: Resource ", obj_id, " already assigned to job, skipping"])
 						continue
 					
 					found_resources.append({
@@ -4087,7 +4087,7 @@ func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_
 						"position": obj_data.get("position"),
 						"tile_coords": current_tile
 					})
-					print("Game: Found ", search_resource_type, " resource at tile ", current_tile)
+					DebugConfig.dprint("movement", ["Game: Found ", search_resource_type, " resource at tile ", current_tile])
 					break
 		
 		# Add neighbors to queue for expansion (hex tiles have 6 neighbors)
@@ -4096,7 +4096,7 @@ func _find_nearby_resources(building_tile: Vector2i, resource_type: String, max_
 			if not visited.has(neighbor):
 				queue.append(neighbor)
 	
-	print("Game: Found ", found_resources.size(), " resources of type ", search_resource_type)
+	DebugConfig.dprint("movement", ["Game: Found ", found_resources.size(), " resources of type ", search_resource_type])
 	return found_resources
 
 # ─── Farmhouse / farm-cycle system ───────────────────────────────────────────
@@ -4179,7 +4179,7 @@ func _initialize_farmhouse_paths(farmhouse_node: Node2D) -> void:
 		}
 		jobs.append(job)
 		farm_node.set_meta("farm_worker_assigned", true)
-		print("Game: Farmhouse %s -> farm job to %s (%d tiles)" % [farmhouse_node.name, farm_node.name, tile_path.size()])
+		DebugConfig.dprint("movement", ["Game: Farmhouse %s -> farm job to %s (%d tiles)" % [farmhouse_node.name, farm_node.name, tile_path.size()]])
 
 	farmhouse_node.set_meta("resource_jobs", jobs)
 	building_jobs_updated.emit(farmhouse_node.name)
@@ -4216,7 +4216,7 @@ func _register_farm_with_nearby_farmhouse(farm_node: Node2D) -> void:
 			best_farmhouse = child
 
 	if not is_instance_valid(best_farmhouse):
-		print("Game: No available farmhouse found for new farm ", farm_node.name)
+		DebugConfig.dprint("jobs", ["Game: No available farmhouse found for new farm ", farm_node.name])
 		return
 
 	var fh_tile: Vector2i = tilemap_layer.local_to_map(best_farmhouse.position)
@@ -4256,7 +4256,7 @@ func _register_farm_with_nearby_farmhouse(farm_node: Node2D) -> void:
 	best_farmhouse.set_meta("resource_jobs", jobs)
 	farm_node.set_meta("farm_worker_assigned", false)
 	building_jobs_updated.emit(best_farmhouse.name)
-	print("Game: Registered farm %s with farmhouse %s (%d tiles)" % [farm_node.name, best_farmhouse.name, tile_path.size()])
+	DebugConfig.dprint("jobs", ["Game: Registered farm %s with farmhouse %s (%d tiles)" % [farm_node.name, best_farmhouse.name, tile_path.size()]])
 
 
 func _process_farm_states() -> void:
@@ -4299,7 +4299,7 @@ func _process_farm_states() -> void:
 			var day: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
 			game_log.add(day, GL.Category.INCOME,
 				"🍞 Farms yielded +%d food this harvest." % total_food_harvested)
-		print("Game: Farm harvest — +%d food" % total_food_harvested)
+		DebugConfig.dprint("map_objects", ["Game: Farm harvest — +%d food" % total_food_harvested])
 
 
 func _update_farm_texture(farm_node: Node2D, state: String) -> void:
@@ -4374,7 +4374,7 @@ func _calculate_paths_to_resources(building_node: Node2D, resources: Array) -> A
 		var path_tiles = _astar_pathfind_for_game(building_tile, resource_tile)
 		
 		if path_tiles.is_empty():
-			print("Game: WARNING - No path found to resource at ", resource_tile)
+			DebugConfig.dprint("movement", ["Game: WARNING - No path found to resource at ", resource_tile])
 			continue
 		
 		# Convert tile path to world coordinates
@@ -4394,12 +4394,12 @@ func _calculate_paths_to_resources(building_node: Node2D, resources: Array) -> A
 			"distance": path_tiles.size()
 		})
 		
-		print("Game: Calculated path ", path_id, " to resource ", resource.get("id"), " (", path_tiles.size(), " tiles)")
+		DebugConfig.dprint("movement", ["Game: Calculated path ", path_id, " to resource ", resource.get("id"), " (", path_tiles.size(), " tiles)"])
 	
 	return paths
 
 func _start_world_creation_mode():
-	print("Game: Starting world creation mode")
+	DebugConfig.dprint("world_gen", ["Game: Starting world creation mode"])
 	is_in_world_creation = true
 	
 	# Hide game header during world creation
@@ -4424,7 +4424,7 @@ func _start_world_creation_mode():
 	# Setup world creator with direct UI control
 	world_creator.setup_direct_ui(self, tilemap_layer, camera)
 	
-	print("Game: World creation mode active with direct UI control")
+	DebugConfig.dprint("world_gen", ["Game: World creation mode active with direct UI control"])
 
 func _setup_world_creation_delayed():
 	# Remove this function - not needed with direct UI approach
@@ -4437,27 +4437,27 @@ func _connect_world_creation_buttons():
 func _debug_print_ui_structure(node: Node, indent: int = 0):
 	# Keep this for debugging if needed
 	var indent_str = "  ".repeat(indent)
-	print("%s%s" % [indent_str, node.name])
+	DebugConfig.dprint("world_gen", ["%s%s" % [indent_str, node.name]])
 	for child in node.get_children():
 		_debug_print_ui_structure(child, indent + 1)
 
 # Direct button handlers that call the world creator
 func _on_world_creation_continue():
-	print("Game: Continue button pressed!")
+	DebugConfig.dprint("world_gen", ["Game: Continue button pressed!"])
 	if world_creator and world_creator.has_method("_on_continue_pressed"):
 		world_creator._on_continue_pressed()
 	else:
 		push_error("Game: World creator or method not found!")
 
 func _on_world_creation_back():
-	print("Game: Back button pressed!")
+	DebugConfig.dprint("world_gen", ["Game: Back button pressed!"])
 	if world_creator and world_creator.has_method("_on_back_pressed"):
 		world_creator._on_back_pressed()
 	else:
 		push_error("Game: World creator or method not found!")
 
 func _finish_world_creation(generated_world_data: Dictionary):
-	print("Game: Finishing world creation")
+	DebugConfig.dprint("world_gen", ["Game: Finishing world creation"])
 	is_in_world_creation = false
 	
 	# Set start mode to new so units get created
@@ -4505,7 +4505,7 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	# Show game header now that the game has started
 	if game_header:
 		game_header.visible = true
-		print("Game: Game header now visible after world creation")
+		DebugConfig.dprint("world_gen", ["Game: Game header now visible after world creation"])
 	
 	if resource_bar:
 		resource_bar.visible = true
@@ -4514,21 +4514,21 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	# Show game footer now that the game has started
 	if game_footer:
 		game_footer.visible = true
-		print("Game: Game footer now visible after world creation")
+		DebugConfig.dprint("world_gen", ["Game: Game footer now visible after world creation"])
 	
 	# Don't center camera - preserve current position from world creation
 	# camera_controller.center_camera()
-	print("Game: World creation complete, game ready.")
+	DebugConfig.dprint("world_gen", ["Game: World creation complete, game ready."])
 
 func _place_starting_town_center():
 	# Get starting tile position from world data
 	if not world_data.has("starting_tile"):
-		print("Warning: No starting tile found in world data")
+		DebugConfig.dprint("world_gen", ["Warning: No starting tile found in world data"])
 		return
 		
 	var starting_tile = world_data["starting_tile"]
 	var tile_coords = Vector2i(int(starting_tile.x), int(starting_tile.y))
-	print("Game: Placing town center at tile: ", tile_coords)
+	DebugConfig.dprint("world_gen", ["Game: Placing town center at tile: ", tile_coords])
 	
 	# Clear any existing terrain features at this tile
 	_clear_tile_features(tile_coords)
@@ -4547,7 +4547,7 @@ func _clear_tile_features(tile_coords: Vector2i):
 		var tile_data = world_data[coord_key]
 		if typeof(tile_data) == TYPE_DICTIONARY:
 			# Keep the base terrain but remove any modifiers
-			print("Game: Cleared features from tile: ", tile_coords)
+			DebugConfig.dprint("world_gen", ["Game: Cleared features from tile: ", tile_coords])
 
 func _place_town_center_building(tile_coords: Vector2i):
 	# Get player race and building choice
@@ -4555,7 +4555,7 @@ func _place_town_center_building(tile_coords: Vector2i):
 	var selected_race = player_data.get("race", "human")
 	var starting_building = player_data.get("starting_building", "town_center")
 	
-	print("Game: Placing ", starting_building, " for race ", selected_race, " at ", tile_coords)
+	DebugConfig.dprint("world_gen", ["Game: Placing ", starting_building, " for race ", selected_race, " at ", tile_coords])
 	
 	# Load the town center texture
 	var building_texture_path = "res://assets/buildings/human_towncentre-export.png"
@@ -4601,7 +4601,7 @@ func _place_town_center_building(tile_coords: Vector2i):
 		var settlement_name = player_data.get("settlement_name", "")
 		if not settlement_name.is_empty():
 			building_scene.set_meta("display_name", settlement_name)
-			print("Game: Set town center display name to: ", settlement_name)
+			DebugConfig.dprint("world_gen", ["Game: Set town center display name to: ", settlement_name])
 		
 		# Add building to player's buildings list
 		var owner_player = setup_data.get("owner_player", 1)
@@ -4609,11 +4609,11 @@ func _place_town_center_building(tile_coords: Vector2i):
 			players_data[owner_player]["buildings"].append(building_name)
 			# Track town centre world position so unassigned units can idle nearby
 			players_data[owner_player]["town_centre_position"] = world_pos
-			print("Game: Added town center ", building_name, " to player ", owner_player, " buildings list")
+			DebugConfig.dprint("world_gen", ["Game: Added town center ", building_name, " to player ", owner_player, " buildings list"])
 		
-		print("Game: Successfully placed ", starting_building, " at world position: ", world_pos)
+		DebugConfig.dprint("world_gen", ["Game: Successfully placed ", starting_building, " at world position: ", world_pos])
 	else:
-		print("Warning: Could not find building texture: ", building_texture_path)
+		DebugConfig.dprint("world_gen", ["Warning: Could not find building texture: ", building_texture_path])
 
 func _setup_game_header():
 	# Create and setup the game header
@@ -4637,7 +4637,7 @@ func _setup_game_header():
 	game_header.graphs_pressed.connect(_on_header_graphs_pressed)
 	
 	# No need to update values anymore
-	print("Game: Game header created and connected")
+	DebugConfig.dprint("ui", ["Game: Game header created and connected"])
 	
 	# Setup resource bar (sits directly under header)
 	var ResourceBarScript = preload("res://scripts/managers/resource_bar.gd")
@@ -4773,7 +4773,7 @@ func _restore_environment_objects(environment_objects_data: Array):
 	# Spawns nodes at exact saved positions, then rebuilds tracking dicts.
 
 	if not tilemap_layer or not map_objects_holder:
-		print("Warning: Cannot restore environment objects - missing tilemap or objects holder")
+		DebugConfig.dprint("save_load", ["Warning: Cannot restore environment objects - missing tilemap or objects holder"])
 		return
 
 	# Spawn nodes at saved positions (no RNG, no register_* side-effects)
@@ -4834,11 +4834,11 @@ func _restore_environment_objects(environment_objects_data: Array):
 				players_data["environment"]["objects"]["fish"][environment_id] = entry
 				players_data["environment"]["counts"]["fish"] += 1
 
-	print("Game: Restored %d environment objects." % environment_objects_data.size())
+	DebugConfig.dprint("save_load", ["Game: Restored %d environment objects." % environment_objects_data.size()])
 
 func _auto_assign_jobs_on_load():
 	"""Auto-assign units to jobs based on worker occupancy levels when loading a save"""
-	print("Game: Starting auto-assign jobs on load")
+	DebugConfig.dprint("jobs", ["Game: Starting auto-assign jobs on load"])
 	
 	# Clear all resource job markers before pathfinding (prevents stale job assignments from interfering)
 	_clear_all_resource_job_markers()
@@ -4876,10 +4876,10 @@ func _auto_assign_jobs_on_load():
 				break
 		
 		if needs_path_init:
-			print("DEBUG: Jobs missing paths - initializing paths on load")
+			DebugConfig.dprint("jobs", ["DEBUG: Jobs missing paths - initializing paths on load"])
 			_initialize_job_paths_on_load(building_node)
 		else:
-			print("DEBUG: Jobs already have paths - skipping path initialization")
+			DebugConfig.dprint("jobs", ["DEBUG: Jobs already have paths - skipping path initialization"])
 		
 		# Re-get jobs after potential path initialization
 		jobs = building_node.get_meta("resource_jobs", [])
@@ -4910,7 +4910,7 @@ func _auto_assign_jobs_on_load():
 						if job.get("unit_assigned") == null:
 							job["unit_assigned"] = unit["unique_id"]
 							jobs_assigned += 1
-							print("Game: Synced existing unit ", unit["unique_id"], " to job at ", building_node.name, " on load")
+							DebugConfig.dprint("jobs", ["Game: Synced existing unit ", unit["unique_id"], " to job at ", building_node.name, " on load"])
 							break
 		
 		# SECOND: Assign remaining unassigned units to remaining unassigned jobs
@@ -4947,7 +4947,7 @@ func _auto_assign_jobs_on_load():
 							unit["work_timer"] = 0.0
 						
 						remaining_slots -= 1
-						print("Game: Auto-assigned unit ", unit["unique_id"], " to job at ", building_node.name, " on load")
+						DebugConfig.dprint("jobs", ["Game: Auto-assigned unit ", unit["unique_id"], " to job at ", building_node.name, " on load"])
 						break
 		
 		# Persist the updated jobs back to building metadata
@@ -4969,7 +4969,7 @@ func _auto_assign_jobs_on_load():
 		if first_assigned_unit:
 			_rename_workplace_on_first_assignment(building_node, first_assigned_unit)
 		
-		print("Game: Assigned ", jobs_assigned, " units to jobs at ", building_node.name, " on load")
+		DebugConfig.dprint("jobs", ["Game: Assigned ", jobs_assigned, " units to jobs at ", building_node.name, " on load"])
 
 func _setup_game_footer():
 	# Create and setup the game footer
@@ -4989,7 +4989,7 @@ func _setup_game_footer():
 	if game_footer:
 		game_footer.set_day_text(1)
 	
-	print("Game: Game footer created and connected")
+	DebugConfig.dprint("ui", ["Game: Game footer created and connected"])
 
 func _setup_info_modals():
 	# Create info modals with different starting positions
@@ -5070,10 +5070,10 @@ func _setup_info_modals():
 	science_modal.modal_closed.connect(_on_modal_closed)
 	settings_modal.modal_closed.connect(_on_modal_closed)
 	
-	print("Game: Info modals setup complete")
+	DebugConfig.dprint("ui", ["Game: Info modals setup complete"])
 
 func _on_modal_closed(modal_type: String):
-	print("Game: Modal closed: ", modal_type)
+	DebugConfig.dprint("ui", ["Game: Modal closed: ", modal_type])
 
 func _on_end_day_blocked_pressed():
 	"""Show a small popup reminding the player to resolve the pending event."""
@@ -5086,7 +5086,7 @@ func _on_end_day_blocked_pressed():
 	dialog.popup_centered()
 
 func _on_end_day_pressed():
-	print("Game: End day pressed")
+	DebugConfig.dprint("ui", ["Game: End day pressed"])
 	# Play the day wipe transition
 	if is_instance_valid(day_transition):
 		day_transition.play()
@@ -5515,7 +5515,7 @@ func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
 	if is_instance_valid(notification_panel):
 		notification_panel.push(title, body, "⚔", Color(0.85, 0.18, 0.10),
 			{"action": "pan_to", "world_pos": world_pos})
-	print("Game: Wave %d spawned as player %d at %s" % [wave_num, enemy_player_id, str(tile)])
+	DebugConfig.dprint("wave", ["Game: Wave %d spawned as player %d at %s" % [wave_num, enemy_player_id, str(tile)]])
 	if is_instance_valid(game_log):
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
@@ -5566,7 +5566,7 @@ func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 	# Allow stacking — a unit can train a type they already have for a refresher,
 	# but don't start a new training if one is already in progress.
 	if unit.get("training") != null:
-		print("Game: Unit %s is already in training" % unit.get("name", "?"))
+		DebugConfig.dprint("wave", ["Game: Unit %s is already in training" % unit.get("name", "?")])
 		return false
 	
 	var def = TRAINING_DEFINITIONS[training_type]
@@ -5575,13 +5575,13 @@ func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 		"progress": 0,
 		"days_required": def["days_required"]
 	}
-	print("Game: Started %s training for %s (%d days)" % [training_type, unit.get("name", "?"), def["days_required"]])
+	DebugConfig.dprint("wave", ["Game: Started %s training for %s (%d days)" % [training_type, unit.get("name", "?"), def["days_required"]]])
 	return true
 
 func _cancel_unit_training(unit: Dictionary):
 	"""Cancel in-progress training without granting the specialty."""
 	unit["training"] = null
-	print("Game: Cancelled training for %s" % unit.get("name", "?"))
+	DebugConfig.dprint("wave", ["Game: Cancelled training for %s" % unit.get("name", "?")])
 
 func _process_training_progress():
 	"""Advance training progress by 1 day for all units currently training."""
@@ -5602,8 +5602,7 @@ func _process_training_progress():
 				unit["training"] = null
 				# Update unit type to reflect their highest specialty
 				_update_unit_type_from_specialties(unit)
-				print("Game: %s completed %s training! Specialties: %s, Type: %s" % [
-					unit.get("name", "?"), t_type, str(unit.get("specialties", [])), unit.get("type", "?")])
+				DebugConfig.dprint("wave", ["Game: %s completed %s training! Specialties: %s, Type: %s" % [unit.get("name", "?"), t_type, str(unit.get("specialties", [])), unit.get("type", "?")]])
 				if is_instance_valid(game_log):
 					var GL = preload("res://scripts/managers/game_log.gd")
 					game_log.add(turn_manager.get_day(), GL.Category.TRAINING,
@@ -5624,27 +5623,27 @@ func _update_unit_type_from_specialties(unit: Dictionary):
 
 # Footer button handlers
 func _on_build_pressed():
-	print("Game: Build button pressed")
+	DebugConfig.dprint("ui", ["Game: Build button pressed"])
 	_open_build_selection_modal()
 
 func _on_pause_pressed():
 	unit_movement_paused = !unit_movement_paused
 	if unit_movement_paused:
 		game_footer.pause_button.text = "▶"
-		print("Game: Unit movement paused")
+		DebugConfig.dprint("movement", ["Game: Unit movement paused"])
 	else:
 		game_footer.pause_button.text = "II"
-		print("Game: Unit movement resumed")
+		DebugConfig.dprint("movement", ["Game: Unit movement resumed"])
 
 func _on_slow_pressed():
 	# Decrease speed by 0.25x, minimum 0.25x
 	unit_movement_speed = maxf(unit_movement_speed - 0.25, 0.25)
-	print("Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed)
+	DebugConfig.dprint("movement", ["Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed])
 
 func _on_speedup_pressed():
 	# Increase speed by 0.25x, maximum 4.0x
 	unit_movement_speed = minf(unit_movement_speed + 0.25, 4.0)
-	print("Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed)
+	DebugConfig.dprint("movement", ["Game: Unit movement speed adjusted to %.2fx" % unit_movement_speed])
 
 func _on_unit_control_gui_input(event: InputEvent, unit: Dictionary):
 	"""Handle unit control GUI input - open unit details on left click, but
@@ -5682,26 +5681,26 @@ func _on_unit_mouse_exited(_unit: Dictionary):
 
 func _on_unit_sprite_input(event: InputEvent, unit: Dictionary):
 	"""Handle unit sprite input - open unit details modal on left click"""
-	print("DEBUG: Unit sprite input event detected for %s: %s" % [unit.get("name", "unknown"), event])
+	DebugConfig.dprint("ui", ["DEBUG: Unit sprite input event detected for %s: %s" % [unit.get("name", "unknown"), event]])
 	
 	# Only handle mouse button click events
 	if not event is InputEventMouseButton:
-		print("DEBUG: Event is not a mouse button event, ignoring")
+		DebugConfig.dprint("ui", ["DEBUG: Event is not a mouse button event, ignoring"])
 		return
 	
-	print("DEBUG: Mouse button event detected for %s - button: %d, pressed: %s" % [unit.get("name", "unknown"), event.button_index, event.pressed])
+	DebugConfig.dprint("ui", ["DEBUG: Mouse button event detected for %s - button: %d, pressed: %s" % [unit.get("name", "unknown"), event.button_index, event.pressed]])
 	
 	if not event.pressed or event.button_index != MOUSE_BUTTON_LEFT:
-		print("DEBUG: Not a left mouse button press, ignoring")
+		DebugConfig.dprint("ui", ["DEBUG: Not a left mouse button press, ignoring"])
 		return
 	
-	print("Game: Unit sprite clicked: %s" % unit.get("name", "unknown"))
+	DebugConfig.dprint("ui", ["Game: Unit sprite clicked: %s" % unit.get("name", "unknown")])
 	_open_unit_details_modal(unit)
 	get_tree().root.set_input_as_handled()
 
 func _open_unit_details_modal(unit: Dictionary):
 	"""Open the unit details modal for the specified unit"""
-	print("Game: Opening unit details modal for: %s" % unit.get("name", "unknown"))
+	DebugConfig.dprint("ui", ["Game: Opening unit details modal for: %s" % unit.get("name", "unknown")])
 	
 	# Create unit view modal if it doesn't exist yet
 	var unit_view_modal
@@ -5709,7 +5708,7 @@ func _open_unit_details_modal(unit: Dictionary):
 		unit_view_modal = preload("res://scripts/ui/unit_view_modal.gd").new(self, Vector2(200, 100))
 		set_meta("unit_view_modal", unit_view_modal)
 		ui_layer.add_child(unit_view_modal)
-		print("Game: Unit view modal created")
+		DebugConfig.dprint("ui", ["Game: Unit view modal created"])
 	else:
 		unit_view_modal = get_meta("unit_view_modal")
 		# Close the old modal to clear its paths before showing new unit
@@ -5725,9 +5724,9 @@ func _open_unit_details_modal(unit: Dictionary):
 		if ui_manager and ui_manager.has_method("push_modal"):
 			ui_manager.push_modal(unit_view_modal)
 		
-		print("Game: Unit details modal displayed for: %s" % unit.get("name", "unknown"))
+		DebugConfig.dprint("ui", ["Game: Unit details modal displayed for: %s" % unit.get("name", "unknown")])
 	else:
-		print("Game: ERROR - unit_view_modal has no display_unit method!")
+		DebugConfig.dprint("ui", ["Game: ERROR - unit_view_modal has no display_unit method!"])
 
 func _open_build_selection_modal():
 	# Create build selection modal if it doesn't exist
@@ -5744,7 +5743,7 @@ func _open_build_selection_modal():
 	build_selection_modal.toggle()
 
 func _on_building_placement_confirmed_with_type(build_more: bool, building_type: String):
-	print("Game: Building placement confirmed for: ", building_type, " build_more: ", build_more)
+	DebugConfig.dprint("buildings", ["Game: Building placement confirmed for: ", building_type, " build_more: ", build_more])
 	# Store the build_more state for use after placement
 	building_placement_build_more = build_more
 	# Start building placement preview mode
@@ -5755,7 +5754,7 @@ func _on_building_placement_confirmed_with_type(build_more: bool, building_type:
 	_start_building_placement(building_type)
 
 func _on_building_placement_cancelled():
-	print("Game: Building placement cancelled")
+	DebugConfig.dprint("buildings", ["Game: Building placement cancelled"])
 
 # Header button handlers
 func _on_header_settings_pressed():
@@ -5807,7 +5806,7 @@ func _on_header_graphs_pressed():
 		graphs_modal.toggle()
 
 func _cancel_world_creation():
-	print("Game: Cancelling world creation")
+	DebugConfig.dprint("world_gen", ["Game: Cancelling world creation"])
 	is_in_world_creation = false
 	
 	# Clean up world creator
@@ -5826,40 +5825,40 @@ func _cancel_world_creation():
 # --- Map Generation Functions ---
 
 func generate_world_data() -> bool:
-	print("Game: Generating world data..."); var generator = WorldGenerator.new()
+	DebugConfig.dprint("world_gen", ["Game: Generating world data..."]); var generator = WorldGenerator.new()
 	world_data = generator.generate_world_data(MAP_WIDTH, MAP_HEIGHT)
 	if world_data.is_empty(): push_error("Game: World generator returned empty data."); return false
-	print("Game: Generation complete."); return true
+	DebugConfig.dprint("world_gen", ["Game: Generation complete."]); return true
 
 
 func _clear_and_draw_map():
-	print("Game: Drawing game map...");
+	DebugConfig.dprint("world_gen", ["Game: Drawing game map..."]);
 	if not is_instance_valid(tilemap_layer): push_error("Game: Cannot draw, TileMapLayer is invalid."); return
 	tilemap_layer.clear()
-	if world_data.is_empty(): print("Game: No world data loaded to draw."); return
+	if world_data.is_empty(): DebugConfig.dprint("world_gen", ["Game: No world data loaded to draw."]); return
 	for coords in world_data:
 		var tile_info = world_data[coords]
 		if typeof(tile_info) == TYPE_DICTIONARY and tile_info.has("source_id") and tile_info.has("atlas_coords"):
 			tilemap_layer.set_cell(coords, tile_info["source_id"], tile_info["atlas_coords"])
 		else: push_warning("Game: Skipping invalid tile data at coords: %s" % str(coords))
-	print("Game: Map drawing complete.")
+	DebugConfig.dprint("world_gen", ["Game: Map drawing complete."])
 
 
 # --- Save/Load Wrappers & UI Callbacks ---
 
 func _on_save_requested():
-	print("Game: Save requested by UI button.")
+	DebugConfig.dprint("save_load", ["Game: Save requested by UI button."])
 	_execute_save()
 
 
 func _on_save_requested_from_ui(pending_action: String):
-	print("Game: _on_save_requested_from_ui called for action: ", pending_action) # DEBUG
+	DebugConfig.dprint("save_load", ["Game: _on_save_requested_from_ui called for action: ", pending_action]) # DEBUG
 	if _execute_save():
-		print("Game: Save successful, telling UIManager to perform action.") # DEBUG
+		DebugConfig.dprint("save_load", ["Game: Save successful, telling UIManager to perform action."]) # DEBUG
 		if is_instance_valid(ui_manager):
 			ui_manager.perform_pending_action_after_save()
 	else:
-		print("Game: Save failed, UI manager should handle reopening menu.") # DEBUG
+		DebugConfig.dprint("save_load", ["Game: Save failed, UI manager should handle reopening menu."]) # DEBUG
 		# UIManager's _on_confirm_save already handles reopening main menu on failure
 
 
@@ -5922,11 +5921,11 @@ func _execute_save() -> bool:
 	var saved_path = SaveLoadManager.save_game(game_state, current_save_path)
 	if not saved_path.is_empty():
 		current_save_path = saved_path; return true
-	else: print("Game: Save failed in SaveLoadManager."); return false
+	else: DebugConfig.dprint("save_load", ["Game: Save failed in SaveLoadManager."]); return false
 
 
 func _on_action_confirmed_from_ui(action_name: String):
-	print("Game: _on_action_confirmed_from_ui called for action: ", action_name) # DEBUG
+	DebugConfig.dprint("save_load", ["Game: _on_action_confirmed_from_ui called for action: ", action_name]) # DEBUG
 	if is_instance_valid(ui_manager):
 		ui_manager._perform_action(action_name) # Tell UI Manager to proceed
 
@@ -5938,13 +5937,13 @@ func _on_load_pressed():
 	var dir = DirAccess.open(SaveLoadManager.SAVE_DIR);
 	if dir: dir.list_dir_begin(); var f=dir.get_next(); while f!="": if !dir.current_is_dir() and f.ends_with(".save"): first_save_path = SaveLoadManager.SAVE_DIR.path_join(f); break; f=dir.get_next()
 	if first_save_path.is_empty(): push_warning("Game: No save file found for simple load."); return
-	print("Game: Attempting simple load of: ", first_save_path)
+	DebugConfig.dprint("save_load", ["Game: Attempting simple load of: ", first_save_path])
 	var loaded_state = SaveLoadManager.load_game(first_save_path)
 	if not loaded_state.is_empty():
 		world_data = loaded_state["map_data"]; current_save_path = loaded_state["current_save_path"]
 		turn_manager.set_day(loaded_state["current_day"]); _clear_and_draw_map(); map_object_manager.clear_objects()
 		map_object_manager.place_objects(world_data); camera_controller.center_camera()
 		# Header is visible by default for loaded games
-		print("Game: Loaded successfully via simple load.")
+		DebugConfig.dprint("save_load", ["Game: Loaded successfully via simple load."])
 	else: 
-		print("Game: Failed simple load.")
+		DebugConfig.dprint("save_load", ["Game: Failed simple load."])

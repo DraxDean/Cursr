@@ -11,7 +11,7 @@ var current_day: int = 1
 
 
 func _ready():
-	print("TurnManager ready.")
+	DebugConfig.dprint("turn_events", ["TurnManager ready."])
 
 
 func setup(_label: Label):
@@ -19,16 +19,16 @@ func setup(_label: Label):
 	if not is_instance_valid(day_counter_label):
 		push_error("TurnManager: Invalid day counter label provided.")
 	_update_label() # Update label with initial day
-	print("TurnManager setup complete.")
+	DebugConfig.dprint("turn_events", ["TurnManager setup complete."])
 
 
 func end_turn():
-	print("TurnManager: Ending Day %d..." % current_day)
+	DebugConfig.dprint("turn_events", ["TurnManager: Ending Day %d..." % current_day])
 	current_day += 1
 	_update_label()
 	_compute_turn_results()
 	# Optional: emit_signal("turn_computed")
-	print("TurnManager: Started Day %d." % current_day)
+	DebugConfig.dprint("turn_events", ["TurnManager: Started Day %d." % current_day])
 
 
 func set_day(day: int):
@@ -46,7 +46,7 @@ func _update_label():
 
 
 func _compute_turn_results():
-	print("TurnManager: Computing turn results for end of Day %d..." % (current_day - 1))
+	DebugConfig.dprint("turn_events", ["TurnManager: Computing turn results for end of Day %d..." % (current_day - 1)])
 	
 	# Get reference to game node for applying effects
 	var game_node = get_parent()
@@ -70,4 +70,4 @@ func _compute_turn_results():
 					game_node.apply_population_growth(player_id)
 	# Access other managers via get_node() or singletons if needed,
 	# or have game.gd coordinate actions based on turn_computed signal.
-	print("TurnManager: Turn computations complete.")
+	DebugConfig.dprint("turn_events", ["TurnManager: Turn computations complete."])

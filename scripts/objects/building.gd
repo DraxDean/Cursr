@@ -5,7 +5,7 @@ var building_type: String = ""
 var building_data: Dictionary = {}
 
 func _ready():
-	print("Building script ready")
+	DebugConfig.dprint("buildings", ["Building script ready"])
 
 func setup(data: Dictionary):
 	"""Set up the building with the provided data"""
@@ -32,7 +32,7 @@ func setup(data: Dictionary):
 	if data.has("construction_day"):
 		set_meta("construction_day", data["construction_day"])
 	
-	print("Building setup complete with data: ", building_data)
+	DebugConfig.dprint("buildings", ["Building setup complete with data: ", building_data])
 	
 func get_building_type() -> String:
 	return building_type

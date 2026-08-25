@@ -213,11 +213,11 @@ func _on_spend_science_pressed():
 	var resources = player_data.get("resources", {})
 	var current = resources.get("science", 0)
 	if current < 5:
-		print("ScienceModal: Not enough science to spend (have %d)" % current)
+		DebugConfig.dprint("ui", ["ScienceModal: Not enough science to spend (have %d)" % current])
 		return
 	resources["science"] = current - 5
 	player_data["resources"] = resources
 	game_ref.players_data[player_id] = player_data
-	print("ScienceModal: Spent 5 science. Remaining: %d" % resources["science"])
+	DebugConfig.dprint("ui", ["ScienceModal: Spent 5 science. Remaining: %d" % resources["science"]])
 	refresh_content()
 

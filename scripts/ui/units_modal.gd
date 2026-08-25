@@ -161,32 +161,32 @@ func _add_clickable_unit_cell(container: HBoxContainer, text: String, unit: Dict
 
 func _on_unit_name_clicked(unit: Dictionary):
 	"""Handle unit name click - open unit view modal"""
-	print("Units Modal: Unit name clicked: %s" % unit.get("name", "unknown"))
+	DebugConfig.dprint("ui", ["Units Modal: Unit name clicked: %s" % unit.get("name", "unknown")])
 	
 	if not unit_view_modal:
-		print("Units Modal: Creating new unit view modal...")
+		DebugConfig.dprint("ui", ["Units Modal: Creating new unit view modal..."])
 		unit_view_modal = preload("res://scripts/ui/unit_view_modal.gd").new(game_ref, position + Vector2(100, 100))
-		print("Units Modal: Unit view modal created successfully")
+		DebugConfig.dprint("ui", ["Units Modal: Unit view modal created successfully"])
 		
 		# Add to parent's parent (UI layer) so it's alongside other modals
 		var parent = get_parent()
 		if parent:
 			parent.add_child(unit_view_modal)
-			print("Units Modal: Unit view modal added to parent: %s" % parent.name)
+			DebugConfig.dprint("ui", ["Units Modal: Unit view modal added to parent: %s" % parent.name])
 		else:
-			print("Units Modal: ERROR - No parent found!")
+			DebugConfig.dprint("ui", ["Units Modal: ERROR - No parent found!"])
 			return
 	
 	# Update the modal with the selected unit and show it
 	if unit_view_modal.has_method("display_unit"):
 		unit_view_modal.display_unit(unit)
-		print("Units Modal: Unit details displayed for: %s" % unit.get("name", "unknown"))
+		DebugConfig.dprint("ui", ["Units Modal: Unit details displayed for: %s" % unit.get("name", "unknown")])
 	else:
-		print("Units Modal: ERROR - unit_view_modal has no display_unit method!")
+		DebugConfig.dprint("ui", ["Units Modal: ERROR - unit_view_modal has no display_unit method!"])
 		return
 	
 	unit_view_modal.show()
-	print("Units Modal: Unit view modal shown")
+	DebugConfig.dprint("ui", ["Units Modal: Unit view modal shown"])
 func _add_unit_cell(container: HBoxContainer, text: String, min_width: int):
 	var label = Label.new()
 	label.text = text
@@ -231,7 +231,7 @@ func _add_clickable_building_cell(container: HBoxContainer, building_name: Strin
 
 func _on_building_clicked(building_name: String):
 	"""Handle building click - open building details modal"""
-	print("Units Modal: Building clicked: %s" % building_name)
+	DebugConfig.dprint("ui", ["Units Modal: Building clicked: %s" % building_name])
 	
 	# Find the building node in the map
 	if game_ref and game_ref.has_node("MapObjects"):
@@ -240,11 +240,11 @@ func _on_building_clicked(building_name: String):
 		
 		if building and game_ref.has_method("_open_building_details_modal"):
 			game_ref._open_building_details_modal(building)
-			print("Units Modal: Opened building details for: %s" % building_name)
+			DebugConfig.dprint("ui", ["Units Modal: Opened building details for: %s" % building_name])
 		else:
-			print("Units Modal: Could not find building '%s' or method not available" % building_name)
+			DebugConfig.dprint("ui", ["Units Modal: Could not find building '%s' or method not available" % building_name])
 	else:
-		print("Units Modal: Could not access map objects")
+		DebugConfig.dprint("ui", ["Units Modal: Could not access map objects"])
 
 func _get_building_type_from_name(building_name: String) -> String:
 	"""Extract the building type from the building name - use game_ref method if available"""

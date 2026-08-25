@@ -6,7 +6,7 @@ const SAVE_DIR = "user://CursrSaves/"
 func _ready():
 	# Ensure save directory exists when the game starts
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
-	print("SaveLoadManager ready. Save directory ensured: %s" % SAVE_DIR)
+	DebugConfig.dprint("save_load", ["SaveLoadManager ready. Save directory ensured: %s" % SAVE_DIR])
 
 # Saves the provided game state dictionary to a file.
 # If file_path is empty, uses current_save_path or finds the next available name.
@@ -20,7 +20,7 @@ func save_game(game_state: Dictionary, file_path: String = "") -> String:
 			path_to_save = _find_next_save_name()
 			if path_to_save.is_empty(): return "" # Failed to find a name
 
-	print("SaveLoadManager: Attempting to save game state to: %s" % path_to_save)
+	DebugConfig.dprint("save_load", ["SaveLoadManager: Attempting to save game state to: %s" % path_to_save])
 
 	if not game_state.has("map_data") or not game_state.has("current_day"):
 		push_error("SaveLoadManager: Invalid game_state dictionary provided for saving.")
@@ -34,7 +34,7 @@ func save_game(game_state: Dictionary, file_path: String = "") -> String:
 	if FileAccess.get_open_error() == OK and is_instance_valid(file):
 		# Store the entire game_state dictionary
 		file.store_var(game_state)
-		print("SaveLoadManager: Game state saved successfully to %s" % path_to_save)
+		DebugConfig.dprint("save_load", ["SaveLoadManager: Game state saved successfully to %s" % path_to_save])
 		return path_to_save # Return the path used
 	else:
 		push_error("SaveLoadManager: Failed to open file for writing '%s'. Error: %s" % [path_to_save, error_string(FileAccess.get_open_error())])
@@ -43,7 +43,7 @@ func save_game(game_state: Dictionary, file_path: String = "") -> String:
 # Loads game state from a specific file path.
 # Returns the loaded game state dictionary on success, or an empty dictionary on failure.
 func load_game(file_path: String) -> Dictionary:
-	print("SaveLoadManager: Loading game state from: %s" % file_path)
+	DebugConfig.dprint("save_load", ["SaveLoadManager: Loading game state from: %s" % file_path])
 	if file_path.is_empty() or not FileAccess.file_exists(file_path):
 		push_error("SaveLoadManager: Save file does not exist or path is empty: %s" % file_path); return {}
 
@@ -59,7 +59,7 @@ func load_game(file_path: String) -> Dictionary:
 	if typeof(loaded_save_data) == TYPE_DICTIONARY:
 		# Basic validation (could add more checks)
 		if loaded_save_data.has("map_data") and loaded_save_data.has("current_day"):
-			print("SaveLoadManager: Game state loaded successfully.")
+			DebugConfig.dprint("save_load", ["SaveLoadManager: Game state loaded successfully."])
 			loaded_save_data["current_save_path"] = file_path # Add the loaded path to the state dict
 			return loaded_save_data
 		else:

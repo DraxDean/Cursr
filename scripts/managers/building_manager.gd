@@ -68,13 +68,13 @@ func place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			if not player_data.has("buildings"):
 				player_data["buildings"] = []
 			player_data["buildings"].append(building_name)
-		print("Building placed successfully.")
+		DebugConfig.dprint("buildings", ["Building placed successfully."])
 		
 		# Recalculate paths for all units with jobs that might be affected by the new building
 		if game_node:
 			_recalculate_affected_unit_paths(building_name, owner_player)
 	else:
-		print("Building texture not found.")
+		DebugConfig.dprint("buildings", ["Building texture not found."])
 
 func get_building_texture_path(building_type: String) -> String:
 	match building_type:
@@ -125,4 +125,4 @@ func _recalculate_affected_unit_paths(new_building_name: String, owner_player: i
 		if job:  # Unit has a job assignment
 			# Re-cache the job connections to include the new building
 			game_node._cache_job_connections_for_unit(unit)
-			print("BuildingManager: Recalculated paths for unit ", unit.get("unique_id"), " after building ", new_building_name, " was placed")
+			DebugConfig.dprint("buildings", ["BuildingManager: Recalculated paths for unit ", unit.get("unique_id"), " after building ", new_building_name, " was placed"])

@@ -246,7 +246,7 @@ func _on_building_selected(building_data: Dictionary):
 	# Refresh details panel
 	_refresh_details_panel()
 	
-	print("Building selected: ", building_data["name"])
+	DebugConfig.dprint("ui", ["Building selected: ", building_data["name"]])
 
 func _get_building_costs(btype: String) -> Dictionary:
 	var costs = {
@@ -325,11 +325,11 @@ func close_modal():
 
 func _on_build_more_toggled(pressed: bool):
 	build_more_mode = pressed
-	print("Build more mode: ", build_more_mode)
+	DebugConfig.dprint("ui", ["Build more mode: ", build_more_mode])
 
 func _on_keep_modal_open_toggled(pressed: bool):
 	keep_modal_open = pressed
-	print("Keep modal open: ", keep_modal_open)
+	DebugConfig.dprint("ui", ["Keep modal open: ", keep_modal_open])
 
 func _on_cancel_pressed():
 	close_modal()

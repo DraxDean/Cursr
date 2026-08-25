@@ -23,7 +23,7 @@ var rng = RandomNumberGenerator.new()
 
 func _ready():
 	rng.randomize()
-	print("MapObjectManager ready.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager ready."])
 
 
 func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mountain_scn: PackedScene, _forest_coords: Vector2i, _mountain_coords: Vector2i, _game_node: Node = null, _fish_scn: PackedScene = null, _ocean_coords: Vector2i = Vector2i.ZERO):
@@ -42,20 +42,20 @@ func setup(_holder: Node2D, _tilemap: TileMapLayer, _tree_scn: PackedScene, _mou
 	if not tree_scene: push_warning("MapObjectManager: Tree scene not assigned.")
 	if not mountain_scene: push_warning("MapObjectManager: Mountain scene not assigned.")
 	if not fish_scene: push_warning("MapObjectManager: Fish scene not assigned.")
-	print("MapObjectManager setup complete.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager setup complete."])
 
 
 func clear_objects():
-	print("MapObjectManager: Clearing existing map objects...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Clearing existing map objects..."])
 	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node is not valid!"); return
 	for child in map_objects_holder.get_children():
 		child.queue_free()
 
 
 func place_objects(world_data: Dictionary):
-	print("MapObjectManager: Placing map objects...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Placing map objects..."])
 	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
-	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
+	if world_data.is_empty(): DebugConfig.dprint("map_objects", ["MapObjectManager: No world data to place objects on."]); return
 	if forest_tile_coords == Vector2i.ZERO and mountain_tile_coords == Vector2i.ZERO:
 		push_warning("MapObjectManager: Tile coordinates for objects not set up.")
 		return # Avoid errors if coords weren't set
@@ -77,12 +77,12 @@ func place_objects(world_data: Dictionary):
 				var y_offset = rng.randi_range(0, 4)
 				_place_single_object(mountain_scene, coords, y_offset)
 
-	print("MapObjectManager: Map object placement finished.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Map object placement finished."])
 
 func place_mountains_only(world_data: Dictionary):
-	print("MapObjectManager: Placing mountains only...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Placing mountains only..."])
 	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
-	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
+	if world_data.is_empty(): DebugConfig.dprint("map_objects", ["MapObjectManager: No world data to place objects on."]); return
 	if mountain_tile_coords == Vector2i.ZERO:
 		push_warning("MapObjectManager: Mountain tile coordinates not set up.")
 		return
@@ -98,12 +98,12 @@ func place_mountains_only(world_data: Dictionary):
 				var y_offset = rng.randi_range(0, 4)
 				_place_single_object(mountain_scene, coords, y_offset)
 
-	print("MapObjectManager: Mountain placement finished.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Mountain placement finished."])
 
 func place_trees_only(world_data: Dictionary):
-	print("MapObjectManager: Placing trees only...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Placing trees only..."])
 	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
-	if world_data.is_empty(): print("MapObjectManager: No world data to place objects on."); return
+	if world_data.is_empty(): DebugConfig.dprint("map_objects", ["MapObjectManager: No world data to place objects on."]); return
 	if forest_tile_coords == Vector2i.ZERO:
 		push_warning("MapObjectManager: Forest tile coordinates not set up.")
 		return
@@ -119,26 +119,26 @@ func place_trees_only(world_data: Dictionary):
 				var y_offset = rng.randi_range(-12, -8)
 				_place_single_object(tree_scene, coords, y_offset)
 
-	print("MapObjectManager: Tree placement finished.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Tree placement finished."])
 
 func place_fish(world_data: Dictionary):
-	print("MapObjectManager: Placing fish...")
-	print("MapObjectManager: is_instance_valid(map_objects_holder) = %s" % is_instance_valid(map_objects_holder))
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Placing fish..."])
+	DebugConfig.dprint("map_objects", ["MapObjectManager: is_instance_valid(map_objects_holder) = %s" % is_instance_valid(map_objects_holder)])
 	if not is_instance_valid(map_objects_holder): 
 		push_error("MapObjects holder node invalid!")
 		return
 	
-	print("MapObjectManager: world_data.is_empty() = %s" % world_data.is_empty())
+	DebugConfig.dprint("map_objects", ["MapObjectManager: world_data.is_empty() = %s" % world_data.is_empty()])
 	if world_data.is_empty(): 
-		print("MapObjectManager: No world data to place objects on.")
+		DebugConfig.dprint("map_objects", ["MapObjectManager: No world data to place objects on."])
 		return
 	
-	print("MapObjectManager: fish_scene = %s" % fish_scene)
+	DebugConfig.dprint("map_objects", ["MapObjectManager: fish_scene = %s" % fish_scene])
 	if not fish_scene:
 		push_error("MapObjectManager: Fish scene not assigned.")
 		return
 
-	print("MapObjectManager: Fish scene is valid. Starting iteration...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Fish scene is valid. Starting iteration..."])
 	var fish_count = 0
 	var tiles_checked = 0
 	for coords in world_data:
@@ -149,15 +149,15 @@ func place_fish(world_data: Dictionary):
 
 		# Place Fish on marked tiles
 		if tile_info["fish"] == true:
-			print("MapObjectManager: Placing fish at %s" % coords)
+			DebugConfig.dprint("map_objects", ["MapObjectManager: Placing fish at %s" % coords])
 			var y_offset = rng.randi_range(-8, 8)
 			_place_single_object(fish_scene, coords, y_offset)
 			fish_count += 1
 
-	print("MapObjectManager: Fish placement finished. Checked %d tiles, placed %d fish." % [tiles_checked, fish_count])
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Fish placement finished. Checked %d tiles, placed %d fish." % [tiles_checked, fish_count]])
 
 func clear_mountains_only():
-	print("MapObjectManager: Clearing mountain objects only...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Clearing mountain objects only..."])
 	if not is_instance_valid(map_objects_holder): 
 		push_error("MapObjects holder node is not valid!")
 		return
@@ -167,10 +167,10 @@ func clear_mountains_only():
 		if child.name.begins_with("Mountain") or child.scene_file_path.ends_with("mountain.tscn"):
 			child.queue_free()
 	
-	print("MapObjectManager: Mountain objects cleared.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Mountain objects cleared."])
 
 func clear_trees_only():
-	print("MapObjectManager: Clearing tree objects only...")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Clearing tree objects only..."])
 	if not is_instance_valid(map_objects_holder): 
 		push_error("MapObjects holder node is not valid!")
 		return
@@ -180,7 +180,7 @@ func clear_trees_only():
 		if child.name.begins_with("Tree") or child.scene_file_path.ends_with("tree.tscn"):
 			child.queue_free()
 	
-	print("MapObjectManager: Tree objects cleared.")
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Tree objects cleared."])
 
 
 func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: int = 0):
@@ -198,7 +198,7 @@ func _place_single_object(scene: PackedScene, tile_coords: Vector2i, y_offset: i
 		elif game_node.has_method("register_tree") and scene == tree_scene:
 			game_node.register_tree(instance)
 		elif game_node.has_method("register_fish") and scene == fish_scene:
-			print("_place_single_object: Placing fish at %s" % instance.position)
+			DebugConfig.dprint("map_objects", ["_place_single_object: Placing fish at %s" % instance.position])
 			game_node.register_fish(instance)
 
 func place_objects_from_save(environment_objects_data: Array):
@@ -220,11 +220,11 @@ func place_objects_from_save(environment_objects_data: Array):
 		var instance = scene.instantiate()
 		instance.position = position
 		map_objects_holder.add_child(instance)
-	print("MapObjectManager: Placed %d environment objects from save." % environment_objects_data.size())
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Placed %d environment objects from save." % environment_objects_data.size()])
 
 
 func place_building(building_data, coords):
-	print("Map Object Manager: Placing building: ", building_data, " at: ", coords);
+	DebugConfig.dprint("map_objects", ["Map Object Manager: Placing building: ", building_data, " at: ", coords]);
 	var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
 	
 	# Prepare setup data with texture path
@@ -245,7 +245,7 @@ func place_building(building_data, coords):
 	if building_scene.has_method("setup"):
 		building_scene.setup(setup_data)
 	else:
-		print("ERROR: Building Scene has no setup method!")
+		DebugConfig.dprint("map_objects", ["ERROR: Building Scene has no setup method!"])
 		
 	# Position the building at the correct location (center of tile)
 	if is_instance_valid(tilemap_layer) and is_instance_valid(map_objects_holder):

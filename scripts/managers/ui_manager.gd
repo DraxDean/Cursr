@@ -175,14 +175,14 @@ func _on_confirm_cancel():
 	confirmation_panel.hide()
 	_pending_action = ""
 	open_main_modal() # Reopen main modal on cancel
-	print("UIManager: Emitting 'action_cancelled' signal.") # DEBUG
+	DebugConfig.dprint("ui", ["UIManager: Emitting 'action_cancelled' signal."]) # DEBUG
 	emit_signal("action_cancelled")
 
 
 # --- Public Method Called by game.gd after Save Success ---
 
 func perform_pending_action_after_save():
-	print("UIManager: perform_pending_action_after_save called.") # DEBUG
+	DebugConfig.dprint("ui", ["UIManager: perform_pending_action_after_save called."]) # DEBUG
 	_perform_action(_pending_action)
 
 
@@ -192,7 +192,7 @@ func _perform_action(action_name: String):
 	var action_to_perform = action_name
 	_pending_action = "" # Clear pending action immediately
 
-	print("UIManager: Performing action: %s" % action_to_perform) # DEBUG
+	DebugConfig.dprint("ui", ["UIManager: Performing action: %s" % action_to_perform]) # DEBUG
 	get_tree().paused = false # Unpause before changing scene or quitting
 
 	if action_to_perform == "main_menu":
@@ -212,7 +212,7 @@ func handle_escape():
 		if is_instance_valid(top_modal):
 			var modal_type = top_modal.get("modal_type") if top_modal.has_meta("modal_type") or "modal_type" in top_modal else "unknown"
 			var script_name = top_modal.get_script().get_path().get_file().trim_suffix(".gd") if top_modal.get_script() else "no_script"
-			print("UIManager: ESC pressed - Closing modal. Type: %s | Script: %s" % [modal_type, script_name])
+			DebugConfig.dprint("ui", ["UIManager: ESC pressed - Closing modal. Type: %s | Script: %s" % [modal_type, script_name]])
 			
 			# Try to close the modal using a close method
 			if top_modal.has_method("close_modal"):
@@ -228,13 +228,13 @@ func handle_escape():
 	var modal_visible = is_instance_valid(modal_menu_panel) and (modal_menu_panel.visible or modal_menu_panel.is_visible_in_tree())
 	var confirm_visible = is_instance_valid(confirmation_panel) and (confirmation_panel.visible or confirmation_panel.is_visible_in_tree())
 	if confirm_visible:
-		print("UIManager: ESC pressed - Closing confirmation panel")
+		DebugConfig.dprint("ui", ["UIManager: ESC pressed - Closing confirmation panel"])
 		_on_confirm_cancel()
 	elif modal_visible:
-		print("UIManager: ESC pressed - Closing main modal")
+		DebugConfig.dprint("ui", ["UIManager: ESC pressed - Closing main modal"])
 		close_main_modal()
 	else: # If no modals are open, open the main one
-		print("UIManager: ESC pressed - Opening main modal")
+		DebugConfig.dprint("ui", ["UIManager: ESC pressed - Opening main modal"])
 		open_main_modal()
 
 # Register a modal with the modal stack
@@ -245,7 +245,7 @@ func push_modal(modal: Control):
 		var modal_type = modal.get("modal_type") if modal.has_meta("modal_type") or "modal_type" in modal else "unknown"
 		var script_name = modal.get_script().get_path().get_file().trim_suffix(".gd") if modal.get_script() else "no_script"
 		var node_name = modal.name if modal.name else "unnamed"
-		print("UIManager: Modal added to stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()])
+		DebugConfig.dprint("ui", ["UIManager: Modal added to stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()]])
 
 # Unregister a modal from the modal stack
 func pop_modal(modal: Control = null):
@@ -257,7 +257,7 @@ func pop_modal(modal: Control = null):
 			var script_name = modal.get_script().get_path().get_file().trim_suffix(".gd") if modal.get_script() else "no_script"
 			var node_name = modal.name if modal.name else "unnamed"
 			modal_stack.erase(modal)
-			print("UIManager: Modal removed from stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()])
+			DebugConfig.dprint("ui", ["UIManager: Modal removed from stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()]])
 	elif modal_stack.size() > 0:
 		# Remove top modal
 		var top_modal = modal_stack.back()
@@ -265,7 +265,7 @@ func pop_modal(modal: Control = null):
 		var script_name = top_modal.get_script().get_path().get_file().trim_suffix(".gd") if top_modal.get_script() else "no_script"
 		var node_name = top_modal.name if top_modal.name else "unnamed"
 		modal_stack.pop_back()
-		print("UIManager: Top modal removed from stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()])
+		DebugConfig.dprint("ui", ["UIManager: Top modal removed from stack. Type: %s | Script: %s | Node: %s | Stack size: %d" % [modal_type, script_name, node_name, modal_stack.size()]])
 
 # Handle GUI input on modal panel (for direct ESC key handling)
 func _on_modal_gui_input(event: InputEvent):

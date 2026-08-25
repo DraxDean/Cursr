@@ -180,7 +180,7 @@ func _on_place_confirmed():
 
 func _on_build_more_toggled(pressed: bool):
 	build_more_mode = pressed
-	print("Build more mode: ", build_more_mode)
+	DebugConfig.dprint("ui", ["Build more mode: ", build_more_mode])
 
 func _on_placement_cancelled():
 	placement_cancelled.emit()

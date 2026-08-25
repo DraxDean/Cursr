@@ -27,16 +27,16 @@ var all_job_path_lines: Array = []  # All drawn job path lines (for show/hide)
 var building_connections_data: Array = []  # Store building connections with indices for selection
 
 func _ready():
-	print("Building Details Modal: _ready() called")
+	DebugConfig.dprint("buildings", ["Building Details Modal: _ready() called"])
 	_setup_modal()
-	print("Building Details Modal: _setup_modal() completed")
+	DebugConfig.dprint("buildings", ["Building Details Modal: _setup_modal() completed"])
 	
 	# Connect visibility changes to clear lines when hidden
 	# This will also trigger the parent's _on_modal_visibility_changed
 	visibility_changed.connect(_on_visibility_changed)
 	
 	# Manually register since visibility = true during _ready() may not trigger the signal
-	print("BuildingDetailsModal: Manually registering in _ready()")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Manually registering in _ready()"])
 	_register_with_ui_manager()
 
 func _ensure_connection_lines_container():
@@ -48,11 +48,11 @@ func _ensure_connection_lines_container():
 	if connection_lines_container and is_instance_valid(connection_lines_container):
 		# Verify it's still in the scene tree
 		if connection_lines_container.get_parent() != null:
-			print("BuildingDetailsModal: Connection lines container already exists and is attached")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Connection lines container already exists and is attached"])
 			connection_lines_container.show()  # Ensure it's visible
 			return
 		else:
-			print("BuildingDetailsModal: Container exists but is orphaned, will recreate")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Container exists but is orphaned, will recreate"])
 			connection_lines_container = null
 	
 	# Create new container - add to tilemap layer, not game node
@@ -64,11 +64,11 @@ func _ensure_connection_lines_container():
 			connection_lines_container.z_index = 1000  # Render above everything in the game world
 			tilemap.add_child(connection_lines_container)
 			connection_lines_container.show()
-			print("BuildingDetailsModal: Created new connection lines container as child of TileMapLayer")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Created new connection lines container as child of TileMapLayer"])
 		else:
-			print("BuildingDetailsModal: ERROR - TileMapLayer not found, cannot create container")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: ERROR - TileMapLayer not found, cannot create container"])
 	else:
-		print("BuildingDetailsModal: ERROR - Cannot create connection lines container, game_node is null")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: ERROR - Cannot create connection lines container, game_node is null"])
 
 func _process(_delta):
 	# Only check for redraw needs, don't update every frame
@@ -80,10 +80,10 @@ func _process(_delta):
 func _on_visibility_changed():
 	# Handle modal stack registration/unregistration
 	if visible:
-		print("BuildingDetailsModal: Visibility changed to true, registering with UI manager")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Visibility changed to true, registering with UI manager"])
 		_register_with_ui_manager()
 	else:
-		print("BuildingDetailsModal: Visibility changed to false, unregistering from UI manager")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Visibility changed to false, unregistering from UI manager"])
 		_unregister_from_ui_manager()
 	
 	# Handle connection lines visibility
@@ -351,13 +351,13 @@ func _create_jobs_section() -> Control:
 	return section
 
 func setup_building_details(building: Node2D):
-	print("BuildingDetailsModal: setup_building_details() called for building: %s" % building.name)
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: setup_building_details() called for building: %s" % building.name])
 	building_node = building
 	building_data = _extract_building_data(building)
 	
 	# Debug: Check if building has jobs
 	var jobs_on_building = building_node.get_meta("resource_jobs", [])
-	print("BuildingDetailsModal: DEBUG - Building %s has %d jobs in metadata" % [building.name, jobs_on_building.size()])
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: DEBUG - Building %s has %d jobs in metadata" % [building.name, jobs_on_building.size()]])
 	
 	# Get game reference and ensure resource rates are calculated
 	game_node = building_node.get_parent().get_parent()
@@ -409,7 +409,7 @@ func setup_building_details(building: Node2D):
 		_draw_all_job_paths()
 		_draw_connection_lines()
 	
-	print("BuildingDetailsModal: setup_building_details() completed")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: setup_building_details() completed"])
 
 func _extract_building_data(building: Node2D) -> Dictionary:
 	var data = {}
@@ -462,7 +462,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	var connections = []
 	var building_type = building.get_meta("building_type", "unknown")
 	
-	print("Finding connections for building type: ", building_type)
+	DebugConfig.dprint("buildings", ["Finding connections for building type: ", building_type])
 	
 	# Define building-to-building connection rules only
 	var connection_rules = {
@@ -497,7 +497,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	# Get buildings from game's player data
 	if game_node.has_method("get_player_buildings"):
 		var all_buildings = game_node.get_player_buildings(1)  # Assuming player 1
-		print("Checking connections for ", building.name, " - found ", all_buildings.size(), " total buildings")
+		DebugConfig.dprint("buildings", ["Checking connections for ", building.name, " - found ", all_buildings.size(), " total buildings"])
 		
 		for building_name in all_buildings:
 			if building_name == building.name:
@@ -524,7 +524,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 						"object_type": "building",
 						"tile_coords": other_tile_coords
 					})
-					print("Added connection: ", other_building.name, " -> ", display_name, " (", other_type, ")")
+					DebugConfig.dprint("buildings", ["Added connection: ", other_building.name, " -> ", display_name, " (", other_type, ")"])
 	# Sort connections by distance
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
@@ -640,7 +640,7 @@ func _on_building_jobs_updated(building_name: String):
 	"""Handle real-time job updates when jobs are assigned/changed"""
 	# Only update if this is the building currently shown in the modal
 	if building_node and building_node.name == building_name:
-		print("BuildingDetailsModal: Jobs updated for building %s, refreshing display" % building_name)
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Jobs updated for building %s, refreshing display" % building_name])
 		# Re-extract building data to pick up any name changes
 		building_data = _extract_building_data(building_node)
 		# Update title to show new name if it was renamed
@@ -676,31 +676,31 @@ func _update_line_positions():
 
 func _draw_connection_lines():
 	# Clear existing connection lines first
-	print("BuildingDetailsModal: _draw_connection_lines() called. Clearing %d existing lines" % connection_lines.size())
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: _draw_connection_lines() called. Clearing %d existing lines" % connection_lines.size()])
 	_clear_connection_lines()
 	
 	if not building_node:
-		print("BuildingDetailsModal: No building_node, skipping connection lines")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: No building_node, skipping connection lines"])
 		return
 	
-	print("BuildingDetailsModal: Setting is_showing_connections = true and calling _redraw_connections()")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Setting is_showing_connections = true and calling _redraw_connections()"])
 	is_showing_connections = true
 	_redraw_connections()
 
 func _redraw_connections():
 	if not building_node or not is_showing_connections:
-		print("BuildingDetailsModal: _redraw_connections() skipped - building_node exists: %s, is_showing_connections: %s" % [building_node != null, is_showing_connections])
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: _redraw_connections() skipped - building_node exists: %s, is_showing_connections: %s" % [building_node != null, is_showing_connections]])
 		return
 	
-	print("BuildingDetailsModal: _redraw_connections() called. Current lines on screen: %d" % connection_lines.size())
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: _redraw_connections() called. Current lines on screen: %d" % connection_lines.size()])
 	
 	if not game_node:
 		game_node = building_node.get_parent().get_parent()
-		print("BuildingDetailsModal: Set game_node in _redraw_connections()")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Set game_node in _redraw_connections()"])
 	
 	var tilemap = game_node.get_node_or_null("TileMapLayer")
 	if not tilemap:
-		print("BuildingDetailsModal: TileMapLayer not found!")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: TileMapLayer not found!"])
 		return
 	
 	# Ensure connection lines container exists
@@ -708,11 +708,11 @@ func _redraw_connections():
 	
 	# Verify container was created successfully
 	if not connection_lines_container or not is_instance_valid(connection_lines_container):
-		print("BuildingDetailsModal: ERROR - Failed to create or validate connection lines container")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: ERROR - Failed to create or validate connection lines container"])
 		return
 	
 	var connections = building_data.get("connections", [])
-	print("BuildingDetailsModal: Redrawing %d connections" % connections.size())
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Redrawing %d connections" % connections.size()])
 	var building_tile_coords = tilemap.local_to_map(building_node.position)
 	
 	# Colors for different connection types (more visible colors)
@@ -739,10 +739,10 @@ func _redraw_connections():
 		
 		# Re-validate container at start of each iteration
 		if not connection_lines_container or not is_instance_valid(connection_lines_container):
-			print("BuildingDetailsModal: Container became invalid mid-loop! Re-ensuring...")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Container became invalid mid-loop! Re-ensuring..."])
 			_ensure_connection_lines_container()
 			if not connection_lines_container or not is_instance_valid(connection_lines_container):
-				print("BuildingDetailsModal: CRITICAL - Could not restore container, aborting redraw")
+				DebugConfig.dprint("buildings", ["BuildingDetailsModal: CRITICAL - Could not restore container, aborting redraw"])
 				return
 		
 		var target_node = null
@@ -753,7 +753,7 @@ func _redraw_connections():
 		if connection.has("path") and not connection["path"].is_empty():
 			path = connection["path"]
 			path_is_world_coords = true  # Pre-calculated paths are stored as world coordinates
-			print("BuildingDetailsModal: Using pre-calculated path for ", connection.name, " (", connection.type, ")")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Using pre-calculated path for ", connection.name, " (", connection.type, ")"])
 		else:
 			# Otherwise, find the target object and recalculate path
 			# Find the target object (building, mountain, or tree)
@@ -810,15 +810,15 @@ func _redraw_connections():
 				# Find path using A*
 				path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
 				path_is_world_coords = false  # Calculated paths are in tile coordinates
-				print("BuildingDetailsModal: Calculated path for ", connection.name, " (", connection.type, ") - ", path.size(), " tiles")
+				DebugConfig.dprint("buildings", ["BuildingDetailsModal: Calculated path for ", connection.name, " (", connection.type, ") - ", path.size(), " tiles"])
 		
 		# Draw the path if we have one
 		if path.size() > 1:  # Only draw if path exists and has multiple points
 			var color = connection_colors.get(connection.type, Color.WHITE)
-			print("BuildingDetailsModal: Drawing path for %s | Container valid: %s | Parent: %s" % [connection.name, is_instance_valid(connection_lines_container), connection_lines_container.get_parent() if is_instance_valid(connection_lines_container) else "N/A"])
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drawing path for %s | Container valid: %s | Parent: %s" % [connection.name, is_instance_valid(connection_lines_container), connection_lines_container.get_parent() if is_instance_valid(connection_lines_container) else "N/A"]])
 			_draw_path_on_tilemap(path, color, tilemap, path_is_world_coords)
 		else:
-			print("BuildingDetailsModal: No path available for ", connection.name, " (", connection.type, ")")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: No path available for ", connection.name, " (", connection.type, ")"])
 
 func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer, path_is_world_coords: bool = false):
 	# Create a Line2D node to draw the connection path
@@ -849,10 +849,10 @@ func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer, pat
 	# Add line to the connection lines container (renders above game world)
 	if connection_lines_container and is_instance_valid(connection_lines_container):
 		connection_lines_container.add_child(line)
-		print("BuildingDetailsModal: Added line to container. Container now has %d children. Parent: %s" % [connection_lines_container.get_child_count(), connection_lines_container.get_parent()])
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Added line to container. Container now has %d children. Parent: %s" % [connection_lines_container.get_child_count(), connection_lines_container.get_parent()]])
 	else:
-		print("BuildingDetailsModal: ERROR - connection_lines_container is invalid at draw time!")
-		print("BuildingDetailsModal: Container check: exists=%s | valid=%s | parent=%s" % [connection_lines_container != null, connection_lines_container != null and is_instance_valid(connection_lines_container), connection_lines_container.get_parent() if connection_lines_container != null else "N/A"])
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: ERROR - connection_lines_container is invalid at draw time!"])
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Container check: exists=%s | valid=%s | parent=%s" % [connection_lines_container != null, connection_lines_container != null and is_instance_valid(connection_lines_container), connection_lines_container.get_parent() if connection_lines_container != null else "N/A"]])
 		return  # Don't add line if container is invalid
 	
 	# Store both the line reference and the path data for updates
@@ -862,13 +862,13 @@ func _draw_path_on_tilemap(path: Array, color: Color, tilemap: TileMapLayer, pat
 		"color": color,
 		"line": line
 	})
-	print("BuildingDetailsModal: Drew path on tilemap. Total lines: %d | Path length: %d | From: %s To: %s | Color: %s" % [connection_lines.size(), path.size(), first_point, last_point, color])
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drew path on tilemap. Total lines: %d | Path length: %d | From: %s To: %s | Color: %s" % [connection_lines.size(), path.size(), first_point, last_point, color]])
 	
-	print("Drew connection line with ", path.size(), " points in ", color)
+	DebugConfig.dprint("buildings", ["Drew connection line with ", path.size(), " points in ", color])
 
 func _clear_connection_lines(immediate: bool = false):
 	# Remove all Line2D nodes from the scene
-	print("BuildingDetailsModal: Clearing %d connection lines" % connection_lines.size())
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Clearing %d connection lines" % connection_lines.size()])
 	for line in connection_lines:
 		if is_instance_valid(line):
 			if immediate:
@@ -883,7 +883,7 @@ func _clear_connection_lines(immediate: bool = false):
 	connection_lines.clear()
 	connection_paths.clear()
 	is_showing_connections = false
-	print("BuildingDetailsModal: Cleared all connection lines")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Cleared all connection lines"])
 	# Note: We keep the container alive so it can be reused for subsequent drawings
 
 func clear_all_connections():
@@ -904,7 +904,7 @@ func _populate_building_info():
 				main_vbox = child
 				break
 		if not main_vbox:
-			print("Building Details: Could not find any VBoxContainer")
+			DebugConfig.dprint("buildings", ["Building Details: Could not find any VBoxContainer"])
 			return
 		
 	var scroll_container = main_vbox.get_node_or_null("ScrollContainer")
@@ -915,7 +915,7 @@ func _populate_building_info():
 				scroll_container = child
 				break
 		if not scroll_container:
-			print("Building Details: No ScrollContainer found")
+			DebugConfig.dprint("buildings", ["Building Details: No ScrollContainer found"])
 			return
 		
 	var content_vbox = scroll_container.get_node_or_null("ContentContainer")
@@ -926,7 +926,7 @@ func _populate_building_info():
 				content_vbox = child
 				break
 		if not content_vbox:
-			print("Building Details: Could not find content VBoxContainer")
+			DebugConfig.dprint("buildings", ["Building Details: Could not find content VBoxContainer"])
 			return
 	
 	# Find nodes by walking the tree directly
@@ -1054,11 +1054,11 @@ func _populate_building_info():
 				child.queue_free()
 		
 		var building_type = building_data.get("building_type", "unknown")
-		print("UI DEBUG: Populating capacity section for building_type: ", building_type)
+		DebugConfig.dprint("buildings", ["UI DEBUG: Populating capacity section for building_type: ", building_type])
 		
 		# Barracks uses station and training job types
 		if building_type == "barracks":
-			print("UI DEBUG: Creating barracks capacity controls")
+			DebugConfig.dprint("buildings", ["UI DEBUG: Creating barracks capacity controls"])
 			_create_capacity_control(capacity_container, "Station:", 5, "station")
 			_create_capacity_control(capacity_container, "Training:", 5, "training")
 		elif building_type == "farm":
@@ -1146,16 +1146,16 @@ func _populate_jobs_from_building():
 	
 	# Get jobs from building metadata
 	var jobs = building_node.get_meta("resource_jobs", [])
-	print("UI DEBUG: _populate_jobs_from_building - found ", jobs.size(), " jobs on building ", building_node.name)
+	DebugConfig.dprint("buildings", ["UI DEBUG: _populate_jobs_from_building - found ", jobs.size(), " jobs on building ", building_node.name])
 	
 	if jobs.is_empty():
-		print("UI DEBUG: No jobs found, showing 'No jobs configured' message")
+		DebugConfig.dprint("buildings", ["UI DEBUG: No jobs found, showing 'No jobs configured' message"])
 		var no_jobs_label = Label.new()
 		no_jobs_label.text = "No jobs configured"
 		no_jobs_label.add_theme_color_override("font_color", Color.GRAY)
 		jobs_container.add_child(no_jobs_label)
 	else:
-		print("UI DEBUG: Displaying ", jobs.size(), " jobs")
+		DebugConfig.dprint("buildings", ["UI DEBUG: Displaying ", jobs.size(), " jobs"])
 		for i in range(jobs.size()):
 			_add_job_row(jobs_container, jobs[i], i)
 	
@@ -1319,12 +1319,12 @@ func _on_job_path_clicked(job_index: int):
 	"""Handle job path button click - toggle path visualization"""
 	var jobs = building_node.get_meta("resource_jobs", [])
 	if job_index < 0 or job_index >= jobs.size():
-		print("BuildingDetailsModal: Invalid job index: ", job_index)
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Invalid job index: ", job_index])
 		return
 	
 	# If clicking the same job, toggle it off
 	if selected_job_index == job_index:
-		print("BuildingDetailsModal: Toggling off path for job index ", job_index)
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Toggling off path for job index ", job_index])
 		_clear_selected_path()
 		selected_job_index = -1
 		return
@@ -1339,14 +1339,14 @@ func _on_job_path_clicked(job_index: int):
 	selected_job_index = job_index
 	var selected_job = jobs[job_index]
 	
-	print("BuildingDetailsModal: Drawing path for job index ", job_index, " - ", selected_job.get("path_id", "unknown"))
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drawing path for job index ", job_index, " - ", selected_job.get("path_id", "unknown")])
 	_draw_selected_job_path(selected_job)
 
 func _draw_selected_job_path(job: Dictionary):
 	"""Draw the selected job's path in white on the tilemap"""
 	var tile_path = job.get("tile_path", [])
 	if tile_path.is_empty():
-		print("BuildingDetailsModal: Job has no tile path to draw")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Job has no tile path to draw"])
 		return
 	
 	# Ensure container is ready
@@ -1355,7 +1355,7 @@ func _draw_selected_job_path(job: Dictionary):
 	# Get tilemap reference from game
 	var tilemap = game_node.get_node_or_null("TileMapLayer") if game_node else null
 	if not tilemap:
-		print("BuildingDetailsModal: Could not find tilemap for path drawing")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Could not find tilemap for path drawing"])
 		return
 	
 	# Create line for the selected path in white
@@ -1376,9 +1376,9 @@ func _draw_selected_job_path(job: Dictionary):
 	if connection_lines_container and is_instance_valid(connection_lines_container):
 		connection_lines_container.add_child(line)
 		selected_job_path_line = line
-		print("BuildingDetailsModal: Drew white path for selected job with ", line.get_point_count(), " points")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drew white path for selected job with ", line.get_point_count(), " points"])
 	else:
-		print("BuildingDetailsModal: Could not add path line - container invalid")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Could not add path line - container invalid"])
 		line.queue_free()
 
 func _clear_selected_path():
@@ -1389,17 +1389,17 @@ func _clear_selected_path():
 			selected_job_path_line.get_parent().remove_child(selected_job_path_line)
 		selected_job_path_line.free()  # Immediately free instead of queue_free
 		selected_job_path_line = null
-		print("BuildingDetailsModal: Cleared selected job path visualization")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Cleared selected job path visualization"])
 
 func _on_building_path_clicked(connection_index: int):
 	"""Handle building connection path button click - toggle path visualization"""
 	if connection_index < 0 or connection_index >= building_connections_data.size():
-		print("BuildingDetailsModal: Invalid connection index: ", connection_index)
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Invalid connection index: ", connection_index])
 		return
 	
 	# If clicking the same connection, toggle it off
 	if selected_building_path_index == connection_index:
-		print("BuildingDetailsModal: Toggling off path for connection index ", connection_index)
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Toggling off path for connection index ", connection_index])
 		_clear_selected_building_path()
 		selected_building_path_index = -1
 		return
@@ -1414,7 +1414,7 @@ func _on_building_path_clicked(connection_index: int):
 	selected_building_path_index = connection_index
 	var selected_connection = building_connections_data[connection_index]
 	
-	print("BuildingDetailsModal: Drawing path for connection index ", connection_index, " - ", selected_connection.get("name", "unknown"))
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drawing path for connection index ", connection_index, " - ", selected_connection.get("name", "unknown")])
 	_draw_selected_building_path(selected_connection)
 
 func _draw_selected_building_path(connection: Dictionary):
@@ -1424,7 +1424,7 @@ func _draw_selected_building_path(connection: Dictionary):
 	
 	var tilemap = game_node.get_node_or_null("TileMapLayer")
 	if not tilemap:
-		print("BuildingDetailsModal: Could not find tilemap for path drawing")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Could not find tilemap for path drawing"])
 		return
 	
 	# Ensure container is ready
@@ -1435,7 +1435,7 @@ func _draw_selected_building_path(connection: Dictionary):
 	# Try to use pre-calculated path if available
 	if connection.has("path") and not connection["path"].is_empty():
 		path = connection["path"]
-		print("BuildingDetailsModal: Using pre-calculated path for ", connection.name)
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Using pre-calculated path for ", connection.name])
 	else:
 		# Otherwise, calculate path if we have tile coordinates
 		var building_tile_coords = tilemap.local_to_map(building_node.position)
@@ -1446,12 +1446,12 @@ func _draw_selected_building_path(connection: Dictionary):
 			var tile_path = _astar_pathfind(building_tile_coords, target_tile, tilemap)
 			if not tile_path.is_empty():
 				path = tile_path
-				print("BuildingDetailsModal: Calculated A* path to ", connection.name, " with ", tile_path.size(), " tiles")
+				DebugConfig.dprint("buildings", ["BuildingDetailsModal: Calculated A* path to ", connection.name, " with ", tile_path.size(), " tiles"])
 			else:
-				print("BuildingDetailsModal: No path found to ", connection.name)
+				DebugConfig.dprint("buildings", ["BuildingDetailsModal: No path found to ", connection.name])
 				return
 		else:
-			print("BuildingDetailsModal: Connection has no tile_coords data")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Connection has no tile_coords data"])
 			return
 	
 	# Create line for the selected path in white
@@ -1478,16 +1478,16 @@ func _draw_selected_building_path(connection: Dictionary):
 	if connection_lines_container and is_instance_valid(connection_lines_container):
 		connection_lines_container.add_child(line)
 		selected_building_path_line = line
-		print("BuildingDetailsModal: Drew white path for selected connection with ", line.get_point_count(), " points")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drew white path for selected connection with ", line.get_point_count(), " points"])
 	else:
-		print("BuildingDetailsModal: Could not add path line - container invalid, ensuring it exists")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Could not add path line - container invalid, ensuring it exists"])
 		_ensure_connection_lines_container()
 		if connection_lines_container and is_instance_valid(connection_lines_container):
 			connection_lines_container.add_child(line)
 			selected_building_path_line = line
-			print("BuildingDetailsModal: Drew white path after recreating container")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drew white path after recreating container"])
 		else:
-			print("BuildingDetailsModal: ERROR - could not create container for path")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: ERROR - could not create container for path"])
 			line.queue_free()
 
 func _clear_selected_building_path():
@@ -1498,7 +1498,7 @@ func _clear_selected_building_path():
 			selected_building_path_line.get_parent().remove_child(selected_building_path_line)
 		selected_building_path_line.free()  # Immediately free instead of queue_free
 		selected_building_path_line = null
-		print("BuildingDetailsModal: Cleared selected building path visualization")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Cleared selected building path visualization"])
 
 func _on_paths_toggle_toggled(toggled_on: bool):
 	"""Handle paths toggle checkbox - controls both job paths and building connections"""
@@ -1507,7 +1507,7 @@ func _on_paths_toggle_toggled(toggled_on: bool):
 	
 	# Store the toggle state for this building
 	building_paths_visibility[building_node.name] = toggled_on
-	print("BuildingDetailsModal: Paths toggle for %s set to %s" % [building_node.name, toggled_on])
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Paths toggle for %s set to %s" % [building_node.name, toggled_on]])
 	
 	if toggled_on:
 		_draw_all_job_paths()
@@ -1525,12 +1525,12 @@ func _draw_all_job_paths():
 	
 	var jobs = building_node.get_meta("resource_jobs", [])
 	if jobs.is_empty():
-		print("BuildingDetailsModal: No jobs to draw")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: No jobs to draw"])
 		return
 	
 	var tilemap = game_node.get_node_or_null("TileMapLayer")
 	if not tilemap:
-		print("BuildingDetailsModal: Could not find tilemap for path drawing")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Could not find tilemap for path drawing"])
 		return
 	
 	# Colors for different resource types
@@ -1570,7 +1570,7 @@ func _draw_all_job_paths():
 		if connection_lines_container and is_instance_valid(connection_lines_container):
 			connection_lines_container.add_child(line)
 			all_job_path_lines.append(line)
-			print("BuildingDetailsModal: Drew path for job %d (%s) with %d points" % [i, resource_type, line.get_point_count()])
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Drew path for job %d (%s) with %d points" % [i, resource_type, line.get_point_count()]])
 
 func _clear_all_job_path_lines(immediate: bool = false):
 	"""Remove all drawn job path lines"""
@@ -1585,13 +1585,13 @@ func _clear_all_job_path_lines(immediate: bool = false):
 				# Normal operation, defer deletion
 				line.queue_free()
 	all_job_path_lines.clear()
-	print("BuildingDetailsModal: Cleared all job path lines")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Cleared all job path lines"])
 
 func _debug_print_tree(node: Node, indent: int):
 	var indent_str = ""
 	for i in range(indent):
 		indent_str += "  "
-	print(indent_str + "- " + node.name + " (" + node.get_class() + ")")
+	DebugConfig.dprint("buildings", [indent_str + "- " + node.name + " (" + node.get_class() + ")"])
 	for child in node.get_children():
 		_debug_print_tree(child, indent + 1)
 
@@ -1803,19 +1803,19 @@ func _on_close_pressed():
 func _register_with_ui_manager():
 	"""Register this modal with the UI manager's modal stack"""
 	if _registered_with_ui_manager:
-		print("BuildingDetailsModal: Already registered with UI manager")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Already registered with UI manager"])
 		return  # Already registered
 	var ui_manager = _get_ui_manager()
 	if ui_manager and ui_manager.has_method("push_modal"):
 		ui_manager.push_modal(self)
 		_registered_with_ui_manager = true
-		print("BuildingDetailsModal: Successfully registered with UI manager")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Successfully registered with UI manager"])
 	else:
-		print("BuildingDetailsModal: Failed to register - UI manager not found or no push_modal method")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Failed to register - UI manager not found or no push_modal method"])
 
 func close_modal():
 	"""Close the modal and clear all visual elements"""
-	print("BuildingDetailsModal: close_modal() called - clearing connection lines")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: close_modal() called - clearing connection lines"])
 	_clear_connection_lines(true)  # Immediate cleanup when closing
 	# Clear selected job path visualization
 	_clear_selected_path()
@@ -1836,28 +1836,28 @@ func close_modal():
 			connection_lines_container.get_parent().remove_child(connection_lines_container)
 		connection_lines_container.free()  # Immediately free the container too
 		connection_lines_container = null
-		print("BuildingDetailsModal: Removed and freed connection lines container on close")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Removed and freed connection lines container on close"])
 	
 	# Disconnect from game's building_jobs_updated signal
 	var game = building_node.get_parent().get_parent() if building_node else null
 	if game and game.is_connected("building_jobs_updated", Callable(self, "_on_building_jobs_updated")):
 		game.disconnect("building_jobs_updated", Callable(self, "_on_building_jobs_updated"))
-		print("BuildingDetailsModal: Disconnected from building_jobs_updated signal")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Disconnected from building_jobs_updated signal"])
 	
 	visible = false
 
 func _unregister_from_ui_manager():
 	"""Unregister this modal from the UI manager's modal stack"""
 	if not _registered_with_ui_manager:
-		print("BuildingDetailsModal: Not registered, skipping unregister")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Not registered, skipping unregister"])
 		return  # Not registered
 	var ui_manager = _get_ui_manager()
 	if ui_manager and ui_manager.has_method("pop_modal"):
 		ui_manager.pop_modal(self)
 		_registered_with_ui_manager = false
-		print("BuildingDetailsModal: Successfully unregistered from UI manager")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Successfully unregistered from UI manager"])
 	else:
-		print("BuildingDetailsModal: Failed to unregister - UI manager not found")
+		DebugConfig.dprint("buildings", ["BuildingDetailsModal: Failed to unregister - UI manager not found"])
 
 func _get_ui_manager():
 	"""Get reference to UI manager from game node"""
@@ -1865,7 +1865,7 @@ func _get_ui_manager():
 	var current = get_parent()
 	while current:
 		if current.has_meta("ui_manager"):
-			print("BuildingDetailsModal: Found UI manager via metadata")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Found UI manager via metadata"])
 			return current.get_meta("ui_manager")
 		current = current.get_parent()
 	
@@ -1873,16 +1873,16 @@ func _get_ui_manager():
 	if get_parent():
 		var ui_mgr = get_parent().get_node_or_null("UIManager")
 		if ui_mgr:
-			print("BuildingDetailsModal: Found UI manager via node lookup")
+			DebugConfig.dprint("buildings", ["BuildingDetailsModal: Found UI manager via node lookup"])
 			return ui_mgr
 	
-	print("BuildingDetailsModal: Failed to find UI manager")
+	DebugConfig.dprint("buildings", ["BuildingDetailsModal: Failed to find UI manager"])
 	return null
 
 func _on_upgrade_pressed():
 	var building_name = building_data.get("name", "Unknown")
 	var building_type = building_data.get("building_type", "unknown")
-	print("Upgrade building: ", building_name, " (", building_type, ")")
+	DebugConfig.dprint("buildings", ["Upgrade building: ", building_name, " (", building_type, ")"])
 	# TODO: Implement upgrade functionality
 	# Could show upgrade options modal or directly upgrade if resources available
 
@@ -1924,13 +1924,13 @@ func _on_demolish_cancelled():
 
 func _on_train_units_pressed():
 	var building_name = building_data.get("name", "Unknown")
-	print("Train units at: ", building_name)
+	DebugConfig.dprint("buildings", ["Train units at: ", building_name])
 	# TODO: Open unit training interface
 
 func _on_collect_resources_pressed():
 	var building_name = building_data.get("name", "Unknown")
 	var building_type = building_data.get("building_type", "unknown")
-	print("Collect resources from: ", building_name, " (", building_type, ")")
+	DebugConfig.dprint("buildings", ["Collect resources from: ", building_name, " (", building_type, ")"])
 	# TODO: Implement manual resource collection with bonus
 
 func _find_node_recursive(node: Node, target_name: String) -> Node:
@@ -2019,7 +2019,7 @@ func _create_farm_state_display(parent: Container) -> void:
 
 func _create_capacity_control(parent: Container, label_text: String, max_capacity: int, capacity_type: String):
 	# Create horizontal container for the capacity control
-	print("UI DEBUG: Creating capacity control - label: ", label_text, " type: ", capacity_type, " max: ", max_capacity)
+	DebugConfig.dprint("buildings", ["UI DEBUG: Creating capacity control - label: ", label_text, " type: ", capacity_type, " max: ", max_capacity])
 	
 	var control_row = HBoxContainer.new()
 	control_row.add_theme_constant_override("separation", 10)
@@ -2049,7 +2049,7 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 			if job.get("unit_assigned") != null:
 				filled_count += 1
 		current_occupancy = filled_count
-		print("UI DEBUG: Worker capacity - jobs.size()=%d, filled=%d" % [jobs.size(), filled_count])
+		DebugConfig.dprint("buildings", ["UI DEBUG: Worker capacity - jobs.size()=%d, filled=%d" % [jobs.size(), filled_count]])
 	elif building_node:
 		current_occupancy = building_node.get_meta(capacity_type + "_occupancy", 0)
 	else:
@@ -2072,26 +2072,26 @@ func _create_capacity_control(parent: Container, label_text: String, max_capacit
 	capacity_label.set_meta("max_value", max_capacity)
 	capacity_label.set_meta("capacity_type", capacity_type)
 	
-	print("UI DEBUG: Stored metadata - type: ", capacity_label.get_meta("capacity_type"), " current: ", capacity_label.get_meta("current_value"))
+	DebugConfig.dprint("buildings", ["UI DEBUG: Stored metadata - type: ", capacity_label.get_meta("capacity_type"), " current: ", capacity_label.get_meta("current_value")])
 	
 	# Connect button signals
 	plus_btn.pressed.connect(_on_capacity_plus_pressed.bind(capacity_label))
 	minus_btn.pressed.connect(_on_capacity_minus_pressed.bind(capacity_label))
 	
-	print("UI DEBUG: Connected button signals for capacity_type: ", capacity_type)
+	DebugConfig.dprint("buildings", ["UI DEBUG: Connected button signals for capacity_type: ", capacity_type])
 
 func _on_capacity_plus_pressed(capacity_label: Label):
 	var current_value = capacity_label.get_meta("current_value", 0)
 	var max_value = capacity_label.get_meta("max_value", 0)
 	var capacity_type = capacity_label.get_meta("capacity_type", "")
 	
-	print("UI DEBUG: _on_capacity_plus_pressed - capacity_type: ", capacity_type, " current: ", current_value, " max: ", max_value)
+	DebugConfig.dprint("buildings", ["UI DEBUG: _on_capacity_plus_pressed - capacity_type: ", capacity_type, " current: ", current_value, " max: ", max_value])
 	
 	if current_value < max_value:
 		# Try to update building occupancy through game validation
 		var game_node = _get_game_node()
 		if game_node and game_node.has_method("update_building_occupancy"):
-			print("UI DEBUG: Calling update_building_occupancy with capacity_type: ", capacity_type)
+			DebugConfig.dprint("buildings", ["UI DEBUG: Calling update_building_occupancy with capacity_type: ", capacity_type])
 			if game_node.update_building_occupancy(building_node, capacity_type, current_value + 1):
 				# Success - update UI
 				current_value += 1
@@ -2105,11 +2105,11 @@ func _on_capacity_plus_pressed(capacity_label: Label):
 				_refresh_population_modal()
 				_refresh_resources_modal()
 				
-				print("Increased ", capacity_type, " occupancy to ", current_value, "/", max_value)
+				DebugConfig.dprint("buildings", ["Increased ", capacity_type, " occupancy to ", current_value, "/", max_value])
 			else:
-				print("Cannot increase capacity - not enough available population")
+				DebugConfig.dprint("buildings", ["Cannot increase capacity - not enough available population"])
 		else:
-			print("UI DEBUG: game_node not found or no update_building_occupancy method")
+			DebugConfig.dprint("buildings", ["UI DEBUG: game_node not found or no update_building_occupancy method"])
 
 
 func _on_capacity_minus_pressed(capacity_label: Label):
@@ -2134,7 +2134,7 @@ func _on_capacity_minus_pressed(capacity_label: Label):
 				_refresh_population_modal()
 				_refresh_resources_modal()
 				
-				print("Decreased ", capacity_type, " occupancy to ", current_value, "/", max_value)
+				DebugConfig.dprint("buildings", ["Decreased ", capacity_type, " occupancy to ", current_value, "/", max_value])
 
 func _get_game_node() -> Node:
 	# Get reference to the main game node

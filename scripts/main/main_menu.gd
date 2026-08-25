@@ -44,7 +44,7 @@ func _ready():
 
 
 func _on_continue_pressed():
-	print("Main Menu: Continuing from last save...")
+	DebugConfig.dprint("ui", ["Main Menu: Continuing from last save..."])
 	var most_recent_save = SaveLoadManager.get_most_recent_save()
 	if most_recent_save.is_empty():
 		push_warning("Continue pressed, but no save file found.")
@@ -57,14 +57,14 @@ func _on_continue_pressed():
 
 
 func _on_new_game_pressed():
-	print("Main Menu: Starting World Creation...")
+	DebugConfig.dprint("ui", ["Main Menu: Starting World Creation..."])
 	GameManager.start_mode = "world_creation"
 	var error = get_tree().change_scene_to_file(GAME_SCENE_PATH)
 	if error != OK: push_error("Failed to change scene to %s. Error code: %d" % [GAME_SCENE_PATH, error])
 
 
 func _on_load_game_pressed():
-	print("Main Menu: Opening load game browser...")
+	DebugConfig.dprint("ui", ["Main Menu: Opening load game browser..."])
 	# Hide main menu buttons while modal is open
 	$CenterContainer.visible = false
 
@@ -82,6 +82,6 @@ func _on_load_modal_back():
 
 
 func _on_quit_pressed():
-	print("Main Menu: Quitting application.")
+	DebugConfig.dprint("ui", ["Main Menu: Quitting application."])
 	get_tree().quit()
 

@@ -26,7 +26,7 @@ signal wave_spawned(wave_number: int, enemy_player_id: int, tile: Vector2i)
 
 func setup(game_reference: Node):
 	game = game_reference
-	print("WaveSpawner: Ready. First wave on day %d." % next_wave_day)
+	DebugConfig.dprint("wave", ["WaveSpawner: Ready. First wave on day %d." % next_wave_day])
 
 # ----------------------------------------------------------------- tick ----
 
@@ -39,19 +39,19 @@ func on_day_end(current_day: int):
 # --------------------------------------------------------------- spawn -----
 
 func _spawn_wave(wave_num: int):
-	print("WaveSpawner: Spawning wave %d!" % wave_num)
+	DebugConfig.dprint("wave", ["WaveSpawner: Spawning wave %d!" % wave_num])
 
 	var enemy_player_id = 1000 + wave_num
 	_register_enemy_player(enemy_player_id, wave_num)
 
 	var spawn_tile = _find_spawn_tile()
 	if spawn_tile == Vector2i(-1, -1):
-		print("WaveSpawner: No valid spawn tile found for wave %d. Skipping." % wave_num)
+		DebugConfig.dprint("wave", ["WaveSpawner: No valid spawn tile found for wave %d. Skipping." % wave_num])
 		return
 
 	_place_enemy_barracks(spawn_tile, enemy_player_id)
 	wave_spawned.emit(wave_num, enemy_player_id, spawn_tile)
-	print("WaveSpawner: Wave %d enemy (player %d) barracks placed at tile %s." % [wave_num, enemy_player_id, str(spawn_tile)])
+	DebugConfig.dprint("wave", ["WaveSpawner: Wave %d enemy (player %d) barracks placed at tile %s." % [wave_num, enemy_player_id, str(spawn_tile)]])
 
 # --------------------------------------------------------- player setup ----
 
@@ -76,7 +76,7 @@ func _register_enemy_player(player_id: int, wave_num: int):
 			"woodcutting_bonus": 0, "stoneworking_bonus": 0
 		}
 	}
-	print("WaveSpawner: Registered enemy player %d (%s)." % [player_id, game.players_data[player_id]["name"]])
+	DebugConfig.dprint("wave", ["WaveSpawner: Registered enemy player %d (%s)." % [player_id, game.players_data[player_id]["name"]]])
 
 # ---------------------------------------------------------- tile search ----
 
@@ -192,4 +192,4 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int):
 	if game.players_data.has(owner_player_id):
 		game.players_data[owner_player_id]["buildings"].append(building_name)
 
-	print("WaveSpawner: Placed %s ('%s') for player %d at world %s." % [building_type, building_name, owner_player_id, str(world_pos)])
+	DebugConfig.dprint("wave", ["WaveSpawner: Placed %s ('%s') for player %d at world %s." % [building_type, building_name, owner_player_id, str(world_pos)]])

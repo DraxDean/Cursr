@@ -106,7 +106,7 @@ func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Came
 	tilemap_layer = tilemap_ref
 	camera = camera_ref
 	
-	print("WorldCreationModal: Setting up direct UI control")
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Setting up direct UI control"])
 	
 	# Load town center names for naming step
 	_load_town_center_names()
@@ -122,7 +122,7 @@ func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Came
 	
 	# Start first step
 	_show_current_step()
-	print("WorldCreationModal: Direct UI setup complete")
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Direct UI setup complete"])
 
 func _create_world_creation_ui():
 	# Get the UI layer
@@ -150,7 +150,7 @@ func _create_world_creation_ui():
 	footer_component.continue_pressed.connect(_on_continue_pressed)
 	footer_component.start_game_pressed.connect(_on_start_game_pressed)
 	
-	print("WorldCreationModal: Header/Footer components created and connected")
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Header/Footer components created and connected"])
 
 func cleanup_ui():
 	# Clean up our UI elements when done
@@ -202,7 +202,7 @@ func cleanup_ui():
 func _on_tile_selected(tile_pos: Vector2):
 	# Store starting tile position
 	world_data["starting_tile"] = tile_pos
-	print("Selected starting tile at: ", tile_pos)
+	DebugConfig.dprint("world_gen", ["Selected starting tile at: ", tile_pos])
 	# Preview fishing hut at selected position
 	_preview_fishing_hut(tile_pos)
 
@@ -233,7 +233,7 @@ func _show_town_center_preview(tile_pos: Vector2):
 		# Add to the tilemap's parent so it's in the right layer
 		tilemap_layer.get_parent().add_child(town_center_preview_sprite)
 	
-	print("Town center preview shown at: ", tile_pos)
+	DebugConfig.dprint("world_gen", ["Town center preview shown at: ", tile_pos])
 
 func _preview_fishing_hut(tile_pos: Vector2):
 	# Legacy function - kept for compatibility
@@ -245,10 +245,10 @@ func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D
 
 func _show_current_step():
 	if current_step >= generation_steps.size():
-		print("WorldCreationModal: All steps completed")
+		DebugConfig.dprint("world_gen", ["WorldCreationModal: All steps completed"])
 		return
 		
-	print("WorldCreationModal: Showing step %d" % current_step)
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Showing step %d" % current_step])
 	var step_data = generation_steps[current_step]
 	
 	# Update UI text
@@ -351,33 +351,33 @@ func _step_plains():
 	_center_camera_position_only()
 
 func _step_mountain_peaks():
-	print("WorldCreation: Executing mountain peaks step")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Executing mountain peaks step"])
 	# Place mountain objects on existing mountain terrain
 	var parent_game_node = get_parent()
 	if parent_game_node and parent_game_node.has_method("get_node"):
 		var map_object_manager = parent_game_node.get_node("MapObjectManager")
 		if map_object_manager and map_object_manager.has_method("place_mountains_only"):
 			map_object_manager.place_mountains_only(world_data)
-			print("WorldCreation: Mountain peaks placed")
+			DebugConfig.dprint("world_gen", ["WorldCreation: Mountain peaks placed"])
 		else:
-			print("WorldCreation: Map object manager not found or missing method")
+			DebugConfig.dprint("world_gen", ["WorldCreation: Map object manager not found or missing method"])
 	_center_camera_position_only()
 
 func _step_ancient_forests():
-	print("WorldCreation: Executing ancient forests step")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Executing ancient forests step"])
 	# Place tree objects on existing forest terrain
 	var parent_game_node = get_parent()
 	if parent_game_node and parent_game_node.has_method("get_node"):
 		var map_object_manager = parent_game_node.get_node("MapObjectManager")
 		if map_object_manager and map_object_manager.has_method("place_trees_only"):
 			map_object_manager.place_trees_only(world_data)
-			print("WorldCreation: Ancient forests placed")
+			DebugConfig.dprint("world_gen", ["WorldCreation: Ancient forests placed"])
 		else:
-			print("WorldCreation: Map object manager not found or missing method")
+			DebugConfig.dprint("world_gen", ["WorldCreation: Map object manager not found or missing method"])
 	_center_camera_position_only()
 
 func _step_fish():
-	print("WorldCreation: Executing fish step")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Executing fish step"])
 	# First, generate fish markers in world_data
 	generator._place_fish(MAP_WIDTH, MAP_HEIGHT, world_data)
 	
@@ -387,9 +387,9 @@ func _step_fish():
 		var map_object_manager = parent_game_node.get_node("MapObjectManager")
 		if map_object_manager and map_object_manager.has_method("place_fish"):
 			map_object_manager.place_fish(world_data)
-			print("WorldCreation: Fish placed")
+			DebugConfig.dprint("world_gen", ["WorldCreation: Fish placed"])
 		else:
-			print("WorldCreation: Map object manager not found or missing method")
+			DebugConfig.dprint("world_gen", ["WorldCreation: Map object manager not found or missing method"])
 	_center_camera_position_only()
 
 func _step_race_select():
@@ -398,7 +398,7 @@ func _step_race_select():
 	header_component.update_step("Choose Your Race", "Select your civilization and starting building")
 	footer_component.update_buttons(["Back", "Next"])
 	_show_race_selection_ui()
-	print("WorldCreation: Race selection step activated")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Race selection step activated"])
 
 func _show_race_selection_ui():
 	"""Show the race selection modal UI"""
@@ -425,7 +425,7 @@ func _show_race_selection_ui():
 	# Store reference for later cleanup
 	set_meta("race_select_ui", race_select_ui)
 	
-	print("WorldCreation: Race selection UI shown")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Race selection UI shown"])
 
 func _step_choose_starting_tile():
 	# Clean up race selection UI if it exists
@@ -446,7 +446,7 @@ func _step_choose_starting_tile():
 	# Update header for this step
 	header_component.update_step("Choose Starting Location", "Hover to preview placement. Click to place your town center. Use Reset to change position.")
 	footer_component.update_buttons(["Back", "Reset"])
-	print("WorldCreation: Town center placement mode active")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Town center placement mode active"])
 
 func _load_town_center_names():
 	"""Load town center names from assets/names/buildings/towncentre.txt"""
@@ -460,7 +460,7 @@ func _load_town_center_names():
 				var trimmed = line.strip_edges()
 				if not trimmed.is_empty():
 					town_names.append(trimmed)
-			print("Game: Loaded %d town center names" % town_names.size())
+			DebugConfig.dprint("world_gen", ["Game: Loaded %d town center names" % town_names.size()])
 		else:
 			push_error("Failed to open towncentre.txt")
 	else:
@@ -468,7 +468,7 @@ func _load_town_center_names():
 
 func _step_name_settlement():
 	"""Display settlement naming UI"""
-	print("WorldCreation: Showing settlement naming step")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Showing settlement naming step"])
 	
 	# Disable town center placement mode
 	is_placing_town_center = false
@@ -501,7 +501,7 @@ func _pick_random_town_name():
 		var random_name = town_names[randi() % town_names.size()]
 		# Capitalize each word in the name
 		selected_town_name = random_name.to_upper()[0] + random_name.substr(1)
-	print("WorldCreation: Selected town name: ", selected_town_name)
+	DebugConfig.dprint("world_gen", ["WorldCreation: Selected town name: ", selected_town_name])
 
 func _show_settlement_naming_ui():
 	"""Create and show the settlement naming UI"""
@@ -566,7 +566,7 @@ func _show_settlement_naming_ui():
 	set_meta("naming_ui", naming_container)
 	set_meta("settlement_name_input", input_field)
 	
-	print("WorldCreation: Settlement naming UI created")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Settlement naming UI created"])
 
 func _on_reroll_settlement_name():
 	"""Pick a new random town name and update the input field"""
@@ -578,7 +578,7 @@ func _on_reroll_settlement_name():
 		if is_instance_valid(input_field):
 			input_field.text = selected_town_name
 	
-	print("WorldCreation: Rerolled settlement name to: ", selected_town_name)
+	DebugConfig.dprint("world_gen", ["WorldCreation: Rerolled settlement name to: ", selected_town_name])
 
 func _center_camera_position_only():
 	"""Center camera position on map without changing zoom level (preserves user zoom)"""
@@ -589,7 +589,7 @@ func _center_camera_position_only():
 		var world_center = tilemap_layer.map_to_local(Vector2i(int(map_center_x), int(map_center_y)))
 		
 		camera.position = world_center
-		print("WorldCreation: Camera centered at: ", world_center)
+		DebugConfig.dprint("world_gen", ["WorldCreation: Camera centered at: ", world_center])
 
 func _center_camera_on_map():
 	"""Full camera reset: center position AND reset zoom to default"""
@@ -601,7 +601,7 @@ func _center_camera_on_map():
 		
 		camera.position = world_center
 		camera.zoom = Vector2(0.6, 0.6)  # Zoom out to see more of the map
-		print("WorldCreation: Camera reset to: ", world_center, " with zoom: ", camera.zoom)
+		DebugConfig.dprint("world_gen", ["WorldCreation: Camera reset to: ", world_center, " with zoom: ", camera.zoom])
 
 func _clear_and_draw_map():
 	if not is_instance_valid(tilemap_layer):
@@ -615,7 +615,7 @@ func _clear_and_draw_map():
 			tilemap_layer.set_cell(coords, tile_info["source_id"], tile_info["atlas_coords"])
 
 func _on_back_pressed():
-	print("WorldCreation: Going back to main menu")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Going back to main menu"])
 	cleanup_ui()
 	game_node._cancel_world_creation()
 
@@ -624,11 +624,11 @@ func _on_reset_camera_pressed():
 	if is_placing_town_center:
 		_reset_town_center_placement()
 	else:
-		print("WorldCreation: Resetting camera view")
+		DebugConfig.dprint("world_gen", ["WorldCreation: Resetting camera view"])
 		_center_camera_on_map()
 
 func _on_reroll_pressed():
-	print("WorldCreation: Rerolling step %d" % current_step)
+	DebugConfig.dprint("world_gen", ["WorldCreation: Rerolling step %d" % current_step])
 	
 	# Special handling for object placement steps
 	if current_step < generation_steps.size():
@@ -651,7 +651,7 @@ func _on_reroll_pressed():
 	_show_current_step()
 
 func _on_continue_pressed():
-	print("WorldCreationModal: Continue/Next button pressed - current step: %d" % current_step)
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Continue/Next button pressed - current step: %d" % current_step])
 	
 	# Special handling for race selection step
 	var race_select_index = 10  # Race selection is at index 10
@@ -668,7 +668,7 @@ func _on_continue_pressed():
 				current_step += 1
 				if current_step < step_states.size():
 					step_states.resize(current_step)
-				print("WorldCreationModal: Advanced to step: %d" % current_step)
+				DebugConfig.dprint("world_gen", ["WorldCreationModal: Advanced to step: %d" % current_step])
 				_show_current_step()
 				return
 	
@@ -676,11 +676,11 @@ func _on_continue_pressed():
 	current_step += 1
 	if current_step < step_states.size():
 		step_states.resize(current_step)
-	print("WorldCreationModal: Advanced to step: %d" % current_step)
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Advanced to step: %d" % current_step])
 	_show_current_step()
 
 func _on_start_game_pressed():
-	print("WorldCreationModal: Start game button pressed - step: %d" % current_step)
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Start game button pressed - step: %d" % current_step])
 	
 	var naming_index = 12  # Naming is at index 12
 	
@@ -697,7 +697,7 @@ func _on_start_game_pressed():
 			world_data["player_data"] = {}
 		world_data["player_data"]["settlement_name"] = selected_town_name
 		
-		print("WorldCreation: Settlement named: ", selected_town_name)
+		DebugConfig.dprint("world_gen", ["WorldCreation: Settlement named: ", selected_town_name])
 		
 		cleanup_ui()
 		game_node._finish_world_creation(world_data)
@@ -777,12 +777,12 @@ func _place_town_center():
 		header_component.update_step("Choose Starting Location", "Town center placed! Click Next to continue.")
 		footer_component.update_buttons(["Back", "Next"])
 		
-		print("WorldCreation: Town center placed at: ", world_data["starting_tile"])
+		DebugConfig.dprint("world_gen", ["WorldCreation: Town center placed at: ", world_data["starting_tile"]])
 	else:
-		print("Cannot place town center at this location")
+		DebugConfig.dprint("world_gen", ["Cannot place town center at this location"])
 
 func _reset_town_center_placement():
 	"""Reset town center placement back to preview mode"""
 	if is_placing_town_center and town_center_preview_sprite and is_instance_valid(town_center_preview_sprite):
 		town_center_preview_sprite.modulate = Color(1, 1, 1, 0.7)  # Reset to neutral color
-		print("WorldCreation: Town center placement reset")
+		DebugConfig.dprint("world_gen", ["WorldCreation: Town center placement reset"])

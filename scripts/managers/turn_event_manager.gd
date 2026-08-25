@@ -16,7 +16,7 @@ func push_event(title: String, body: String, icon: String = "⚠"):
 	"""Queue one event to be shown this turn."""
 	_pending_events.append({"title": title, "body": body, "icon": icon})
 	events_changed.emit(_pending_events.size())
-	print("TurnEvent: [%s] %s" % [title, body])
+	DebugConfig.dprint("turn_events", ["TurnEvent: [%s] %s" % [title, body]])
 
 func get_events() -> Array:
 	return _pending_events.duplicate()

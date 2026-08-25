@@ -43,7 +43,7 @@ func unlock(id: String) -> bool:
 	for ach in ACHIEVEMENTS:
 		if ach["id"] == id:
 			achievement_unlocked.emit(id, ach["title"], ach["icon"])
-			print("Achievement unlocked: [%s] %s" % [id, ach["title"]])
+			DebugConfig.dprint("achievements", ["Achievement unlocked: [%s] %s" % [id, ach["title"]]])
 			return true
 	achievement_unlocked.emit(id, id, "🏆")
 	return true

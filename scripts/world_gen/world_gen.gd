@@ -37,27 +37,27 @@ var _rng = RandomNumberGenerator.new()
 # --- Main Generation Function ---
 
 func generate_world_data(map_width: int, map_height: int) -> Dictionary:
-	print("--- Starting World Generation ---")
+	DebugConfig.dprint("world_gen", ["--- Starting World Generation ---"])
 	var world_data: Dictionary = {}
 	_rng.randomize() # Initialize RNG
 
 	# 1. Fill with base ocean
 	_generate_base_ocean(map_width, map_height, world_data)
-	print("Base ocean generated.")
+	DebugConfig.dprint("world_gen", ["Base ocean generated."])
 
 	# 2. Generate the Pangaea continent
 	_generate_continent(map_width, map_height, world_data)
-	print("Continent generated.")
+	DebugConfig.dprint("world_gen", ["Continent generated."])
 
 	# 3. Add biome patches onto the landmass
 	_add_biome_patches(map_width, map_height, world_data)
-	print("Biomes added.")
+	DebugConfig.dprint("world_gen", ["Biomes added."])
 
 	# 4. Add ice caps in the ocean areas at top/bottom
 	_add_ice_caps(map_width, map_height, world_data)
-	print("Ice caps added.")
+	DebugConfig.dprint("world_gen", ["Ice caps added."])
 
-	print("--- World Generation Finished ---")
+	DebugConfig.dprint("world_gen", ["--- World Generation Finished ---"])
 	return world_data
 
 
@@ -96,11 +96,11 @@ func _generate_continent(width: int, height: int, world_data: Dictionary):
 
 func _add_biome_patches(width: int, height: int, world_data: Dictionary):
 	# Calls the helper method _place_patches for each biome type
-	print("Adding Mountains...")
+	DebugConfig.dprint("world_gen", ["Adding Mountains..."])
 	_place_patches(NUM_MOUNTAIN_PATCHES, MOUNTAIN_PATCH_RADIUS_MIN, MOUNTAIN_PATCH_RADIUS_MAX, MOUNTAIN_COORDS, width, height, world_data)
-	print("Adding Forests...")
+	DebugConfig.dprint("world_gen", ["Adding Forests..."])
 	_place_patches(NUM_FOREST_PATCHES, FOREST_PATCH_RADIUS_MIN, FOREST_PATCH_RADIUS_MAX, FOREST_COORDS, width, height, world_data)
-	print("Adding Deserts...")
+	DebugConfig.dprint("world_gen", ["Adding Deserts..."])
 	_place_patches(NUM_DESERT_PATCHES, DESERT_PATCH_RADIUS_MIN, DESERT_PATCH_RADIUS_MAX, DESERT_COORDS, width, height, world_data)
 
 
@@ -209,4 +209,4 @@ func _place_fish(width: int, height: int, world_data: Dictionary):
 					world_data[coords]["fish"] = true
 					fish_placed += 1
 	
-	print("_place_fish: Placed %d fish markers in the ocean (attempts: %d)" % [fish_placed, attempts])
+	DebugConfig.dprint("world_gen", ["_place_fish: Placed %d fish markers in the ocean (attempts: %d)" % [fish_placed, attempts]])

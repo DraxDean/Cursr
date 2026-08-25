@@ -79,7 +79,7 @@ func refresh_content():
 	if ResourceLoader.exists(portrait_path):
 		portrait.texture = load(portrait_path)
 	else:
-		print("Warning: Portrait not found: ", portrait_path)
+		DebugConfig.dprint("ui", ["Warning: Portrait not found: ", portrait_path])
 	portrait.expand_mode = TextureRect.EXPAND_FIT_WIDTH
 	portrait.custom_minimum_size = Vector2(120, 150)
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE

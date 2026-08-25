@@ -302,7 +302,7 @@ func _update_selected_building_info():
 		# Generic mapping: human_[building_name].png
 		image_path = "res://assets/buildings/human_" + selected_building.replace("_", "") + ".png"
 	
-	print("Trying to load building image: ", image_path)
+	DebugConfig.dprint("world_gen", ["Trying to load building image: ", image_path])
 	
 	# Try to load the texture
 	var building_texture = null

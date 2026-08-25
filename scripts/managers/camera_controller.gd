@@ -31,7 +31,7 @@ func setup(_camera: Camera2D, _map_width: int, _map_height: int):
 	map_pixel_height = _map_height
 	if not is_instance_valid(camera_node):
 		push_error("CameraController: Invalid Camera2D node provided.")
-	print("CameraController setup complete.")
+	DebugConfig.dprint("camera", ["CameraController setup complete."])
 
 
 func handle_input(event: InputEvent, is_paused: bool):
@@ -153,5 +153,5 @@ func _handle_tile_click(_global_pos: Vector2):
 	var tile_y = int(world_pos.y / tile_size)
 	var tile_pos = Vector2(tile_x, tile_y)
 	
-	print("Tile clicked at: ", tile_pos)
+	DebugConfig.dprint("camera", ["Tile clicked at: ", tile_pos])
 	tile_clicked.emit(tile_pos)

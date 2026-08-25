@@ -89,7 +89,7 @@ var generation_steps = [
 ]
 
 func _ready():
-	print("WorldCreation: Ready")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Ready"])
 	
 	# Initialize RNG
 	rng.randomize()
@@ -141,14 +141,14 @@ func _setup_tilemap():
 func _setup_camera():
 	if camera and is_instance_valid(camera):
 		_reset_camera_to_default()
-		print("Camera setup complete")
+		DebugConfig.dprint("world_gen", ["Camera setup complete"])
 
 func _reset_camera_to_default():
 	if camera and is_instance_valid(camera):
 		# Set camera to origin
 		camera.position = Vector2(0, 0)
 		camera.zoom = Vector2(0.8, 0.8)  # Zoom out to see more of the map
-		print("Camera reset to origin at: ", camera.position)
+		DebugConfig.dprint("world_gen", ["Camera reset to origin at: ", camera.position])
 
 func _show_current_step():
 	if current_step >= generation_steps.size():
@@ -282,22 +282,22 @@ func _clear_and_draw_map():
 			tilemap_layer.set_cell(coords, tile_info["source_id"], tile_info["atlas_coords"])
 
 func _on_back_pressed():
-	print("WorldCreation: Going back to main menu")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Going back to main menu"])
 	var error = get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 	if error != OK:
 		push_error("Failed to change scene to main menu. Error code: %d" % error)
 
 func _on_reset_camera_pressed():
-	print("WorldCreation: Resetting camera view")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Resetting camera view"])
 	_reset_camera_to_default()
 
 func _on_reroll_pressed():
-	print("WorldCreation: Rerolling step %d" % current_step)
+	DebugConfig.dprint("world_gen", ["WorldCreation: Rerolling step %d" % current_step])
 	# Just regenerate the current step - _show_current_step handles state restoration
 	_show_current_step()
 
 func _on_continue_pressed():
-	print("WorldCreation: Continuing to next step")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Continuing to next step"])
 	current_step += 1
 	# Don't store duplicate states when advancing
 	if current_step < step_states.size():
@@ -305,7 +305,7 @@ func _on_continue_pressed():
 	_show_current_step()
 
 func _on_start_game_pressed():
-	print("WorldCreation: Starting game with generated world")
+	DebugConfig.dprint("world_gen", ["WorldCreation: Starting game with generated world"])
 	# Set up GameManager to use our generated world
 	GameManager.start_mode = "new_with_data"
 	GameManager.generated_world_data = world_data.duplicate()
