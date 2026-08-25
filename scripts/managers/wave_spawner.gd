@@ -16,6 +16,20 @@ const BUILDABLE_ATLAS = [
 	Vector2i(0, 4),  # FOREST_COORDS
 ]
 
+# Marauder name generation — "Ragetooth Slinkbag", "Ravenblood Soothsayer", etc.
+const MARAUDER_NAME_PREFIXES: Array = [
+	"Ragetooth", "Ravenblood", "Skullcrusher", "Doomfang", "Bloodfang", "Grimhide",
+	"Ironjaw", "Direclaw", "Nightscar", "Vilehorn", "Wrathspine", "Coldblade",
+	"Ashclaw", "Gorehide", "Blackfang", "Shadowmaw", "Bonecrusher", "Grimtusk",
+	"Deathhowl", "Foulbeak",
+]
+const MARAUDER_NAME_SUFFIXES: Array = [
+	"Slinkbag", "Soothsayer", "the Vile", "Skinner", "Ripper", "Gutgnasher",
+	"the Cruel", "Bonecollector", "Doomcaller", "Widowmaker", "the Feral",
+	"Bloodletter", "the Reaper", "the Unhinged", "Facebiter", "the Wretched",
+	"Fleshrender", "the Savage", "Nightstalker", "Warg",
+]
+
 # --- State ---
 var game: Node   # Reference to game.gd
 var wave_number: int = 0
@@ -202,6 +216,12 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2
 
 # -------------------------------------------------------- unit spawning ----
 
+func _generate_marauder_name() -> String:
+	"""Random thematic marauder name, e.g. 'Ragetooth Slinkbag'."""
+	var prefix: String = MARAUDER_NAME_PREFIXES[randi() % MARAUDER_NAME_PREFIXES.size()]
+	var suffix: String = MARAUDER_NAME_SUFFIXES[randi() % MARAUDER_NAME_SUFFIXES.size()]
+	return "%s %s" % [prefix, suffix]
+
 func _spawn_marauder_units(barracks_node: Node2D, owner_player_id: int, count: int) -> void:
 	"""Spawn `count` marauder units at the camp. They live under the marauder player's
 	data only (never player 1's unit list) and idle-wander around their barracks."""
@@ -215,7 +235,7 @@ func _spawn_marauder_units(barracks_node: Node2D, owner_player_id: int, count: i
 		var spawn_pos: Vector2 = barracks_node.position + Vector2(cos(scatter_angle), sin(scatter_angle)) * scatter_dist
 		var unit_data: Dictionary = {
 			"unique_id": uid,
-			"name": game._generate_random_name("human", "male"),
+			"name": _generate_marauder_name(),
 			"type": "marauder",
 			"race": "human",
 			"gender": "male",

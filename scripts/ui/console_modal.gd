@@ -176,6 +176,11 @@ func _process_command(command: String):
 	var full_cmd = command.strip_edges().to_lower()
 	var cmd = parts[0].to_lower()
 	
+	if cmd == "event":
+		var query = " ".join(parts.slice(1)) if parts.size() > 1 else ""
+		_cmd_fire_event(query)
+		return
+	
 	match full_cmd:
 		"help":
 			_show_help()
@@ -243,7 +248,10 @@ func _show_help():
 	add_debug_message("ff / surrender / forfeit - Immediately forfeit and return to main menu")
 	add_debug_message("wave - Force-spawn the next enemy wave immediately")
 	add_debug_message("events - List all pending turn events")
+	add_debug_message("event <keyword> - Manually fire a world event by id/title match (e.g. 'event marauders'); no keyword = random")
 	add_debug_message("fake notification - Push a test notification card")
+	add_debug_message("the path / cipher - Fire the secret encoded legendary event")
+	add_debug_message("demo achievement - Unlock the demo achievement for testing")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -604,6 +612,69 @@ func _cmd_fake_notification():
 		return
 	game._fire_random_world_event()
 	add_debug_message("📜 Random world event notification pushed.")
+
+func _cmd_fire_event(query: String):
+	"""Manually fire a specific world event by id/title keyword match (e.g. 'event marauders').
+	With no keyword, fires a normal random weighted event."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game):
+		add_debug_message("ERROR: game node not found.")
+		return
+	query = query.strip_edges().to_lower()
+	if query.is_empty():
+		if not game.has_method("_fire_random_world_event"):
+			add_debug_message("ERROR: _fire_random_world_event not found.")
+			return
+		game._fire_random_world_event()
+		add_debug_message("📜 Random world event fired.")
+		return
+
+	var HumanEvents = preload("res://data/events/events_human.gd")
+	# Match on whole words with a naive plural/singular trim so "marauders" finds "Marauder Scouts Spotted"
+	var query_words: Array = []
+	for w in query.split(" ", false):
+		query_words.append(w.trim_suffix("s"))
+	var matched_event: Dictionary = {}
+	for ev in HumanEvents.EVENTS:
+		var haystack: String = ("%s %s" % [ev.get("id", ""), ev.get("title", "")]).to_lower()
+		var all_words_found = true
+		for w in query_words:
+			if w != "" and not haystack.contains(w):
+				all_words_found = false
+				break
+		if all_words_found:
+			matched_event = ev.duplicate(true)
+			break
+	if matched_event.is_empty():
+		add_debug_message("ERROR: No event found matching '%s'." % query)
+		return
+	if game.has_method("tag_event_instance"):
+		game.tag_event_instance(matched_event)
+
+	var tier: String = matched_event.get("tier", "C")
+	var tier_label: String = HumanEvents.get_tier_label(tier)
+	var card_color: Color
+	match tier:
+		"S+": card_color = Color(0.85, 0.20, 0.85)
+		"S":  card_color = Color(0.90, 0.20, 0.20)
+		"A":  card_color = Color(0.90, 0.55, 0.10)
+		"B":  card_color = Color(0.85, 0.80, 0.10)
+		"C":  card_color = Color(0.30, 0.60, 0.90)
+		"D":  card_color = Color(0.40, 0.75, 0.40)
+		_:    card_color = Color(0.55, 0.55, 0.55)
+	if is_instance_valid(game.turn_event_manager):
+		game.turn_event_manager.push_event(matched_event["title"], matched_event["body"], matched_event.get("icon", "📜"))
+	if is_instance_valid(game.notification_panel):
+		game.notification_panel.push(
+			"%s — %s" % [tier_label, matched_event["title"]],
+			"Click to respond.",
+			matched_event.get("icon", "📜"),
+			card_color,
+			{"action": "open_event", "event_data": matched_event}
+		)
+	if is_instance_valid(game.game_footer):
+		game.game_footer.set_end_day_blocked(true)
+	add_debug_message("📜 Fired event: %s" % matched_event.get("title", "?"))
 
 func _cmd_fire_secret_event():
 	"""Fire the secret encoded legendary event by ID."""

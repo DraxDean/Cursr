@@ -142,8 +142,9 @@ func _build_card(data: Dictionary) -> Control:
 		dismiss.disabled = true
 		dismiss.add_theme_color_override("font_color", Color(0.30, 0.30, 0.30))
 		dismiss.tooltip_text = "Resolve this event first."
-		# Tag for later lookup
-		var event_id: String = data.get("event_data", {}).get("id", "")
+		# Tag for later lookup (per-firing instance id, falling back to the static event id)
+		var event_data: Dictionary = data.get("event_data", {})
+		var event_id: String = event_data.get("instance_id", event_data.get("id", ""))
 		if event_id != "":
 			card.set_meta("event_id", event_id)
 			card.set_meta("dismiss_button", dismiss)

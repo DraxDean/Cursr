@@ -79,6 +79,8 @@ var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Pending pop growth to notify at end of _on_end_day_pressed (after world event)
 var _pending_pop_growth: int = 0
+# Monotonic counter so every event firing gets a unique instance id (see tag_event_instance)
+var _event_instance_seq: int = 0
 
 # Building System
 var is_placing_building: bool = false
@@ -5143,6 +5145,9 @@ func _on_end_day_pressed():
 		# Clear stale events from the previous turn before processing this one
 		if is_instance_valid(turn_event_manager):
 			turn_event_manager.clear()
+		# Forget yesterday's resolved event ids so a repeat of the same event type isn't stuck "already resolved"
+		if is_instance_valid(world_event_modal):
+			world_event_modal.clear_resolved_events()
 
 		var day_before: int = turn_manager.get_day()
 		turn_manager.end_turn()
@@ -5508,18 +5513,25 @@ func is_role_locked_in_army(role: String) -> bool:
 	"""Everyone except plain villagers is automatically part of the army."""
 	return role != "peasant"
 
-func calculate_army_totals(player_id: int) -> Dictionary:
-	"""Sum unit count / hp pool / strength for a player's army using ARMY_UNIT_STATS."""
-	var totals = {"count": 0, "hp": 0, "atk": 0}
+func get_army_units(player_id: int) -> Array:
+	"""Return the actual unit dicts that count toward a player's army (for combat/targeting)."""
+	var result: Array = []
 	if not players_data.has(player_id):
-		return totals
+		return result
 	for unit in players_data[player_id].get("units", []):
 		if unit.get("is_pet", false):
 			continue
 		var role = get_unit_army_role(unit)
 		if not is_role_locked_in_army(role) and not unit.get("in_army", false):
 			continue
-		var stats = ARMY_UNIT_STATS.get(role, ARMY_UNIT_STATS["peasant"])
+		result.append(unit)
+	return result
+
+func calculate_army_totals(player_id: int) -> Dictionary:
+	"""Sum unit count / hp pool / strength for a player's army using ARMY_UNIT_STATS."""
+	var totals = {"count": 0, "hp": 0, "atk": 0}
+	for unit in get_army_units(player_id):
+		var stats = ARMY_UNIT_STATS.get(get_unit_army_role(unit), ARMY_UNIT_STATS["peasant"])
 		totals["count"] += 1
 		totals["hp"] += stats["hp"]
 		totals["atk"] += stats["atk"]
@@ -5577,15 +5589,7 @@ func remove_enemy_barracks_node(building_node: Node2D) -> void:
 func wipe_army(player_id: int) -> int:
 	"""Kill every unit currently counted in a player's army (used when an army loses a battle).
 	Returns the number of units killed."""
-	if not players_data.has(player_id):
-		return 0
-	var army_units: Array = []
-	for unit in players_data[player_id].get("units", []):
-		if unit.get("is_pet", false):
-			continue
-		var role = get_unit_army_role(unit)
-		if is_role_locked_in_army(role) or unit.get("in_army", false):
-			army_units.append(unit)
+	var army_units: Array = get_army_units(player_id)
 	for unit in army_units:
 		remove_unit_from_combat(unit)
 	return army_units.size()
@@ -5630,6 +5634,15 @@ func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
 			GL.Category.COMBAT,
 			"⚔ Marauders wave %d spotted at tile %s. Prepare for attack!" % [wave_num, str(tile)])
 
+func tag_event_instance(event_data: Dictionary) -> Dictionary:
+	"""Give this specific firing of an event a unique instance id (mutates and returns event_data).
+	Resolving one occurrence must never mark a later occurrence of the same event type as done —
+	without this, a repeat of the same event type would show up permanently "already resolved"
+	and softlock End Day, since it would never trigger the choice buttons that unblock it."""
+	_event_instance_seq += 1
+	event_data["instance_id"] = "%s#%d" % [event_data.get("id", "event"), _event_instance_seq]
+	return event_data
+
 func _fire_random_world_event():
 	"""Pick a weighted random human world event and show it as a notification + modal."""
 	var HumanEvents = preload("res://data/events/events_human.gd")
@@ -5638,6 +5651,7 @@ func _fire_random_world_event():
 	var event_data: Dictionary = HumanEvents.get_random_event_weighted(rng)
 	if event_data.is_empty():
 		return
+	tag_event_instance(event_data)
 	var tier: String = event_data.get("tier", "C")
 	var tier_label: String = HumanEvents.get_tier_label(tier)
 	# Colour-code the card by tier significance

@@ -11,6 +11,16 @@ func _init(game_reference: Node):
 	_game = game_reference
 	super("world_event", "World Event", Vector2.ZERO)
 
+func clear_resolved_events() -> void:
+	"""Forget which event instances were resolved — called at the start of each new day
+	to keep this dict from growing forever (instance ids already make each firing unique)."""
+	_resolved_event_ids.clear()
+
+func _get_event_key(event_data: Dictionary) -> String:
+	"""Per-firing resolution key. Falls back to the static id for events fired before
+	instance ids existed (e.g. old saves' logged event_data)."""
+	return event_data.get("instance_id", event_data.get("id", ""))
+
 func _ready() -> void:
 	super._ready()
 	if get_viewport():
@@ -20,16 +30,16 @@ func _ready() -> void:
 		position = Vector2((vp.x - size.x) / 2.0, (vp.y - size.y) / 2.0)
 
 func show_event(event_data: Dictionary, reopen: bool = false):
-	var event_id: String = event_data.get("id", "")
+	var event_key: String = _get_event_key(event_data)
 	_event_data = event_data
-	if reopen and event_id != "" and _resolved_event_ids.has(event_id):
+	if reopen and event_key != "" and _resolved_event_ids.has(event_key):
 		# Re-opening the same notification card from this turn — preserve resolved state
 		_choice_made = true
 	else:
 		# New firing of this event (even if same type) — always start fresh
 		_choice_made = false
-		if event_id != "":
-			_resolved_event_ids.erase(event_id)
+		if event_key != "":
+			_resolved_event_ids.erase(event_key)
 	if title_label:
 		var HumanEvents = preload("res://data/events/events_human.gd")
 		var tier: String = event_data.get("tier", "C")
@@ -127,9 +137,9 @@ func _on_choice_pressed(choice: Dictionary):
 
 	_choice_made = true
 	# Persist resolution so re-opening the same notification card never resets state
-	var event_id: String = _event_data.get("id", "")
-	if event_id != "":
-		_resolved_event_ids[event_id] = true
+	var event_key: String = _get_event_key(_event_data)
+	if event_key != "":
+		_resolved_event_ids[event_key] = true
 
 	# Apply the chosen effects (exclusive: choice effects OR base effects)
 	var extra = choice.get("effects")
@@ -160,8 +170,8 @@ func _on_choice_pressed(choice: Dictionary):
 		if is_instance_valid(_game.game_footer):
 			_game.game_footer.set_end_day_blocked(false)
 		# Unlock the notification card's dismiss button
-		if event_id != "" and is_instance_valid(_game.notification_panel):
-			_game.notification_panel.mark_event_resolved(event_id)
+		if event_key != "" and is_instance_valid(_game.notification_panel):
+			_game.notification_panel.mark_event_resolved(event_key)
 
 	# Replace choice buttons with resolved message
 	refresh_content()
