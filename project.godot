@@ -18,6 +18,7 @@ config/icon="uid://bij8lqtg70bre"
 [autoload]
 
 SaveLoadManager="*res://scripts/managers/save_load_manager.gd"
+AchievementManager="*res://scripts/managers/achievement_manager.gd"
 GameManager="*res://scripts/managers/game_manager.gd"
 
 [display]

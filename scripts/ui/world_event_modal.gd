@@ -22,11 +22,14 @@ func _ready() -> void:
 func show_event(event_data: Dictionary, reopen: bool = false):
 	var event_id: String = event_data.get("id", "")
 	_event_data = event_data
-	# Only restore resolved state when re-opening an existing card, not on a new firing
 	if reopen and event_id != "" and _resolved_event_ids.has(event_id):
+		# Re-opening the same notification card from this turn — preserve resolved state
 		_choice_made = true
 	else:
+		# New firing of this event (even if same type) — always start fresh
 		_choice_made = false
+		if event_id != "":
+			_resolved_event_ids.erase(event_id)
 	if title_label:
 		var HumanEvents = preload("res://data/events/events_human.gd")
 		var tier: String = event_data.get("tier", "C")
@@ -63,23 +66,30 @@ func refresh_content():
 
 	add_content_child(HSeparator.new())
 
-	# Effect summary
+	# Effect summary — built dynamically so pct-based effects show real numbers
 	var base_effects = _event_data.get("effects", {})
 	var base_res = base_effects.get("resources", {})
-	var base_pop = base_effects.get("pop_max", 0)
-	var base_kill: int = base_effects.get("pop_kill", 0)
-	var base_gain: int = base_effects.get("pop_gain", 0)
+	var base_kill: int  = base_effects.get("pop_kill", 0)
+	var base_gain: int  = base_effects.get("pop_gain", 0)
+	var gain_pct: float = base_effects.get("pop_gain_pct", 0.0)
+	var kill_pct: float = base_effects.get("pop_kill_pct", 0.0)
 	var effect_parts: Array = []
 	for key in ["gold", "food", "wood", "stone", "science"]:
 		var val: int = base_res.get(key, 0)
 		if val != 0:
 			effect_parts.append("%s%d %s" % ["+" if val > 0 else "", val, key.capitalize()])
-	if base_pop != 0:
-		effect_parts.append("%s%d Pop Cap" % ["+" if base_pop > 0 else "", base_pop])
-	if base_kill != 0:
-		effect_parts.append("-%d Villagers" % base_kill)
-	if base_gain != 0:
+	if gain_pct > 0.0:
+		var cur_pop: int = _game.players_data.get(1, {}).get("population", {}).get("total", 10) if is_instance_valid(_game) else 10
+		var est: int = max(1, int(ceil(cur_pop * gain_pct / 100.0)))
+		effect_parts.append("+~%d Villagers (~%.0f%%)" % [est, gain_pct])
+	elif base_gain > 0:
 		effect_parts.append("+%d Villagers" % base_gain)
+	if kill_pct > 0.0:
+		var cur_pop: int = _game.players_data.get(1, {}).get("population", {}).get("total", 10) if is_instance_valid(_game) else 10
+		var est: int = max(1, int(ceil(cur_pop * kill_pct / 100.0)))
+		effect_parts.append("-~%d Villagers (~%.0f%%)" % [est, kill_pct])
+	elif base_kill > 0:
+		effect_parts.append("-%d Villagers" % base_kill)
 
 	if not effect_parts.is_empty():
 		var eff_lbl = Label.new()
@@ -174,11 +184,7 @@ func _apply_effects(effects: Dictionary):
 		resources[key] = max(0, resources.get(key, 0) + res_delta[key])
 	player["resources"] = resources
 
-	var pop_delta: int = effects.get("pop_max", 0)
-	if pop_delta != 0:
-		var pop = player.get("population", {})
-		pop["total"] = max(1, pop.get("total", 10) + pop_delta)
-		player["population"] = pop
+	# pop_max intentionally ignored — population cap is determined by housing buildings only
 
 	_game.players_data[player_id] = player
 

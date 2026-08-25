@@ -141,13 +141,13 @@ func _update_labels():
 	var rates = game_ref.get_resource_rates(1) if game_ref.has_method("get_resource_rates") else {}
 	var pop = game_ref.players_data.get(1, {}).get("population", {})
 
-	# Housing: housed / total
+	# Housing: housed / total_capacity
 	if _stat_labels.has("housing"):
 		var housed: int = pop.get("housed", 0)
-		var total: int  = pop.get("total", 0)
-		_stat_labels["housing"].text = "%d/%d" % [housed, total]
-		# Red if unhoused, green if fully housed
-		var col := Color(0.4, 1.0, 0.4) if housed >= total else Color(1.0, 0.45, 0.45)
+		var capacity: int = game_ref.get_total_housing_capacity(1) if game_ref.has_method("get_total_housing_capacity") else pop.get("total", 0)
+		_stat_labels["housing"].text = "%d/%d" % [housed, capacity]
+		# Red if at capacity (no room to grow), green if space available
+		var col := Color(1.0, 0.45, 0.45) if housed >= capacity else Color(0.4, 1.0, 0.4)
 		_stat_labels["housing"].add_theme_color_override("font_color", col)
 
 	# Employment: working / total

@@ -23,6 +23,7 @@ func refresh_content():
 	tab_bar.add_tab("Buildings")
 	tab_bar.add_tab("World Objects")
 	tab_bar.add_tab("Events")
+	tab_bar.add_tab("🏆 Achievements")
 	tab_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_content_child(tab_bar)
 
@@ -30,7 +31,7 @@ func refresh_content():
 
 	# Content pages — one ScrollContainer per tab, only one visible at a time
 	var pages: Array = []
-	for _i in 5:
+	for _i in 6:
 		var scroll = ScrollContainer.new()
 		scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -47,6 +48,7 @@ func refresh_content():
 	_populate_buildings(pages[2]["vbox"])
 	_populate_world_objects(pages[3]["vbox"])
 	_populate_events(pages[4]["vbox"])
+	_populate_achievements(pages[5]["vbox"])
 
 	# Show only the active tab's page
 	var _show_page = func(idx: int):
@@ -353,3 +355,106 @@ func _populate_events(v: VBoxContainer):
 				ch_lbl.add_theme_color_override("font_color", Color(0.75, 0.80, 0.95))
 				ch_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				col.add_child(ch_lbl)
+
+
+func _populate_achievements(v: VBoxContainer) -> void:
+	var total: int = AchievementManager.ACHIEVEMENTS.size()
+	var done: int = 0
+	for ach in AchievementManager.ACHIEVEMENTS:
+		if AchievementManager.is_unlocked(ach["id"]):
+			done += 1
+
+	var summary = Label.new()
+	summary.text = "Achievements: %d / %d unlocked" % [done, total]
+	summary.add_theme_font_size_override("font_size", 13)
+	summary.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+	v.add_child(summary)
+	v.add_child(HSeparator.new())
+
+	# Group by category
+	var categories: Array = []
+	var grouped: Dictionary = {}
+	for ach in AchievementManager.ACHIEVEMENTS:
+		var cat: String = ach.get("category", "Other")
+		if not grouped.has(cat):
+			grouped[cat] = []
+			categories.append(cat)
+		grouped[cat].append(ach)
+
+	for cat in categories:
+		_section(v, cat)
+		for ach in grouped[cat]:
+			var unlocked: bool = AchievementManager.is_unlocked(ach["id"])
+			var unlock_time: String = AchievementManager.get_unlock_time(ach["id"])
+
+			# Card panel
+			var card = PanelContainer.new()
+			card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var style = StyleBoxFlat.new()
+			if unlocked:
+				style.bg_color = Color(0.08, 0.22, 0.10, 0.95)
+				style.border_color = Color(0.30, 0.85, 0.35)
+			else:
+				style.bg_color = Color(0.13, 0.13, 0.14, 0.95)
+				style.border_color = Color(0.30, 0.30, 0.30)
+			style.border_width_left = 3
+			style.corner_radius_top_left = 3
+			style.corner_radius_bottom_left = 3
+			card.add_theme_stylebox_override("panel", style)
+			v.add_child(card)
+
+			var hbox = HBoxContainer.new()
+			hbox.add_theme_constant_override("separation", 10)
+			card.add_child(hbox)
+
+			# Icon
+			var ico = Label.new()
+			ico.text = ach.get("icon", "🏆")
+			ico.add_theme_font_size_override("font_size", 22)
+			ico.custom_minimum_size = Vector2(32, 32)
+			ico.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			if not unlocked:
+				ico.modulate = Color(0.4, 0.4, 0.4)
+			hbox.add_child(ico)
+
+			# Text column
+			var col = VBoxContainer.new()
+			col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			col.add_theme_constant_override("separation", 2)
+			hbox.add_child(col)
+
+			var title_row = HBoxContainer.new()
+			title_row.add_theme_constant_override("separation", 8)
+			col.add_child(title_row)
+
+			var title_lbl = Label.new()
+			title_lbl.text = ach.get("title", "")
+			title_lbl.add_theme_font_size_override("font_size", 13)
+			title_lbl.add_theme_color_override("font_color",
+				Color(0.55, 1.0, 0.60) if unlocked else Color(0.75, 0.75, 0.75))
+			title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			title_row.add_child(title_lbl)
+
+			if unlocked:
+				var badge = Label.new()
+				badge.text = "✔ Achieved"
+				badge.add_theme_font_size_override("font_size", 10)
+				badge.add_theme_color_override("font_color", Color(0.40, 0.95, 0.45))
+				badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				title_row.add_child(badge)
+
+			var desc_lbl = Label.new()
+			desc_lbl.text = ach.get("desc", "")
+			desc_lbl.add_theme_font_size_override("font_size", 11)
+			desc_lbl.add_theme_color_override("font_color",
+				Color(0.65, 0.80, 0.67) if unlocked else Color(0.50, 0.50, 0.50))
+			desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			col.add_child(desc_lbl)
+
+			if unlocked and unlock_time != "":
+				var time_lbl = Label.new()
+				time_lbl.text = "Unlocked: " + unlock_time
+				time_lbl.add_theme_font_size_override("font_size", 10)
+				time_lbl.add_theme_color_override("font_color", Color(0.45, 0.65, 0.48))
+				col.add_child(time_lbl)

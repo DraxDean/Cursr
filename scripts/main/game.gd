@@ -67,6 +67,9 @@ var notification_panel: Control
 var world_event_modal: Control
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
+# Pending pop growth to notify at end of _on_end_day_pressed (after world event)
+var _pending_pop_growth: int = 0
+
 # Building System
 var is_placing_building: bool = false
 var building_to_place: String = ""
@@ -327,6 +330,13 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			_register_farm_with_nearby_farmhouse(building_scene)
 		else:
 			print("DEBUG: Not a work building, skipping job creation")
+		
+		# Refresh resource bar so housing/employment capacity updates immediately
+		if is_instance_valid(resource_bar):
+			resource_bar.refresh()
+		# Check building and workforce achievements
+		check_building_achievements()
+		check_workforce_achievements()
 	else:
 		print("Warning: Could not find building texture: ", building_texture_path)
 
@@ -359,7 +369,7 @@ func _get_living_capacity(building_type: String) -> int:
 		"house":
 			return 7
 		"town_center":
-			return 12
+			return 20
 		_:
 			return 0
 
@@ -631,6 +641,7 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
 			GL.Category.RESEARCH,
 			"Researched %s to level %d (cost %d science)." % [tech_id.capitalize().replace("_", " "), current_level + 1, cost])
+	check_research_achievements()
 	return true
 
 func get_resource_rates(player_id: int) -> Dictionary:
@@ -644,6 +655,15 @@ func get_resource_rates(player_id: int) -> Dictionary:
 			"science": 0
 		})
 	return {"gold": 0, "food": 0, "wood": 0, "stone": 0, "science": 0}
+
+func get_total_housing_capacity(player_id: int) -> int:
+	"""Sum living capacity across all buildings owned by this player."""
+	var total: int = 0
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
+				total += _get_living_capacity(child.get_meta("building_type", ""))
+	return total
 
 func apply_resource_production(player_id: int):
 	"""Apply resource production based on current rates, then deduct food upkeep (1 per citizen)"""
@@ -977,6 +997,12 @@ func update_player_population(player_id: int):
 	# Clean up unit sprites that lost assignments
 	_cleanup_unassigned_unit_sprites(player_id)
 
+	# Derive total from the actual unit list (excluding pets) — source of truth
+	var total_pop: int = 0
+	for unit in player_data.get("units", []):
+		if not unit.get("is_pet", false):
+			total_pop += 1
+
 	# Calculate housed population from actual building data
 	var total_housed = 0
 	if map_objects_holder:
@@ -990,13 +1016,14 @@ func update_player_population(player_id: int):
 		if not unit.get("is_pet", false) and unit.get("job", null) != null:
 			total_working += 1
 	
-	# Update population data
+	# Update population data — keep total in sync with actual unit count
+	pop_data["total"] = total_pop
 	pop_data["housed"] = total_housed
 	pop_data["working"] = total_working
-	pop_data["unhoused"] = pop_data.get("total", 10) - total_housed
-	pop_data["unemployed"] = pop_data.get("total", 10) - total_working
+	pop_data["unhoused"] = total_pop - total_housed
+	pop_data["unemployed"] = total_pop - total_working
 	
-	print("DEBUG: Population update - Total: ", pop_data.get("total", 10), " | Housed: ", pop_data["housed"], " (unhoused: ", pop_data["unhoused"], ") | Working: ", pop_data["working"], " (unemployed: ", pop_data["unemployed"], ")")
+	print("DEBUG: Population update - Total: ", total_pop, " | Housed: ", total_housed, " (unhoused: ", pop_data["unhoused"], ") | Working: ", total_working, " (unemployed: ", pop_data["unemployed"], ")")
 	
 	player_data["population"] = pop_data
 	
@@ -1008,7 +1035,8 @@ func update_player_population(player_id: int):
 	_check_and_create_missing_sprites(player_id)
 
 func apply_population_growth(player_id: int):
-	"""Apply population growth per turn (current_total * 0.34, ~1 new villager every 3 turns)"""
+	"""Apply population growth per turn (current_total * 0.34, ~1 new villager every 3 turns).
+	New citizens are only born if there is spare housing capacity."""
 	if not players_data.has(player_id):
 		return
 	
@@ -1018,26 +1046,48 @@ func apply_population_growth(player_id: int):
 	if pop_data.is_empty():
 		return
 	
+	# Calculate available housing capacity
+	var total_housing_capacity: int = 0
+	if map_objects_holder:
+		for child in map_objects_holder.get_children():
+			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
+				total_housing_capacity += _get_living_capacity(child.get_meta("building_type", ""))
+	var currently_housed: int = pop_data.get("housed", 0)
+	var free_housing: int = max(0, total_housing_capacity - currently_housed)
+	
+	# No housing available — no growth this turn (accumulator still advances so growth resumes when housing is built)
+	if free_housing <= 0:
+		return
+	
 	var current_total = pop_data.get("total", 10)
 	var growth_accumulator = pop_data.get("growth_accumulator", 0.0)
 	
-	# Calculate growth: 34% of current population per turn (~1 new unit every 3 turns)
-	var daily_growth = current_total * 0.34
+	# Calculate growth: 3.4% of current population per turn (~1 new unit every 3 turns at pop 10)
+	var daily_growth = current_total * 0.034
 	growth_accumulator += daily_growth
 	
-	# Convert accumulated growth to actual population increase
-	var pop_to_add = int(growth_accumulator)
+	# Convert accumulated growth to actual population increase, capped by free housing
+	var pop_to_add: int = min(int(growth_accumulator), free_housing)
 	if pop_to_add > 0:
-		pop_data["total"] = current_total + pop_to_add
 		growth_accumulator -= pop_to_add  # Keep the fractional part
-		print("Player ", player_id, " population grew by ", pop_to_add, " (total: ", pop_data["total"], ")")
+		print("Player ", player_id, " population grew by ", pop_to_add)
+		# Create actual unit entries (handles sprite, housing, pop count update)
+		add_event_units(player_id, pop_to_add)
+		var new_total: int = players_data[player_id].get("population", {}).get("total", 0)
+		# Log the birth event
+		if is_instance_valid(game_log):
+			var GL = preload("res://scripts/managers/game_log.gd")
+			var citizen_word := "citizen" if pop_to_add == 1 else "citizens"
+			game_log.add(
+				turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
+				GL.Category.EVENT,
+				"👶 +%d %s born! Population: %d" % [pop_to_add, citizen_word, new_total]
+			)
+		# Queue notification to fire after the world event in _on_end_day_pressed
+		_pending_pop_growth += pop_to_add
 	
 	# Store updated accumulator
 	pop_data["growth_accumulator"] = growth_accumulator
-	
-	# Recalculate unhoused/unemployed with new total
-	pop_data["unhoused"] = pop_data.get("total", 10) - pop_data.get("housed", 0)
-	pop_data["unemployed"] = pop_data.get("total", 10) - pop_data.get("working", 0)
 
 func _check_and_create_missing_sprites(player_id: int):
 	"""Check for units with both assignments but no sprites and create them"""
@@ -2522,6 +2572,10 @@ func remove_event_units(player_id: int, count: int):
 	var pop = players_data[player_id].get("population", {})
 	pop["current"] = player_units.size()
 	players_data[player_id]["population"] = pop
+	# Refresh housing/employment counts and bar
+	update_player_population(player_id)
+	if is_instance_valid(resource_bar):
+		resource_bar.refresh()
 
 func _spawn_event_unit_sprite(unit: Dictionary):
 	"""Create a visible, wandering sprite for an event-spawned unassigned unit."""
@@ -3070,6 +3124,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 	
 	# After all assignments, check for units that now have both living quarters and jobs
 	_check_and_create_missing_sprites(owner_player)
+	check_workforce_achievements()
 	
 	print("Auto-assigned ", units_assigned, " units and created ", (slots_to_fill - units_assigned), " new units for ", capacity_type, " capacity")
 
@@ -5106,6 +5161,24 @@ func _on_end_day_pressed():
 		# Fire a random world event each turn
 		_fire_random_world_event()
 
+		# Fire pop growth notification after the world event
+		if _pending_pop_growth > 0:
+			var grew := _pending_pop_growth
+			_pending_pop_growth = 0
+			var new_total: int = players_data.get(1, {}).get("population", {}).get("total", 0)
+			var citizen_word := "citizen" if grew == 1 else "citizens"
+			if is_instance_valid(notification_panel):
+				notification_panel.push(
+					"Population Boom! +%d %s" % [grew, citizen_word],
+					"Population is now %d. Build more housing to keep growing." % new_total,
+					"👶",
+					Color(0.35, 0.75, 1.0)
+				)
+			check_population_achievements()
+
+		# Daily achievement checks
+		check_day_achievements()
+
 func _on_notification_clicked(data: Dictionary):
 	var action = data.get("action", "")
 	match action:
@@ -5129,6 +5202,125 @@ func trigger_wave_from_event():
 	if is_instance_valid(wave_spawner):
 		wave_spawner.wave_number += 1
 		wave_spawner._spawn_wave(wave_spawner.wave_number)
+
+# ─── Achievements ─────────────────────────────────────────────────────────────
+
+func _try_unlock_achievement(id: String) -> void:
+	"""Unlock an achievement, log it, and show a notification if newly achieved."""
+	if AchievementManager.is_unlocked(id):
+		return
+	if not AchievementManager.unlock(id):
+		return
+
+	var ach_data: Dictionary = {}
+	for ach in AchievementManager.ACHIEVEMENTS:
+		if ach["id"] == id:
+			ach_data = ach
+			break
+
+	var title: String = ach_data.get("title", id)
+	var icon: String  = ach_data.get("icon", "🏆")
+	var desc: String  = ach_data.get("desc", "")
+	var day: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
+
+	# Log entry
+	if is_instance_valid(game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game_log.add(day, GL.Category.EVENT,
+			"%s 🏆 Achievement Unlocked: %s — %s" % [icon, title, desc])
+
+	# Notification card
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			"🏆 Achievement Unlocked!",
+			"%s — %s" % [title, desc],
+			icon,
+			Color(0.85, 0.72, 0.10)  # gold
+		)
+
+func check_day_achievements() -> void:
+	var day: int = turn_manager.get_day() if is_instance_valid(turn_manager) else 0
+	if day >= 50:
+		_try_unlock_achievement("survive_50_days")
+	if day >= 100:
+		_try_unlock_achievement("survive_100_days")
+
+func check_population_achievements() -> void:
+	var pop: int = players_data.get(1, {}).get("population", {}).get("total", 0)
+	if pop >= 25:
+		_try_unlock_achievement("pop_25")
+	if pop >= 50:
+		_try_unlock_achievement("pop_50")
+
+func check_workforce_achievements() -> void:
+	"""Check lumberjack/stoneworker/fisher/farmer workforce milestones."""
+	if not players_data.has(1) or not map_objects_holder:
+		return
+	var units: Array = players_data[1].get("units", [])
+
+	# Count workers and buildings per type
+	var type_workers := {"lumberjack": 0, "lumber_mill": 0, "stoneworker": 0, "fishing_hut": 0, "farmhouse": 0}
+	var type_buildings := {"lumberjack": 0, "lumber_mill": 0, "stoneworker": 0, "fishing_hut": 0, "farmhouse": 0}
+
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		var btype: String = child.get_meta("building_type", "")
+		if type_buildings.has(btype):
+			type_buildings[btype] += 1
+
+	for unit in units:
+		if unit.get("is_pet", false) or unit.get("job") == null:
+			continue
+		var job: String = unit["job"]
+		for btype in type_workers.keys():
+			if job.begins_with(btype):
+				type_workers[btype] += 1
+				break
+
+	var lumber_workers: int = type_workers["lumberjack"] + type_workers["lumber_mill"]
+	var lumber_buildings: int = type_buildings["lumberjack"] + type_buildings["lumber_mill"]
+	if lumber_workers >= 25 and lumber_buildings >= 5:
+		_try_unlock_achievement("lumber_workforce")
+
+	if type_workers["stoneworker"] >= 25 and type_buildings["stoneworker"] >= 5:
+		_try_unlock_achievement("stone_workforce")
+
+	if type_workers["fishing_hut"] >= 25 and type_buildings["fishing_hut"] >= 5:
+		_try_unlock_achievement("fish_workforce")
+
+	if type_workers["farmhouse"] >= 25 and type_buildings["farmhouse"] >= 5:
+		_try_unlock_achievement("farm_workforce")
+
+func check_building_achievements() -> void:
+	if not map_objects_holder:
+		return
+	var house_count: int = 0
+	var wonder_count: int = 0
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
+			continue
+		match child.get_meta("building_type", ""):
+			"house":   house_count += 1
+			"wonder":  wonder_count += 1
+	if house_count >= 5:
+		_try_unlock_achievement("build_5_houses")
+	if wonder_count >= 1:
+		_try_unlock_achievement("build_wonder")
+
+func check_research_achievements() -> void:
+	var techs: Dictionary = players_data.get(1, {}).get("technologies", {})
+	var any_unlocked := false
+	var all_unlocked := true
+	for val in techs.values():
+		if int(val) > 0:
+			any_unlocked = true
+		else:
+			all_unlocked = false
+	if any_unlocked:
+		_try_unlock_achievement("research_any")
+	if all_unlocked and not techs.is_empty():
+		_try_unlock_achievement("research_all")
 
 # ─── Pet system ───────────────────────────────────────────────────────────────
 
@@ -5282,6 +5474,13 @@ func remove_enemy_barracks_node(building_node: Node2D) -> void:
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
 			GL.Category.COMBAT, "⚔ Enemy barracks '%s' destroyed." % bname)
+	# Track cumulative camp kills for achievements
+	var camps_killed: int = players_data.get(1, {}).get("camps_killed", 0) + 1
+	if players_data.has(1):
+		players_data[1]["camps_killed"] = camps_killed
+	_try_unlock_achievement("destroy_camp")
+	if camps_killed >= 3:
+		_try_unlock_achievement("destroy_3_camps")
 
 func remove_unit_from_combat(unit: Dictionary) -> void:
 	"""Remove a player unit that was killed in combat."""

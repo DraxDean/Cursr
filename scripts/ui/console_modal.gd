@@ -13,7 +13,7 @@ var title_label: Label
 var close_button: Button
 var output_container: VBoxContainer
 var output_scroll: ScrollContainer
-var output_text: Label
+var output_text: RichTextLabel
 var separator: HSeparator
 var input_field: LineEdit
 var command_history: Array = []
@@ -86,12 +86,15 @@ func _setup_ui():
 	output_scroll.custom_minimum_size = Vector2(0, 200)
 	main_vbox.add_child(output_scroll)
 	
-	output_text = Label.new()
+	output_text = RichTextLabel.new()
 	output_text.text = "Debug console initialized. Messages will appear here.\n"
-	output_text.autowrap_mode = TextServer.AUTOWRAP_WORD
+	output_text.fit_content = true
+	output_text.scroll_active = false
+	output_text.selection_enabled = true
+	output_text.context_menu_enabled = true
 	output_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	output_text.add_theme_color_override("font_color", Color.WHITE)
-	output_text.add_theme_font_size_override("font_size", 12)
+	output_text.add_theme_color_override("default_color", Color.WHITE)
+	output_text.add_theme_font_size_override("normal_font_size", 12)
 	output_scroll.add_child(output_text)
 	
 	# Separator
@@ -170,9 +173,10 @@ func _process_command(command: String):
 	if parts.is_empty():
 		return
 	
+	var full_cmd = command.strip_edges().to_lower()
 	var cmd = parts[0].to_lower()
 	
-	match cmd:
+	match full_cmd:
 		"help":
 			_show_help()
 		"clear":
@@ -215,8 +219,10 @@ func _process_command(command: String):
 			_cmd_fake_notification()
 		"the path", "cipher":
 			_cmd_fire_secret_event()
+		"demo achievement":
+			_cmd_demo_achievement()
 		_:
-			add_debug_message("Unknown command: " + cmd + ". Type 'help' for commands.")
+			add_debug_message("Unknown command: " + full_cmd + ". Type 'help' for commands.")
 
 func _show_help():
 	add_debug_message("\n=== Debug Console Commands ===")
@@ -622,6 +628,17 @@ func _cmd_fire_secret_event():
 	if is_instance_valid(game.game_footer):
 		game.game_footer.set_end_day_blocked(true)
 	add_debug_message("⊙ " + event_data.get("title", "?"))
+
+func _cmd_demo_achievement():
+	"""Unlock the demo achievement for testing the achievement system."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game):
+		add_debug_message("ERROR: game node not found.")
+		return
+	# Reset it first so it always fires fresh for testing
+	AchievementManager._unlocked.erase("demo_achievement")
+	game._try_unlock_achievement("demo_achievement")
+	add_debug_message("🏆 Demo achievement triggered.")
 
 func _input(event: InputEvent):
 	if is_open:
