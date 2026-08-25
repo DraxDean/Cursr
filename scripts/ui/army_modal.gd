@@ -9,103 +9,132 @@ func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
 
 func refresh_content():
 	clear_content()
-	
-	var army_label = Label.new()
-	army_label.text = "Military Forces:"
-	army_label.add_theme_color_override("font_color", Color.WHITE)
-	add_content_child(army_label)
-	
-	# Count military buildings to determine army size
-	var barracks_count = 0
-	if game_ref and game_ref.map_objects_holder:
-		for child in game_ref.map_objects_holder.get_children():
-			if child.name.contains("Barracks"):
-				barracks_count += 1
-	
-	var army_size = barracks_count * 5  # 5 soldiers per barracks
-	
-	var total_container = HBoxContainer.new()
-	add_content_child(total_container)
-	
-	var army_icon = Label.new()
-	army_icon.text = "⚔️"
-	army_icon.custom_minimum_size = Vector2(25, 20)
-	total_container.add_child(army_icon)
-	
-	var total_army = Label.new()
-	total_army.text = "Total Forces: " + str(army_size)
-	total_army.add_theme_color_override("font_color", Color.RED)
-	total_container.add_child(total_army)
-	
-	if army_size == 0:
-		var no_army = Label.new()
-		no_army.text = "No military units trained yet"
-		no_army.add_theme_color_override("font_color", Color.GRAY)
-		add_content_child(no_army)
-		
-		var recruit_info = Label.new()
-		recruit_info.text = "Build barracks to train soldiers"
-		recruit_info.add_theme_color_override("font_color", Color.YELLOW)
-		add_content_child(recruit_info)
-	else:
-		# Army breakdown
-		var breakdown_label = Label.new()
-		breakdown_label.text = "Unit Composition:"
-		breakdown_label.add_theme_color_override("font_color", Color.LIGHT_BLUE)
-		add_content_child(breakdown_label)
-		
-		var units = [
-			{"name": "Infantry", "count": int(army_size * 0.6), "color": Color.GREEN},
-			{"name": "Archers", "count": int(army_size * 0.3), "color": Color.BLUE},
-			{"name": "Cavalry", "count": int(army_size * 0.1), "color": Color.PURPLE}
-		]
-		
-		for unit in units:
-			if unit["count"] > 0:
-				var unit_container = HBoxContainer.new()
-				add_content_child(unit_container)
-				
-				var unit_icon = Label.new()
-				unit_icon.text = "●"
-				unit_icon.add_theme_color_override("font_color", unit["color"])
-				unit_icon.custom_minimum_size = Vector2(20, 20)
-				unit_container.add_child(unit_icon)
-				
-				var unit_label = Label.new()
-				unit_label.text = unit["name"] + ": " + str(unit["count"])
-				unit_label.add_theme_color_override("font_color", Color.WHITE)
-				unit_container.add_child(unit_label)
-	
-	# Add separator
-	var separator = HSeparator.new()
-	add_content_child(separator)
-	
-	# Military strength
-	var strength_label = Label.new()
-	strength_label.text = "Military Strength: " + _get_strength_rating(army_size)
-	strength_label.add_theme_color_override("font_color", _get_strength_color(army_size))
-	add_content_child(strength_label)
 
-func _get_strength_rating(army_size: int) -> String:
-	if army_size == 0:
-		return "Defenseless"
-	elif army_size <= 5:
-		return "Weak"
-	elif army_size <= 15:
-		return "Moderate"
-	elif army_size <= 30:
-		return "Strong"
-	else:
-		return "Mighty"
+	if not game_ref:
+		return
 
-func _get_strength_color(army_size: int) -> Color:
-	if army_size == 0:
-		return Color.GRAY
-	elif army_size <= 5:
-		return Color.RED
-	elif army_size <= 15:
-		return Color.YELLOW
-	elif army_size <= 30:
-		return Color.GREEN
+	var header_label = Label.new()
+	header_label.text = "⚔ Army Roster"
+	header_label.add_theme_color_override("font_color", Color.CYAN)
+	header_label.add_theme_font_size_override("font_size", 16)
+	add_content_child(header_label)
+
+	var all_units: Array = game_ref.players_data.get(1, {}).get("units", [])
+	var combat_units: Array = []
+	for u in all_units:
+		if not u.get("is_pet", false):
+			combat_units.append(u)
+
+	var main_row = HBoxContainer.new()
+	main_row.add_theme_constant_override("separation", 14)
+	add_content_child(main_row)
+
+	# ── Left: scrollable unit roster with per-villager toggles ──
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(240, 260)
+	main_row.add_child(scroll)
+
+	var list_vbox = VBoxContainer.new()
+	list_vbox.custom_minimum_size = Vector2(220, 0)
+	list_vbox.add_theme_constant_override("separation", 4)
+	scroll.add_child(list_vbox)
+
+	if combat_units.is_empty():
+		var empty_lbl = Label.new()
+		empty_lbl.text = "No units yet."
+		empty_lbl.add_theme_color_override("font_color", Color.GRAY)
+		list_vbox.add_child(empty_lbl)
 	else:
-		return Color.GOLD
+		for unit in combat_units:
+			list_vbox.add_child(_build_unit_row(unit))
+
+	# ── Right: aggregate totals ──
+	var stats_panel = VBoxContainer.new()
+	stats_panel.custom_minimum_size = Vector2(150, 0)
+	stats_panel.add_theme_constant_override("separation", 8)
+	main_row.add_child(stats_panel)
+
+	_build_stats_panel(stats_panel, combat_units)
+
+	fit_to_content()
+
+func _build_unit_row(unit: Dictionary) -> Control:
+	var role = game_ref.get_unit_army_role(unit)
+	var locked = game_ref.is_role_locked_in_army(role)
+	var in_army = true if locked else unit.get("in_army", false)
+
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+
+	var name_lbl = Label.new()
+	name_lbl.text = unit.get("name", "Unit")
+	name_lbl.custom_minimum_size = Vector2(95, 20)
+	name_lbl.add_theme_font_size_override("font_size", 12)
+	name_lbl.add_theme_color_override("font_color", Color.WHITE)
+	name_lbl.clip_text = true
+	row.add_child(name_lbl)
+
+	var role_lbl = Label.new()
+	role_lbl.text = game_ref.ARMY_UNIT_STATS[role]["label"]
+	role_lbl.custom_minimum_size = Vector2(95, 20)
+	role_lbl.add_theme_font_size_override("font_size", 11)
+	var role_color = Color.LIGHT_GRAY
+	if role == "soldier":
+		role_color = Color(0.4, 1.0, 0.4)
+	elif role == "soldier_training":
+		role_color = Color(1.0, 0.85, 0.3)
+	role_lbl.add_theme_color_override("font_color", role_color)
+	row.add_child(role_lbl)
+
+	var toggle = CheckButton.new()
+	toggle.button_pressed = in_army
+	toggle.disabled = locked
+	toggle.tooltip_text = "Always in the army" if locked else "Add/remove from the army"
+	toggle.custom_minimum_size = Vector2(40, 20)
+	if not locked:
+		toggle.toggled.connect(_on_unit_toggle.bind(unit))
+	row.add_child(toggle)
+
+	return row
+
+func _on_unit_toggle(pressed: bool, unit: Dictionary):
+	unit["in_army"] = pressed
+	refresh_content()
+
+func _build_stats_panel(panel: VBoxContainer, units: Array):
+	var title = Label.new()
+	title.text = "Army Totals"
+	title.add_theme_color_override("font_color", Color.LIGHT_BLUE)
+	title.add_theme_font_size_override("font_size", 14)
+	panel.add_child(title)
+	panel.add_child(HSeparator.new())
+
+	var totals = game_ref.calculate_army_totals(1)
+
+	_add_stat_row(panel, "🪖", "Units", str(totals["count"]), Color.WHITE)
+	_add_stat_row(panel, "❤", "HP Pool", str(totals["hp"]), Color(1.0, 0.4, 0.4))
+	_add_stat_row(panel, "⚔", "Strength", str(totals["atk"]), Color(1.0, 0.75, 0.2))
+
+func _add_stat_row(panel: VBoxContainer, icon: String, label_text: String, value_text: String, color: Color):
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+
+	var icon_lbl = Label.new()
+	icon_lbl.text = icon
+	icon_lbl.custom_minimum_size = Vector2(22, 20)
+	row.add_child(icon_lbl)
+
+	var lbl = Label.new()
+	lbl.text = label_text + ":"
+	lbl.custom_minimum_size = Vector2(70, 20)
+	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+	row.add_child(lbl)
+
+	var val = Label.new()
+	val.text = value_text
+	val.add_theme_color_override("font_color", color)
+	val.add_theme_font_size_override("font_size", 13)
+	row.add_child(val)
+
+	panel.add_child(row)

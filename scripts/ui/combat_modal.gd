@@ -1,24 +1,19 @@
 extends "res://scripts/ui/info_modal.gd"
 
-# ─── Combat stats by unit type ───────────────────────────────────────────────
-const UNIT_STATS := {
-	"soldier": {"label": "Soldier",  "hp": 40, "atk": 8},
-	"scholar": {"label": "Scholar",  "hp": 20, "atk": 3},
-	"peasant": {"label": "Peasant",  "hp": 20, "atk": 3},
-}
-const ENEMY_STATS := {"label": "Marauder", "hp": 30, "atk": 5}
-
 # ─── State ────────────────────────────────────────────────────────────────────
 var _game: Node
-var _player_unit: Dictionary      # unit dict from players_data
+var _player_id: int = 1
 var _enemy_building: Node2D       # the enemy barracks node
+var _enemy_owner: int = -1
 
 var _p_hp: int = 0
 var _p_max: int = 0
 var _p_atk: int = 0
+var _p_count: int = 0
 var _e_hp: int = 0
 var _e_max: int = 0
 var _e_atk: int = 0
+var _e_count: int = 0
 
 var _combat_over: bool = false
 
@@ -43,43 +38,48 @@ func _init(game: Node) -> void:
 	super._init("combat", "⚔ Combat", Vector2(160, 130))
 
 # ─── Public entry point ───────────────────────────────────────────────────────
-func start_combat(player_unit: Dictionary, enemy_building: Node2D) -> void:
-	_player_unit   = player_unit
+func start_combat(player_id: int, enemy_building: Node2D) -> void:
+	"""Pit a player's whole army against an enemy camp's whole army (pooled hp/strength)."""
+	_player_id = player_id
 	_enemy_building = enemy_building
-	_combat_over   = false
+	_enemy_owner = enemy_building.get_meta("owner_player", -1) if is_instance_valid(enemy_building) else -1
+	_combat_over = false
 
-	var unit_type  = player_unit.get("type", "peasant")
-	var pstats     = UNIT_STATS.get(unit_type, UNIT_STATS["peasant"])
-	_p_hp  = pstats["hp"]
-	_p_max = pstats["hp"]
-	_p_atk = pstats["atk"]
-	_e_hp  = _get_or_init_enemy_hp()
-	_e_max = ENEMY_STATS["hp"]
-	_e_atk = ENEMY_STATS["atk"]
+	var p_totals: Dictionary = _game.calculate_army_totals(_player_id)
+	_p_count = p_totals["count"]
+	_p_max = max(1, p_totals["hp"])
+	_p_hp = _p_max
+	_p_atk = p_totals["atk"]
 
-	_build_ui(pstats["label"])
+	var e_totals: Dictionary = _game.calculate_army_totals(_enemy_owner)
+	_e_count = e_totals["count"]
+	_e_max = max(1, e_totals["hp"])
+	_e_atk = e_totals["atk"]
+	_e_hp = _get_or_init_enemy_hp()
+
+	_build_ui()
 	show()
 
 func _get_or_init_enemy_hp() -> int:
-	"""Read the camp's current defender HP, persisted on the barracks node so
+	"""Read the camp's current army hp pool, persisted on the barracks node so
 	partial damage survives closing the modal and saving/loading the game."""
 	if not is_instance_valid(_enemy_building):
-		return ENEMY_STATS["hp"]
+		return _e_max
 	var hp: int = _enemy_building.get_meta("enemy_hp", -1)
 	if hp < 0:
-		hp = ENEMY_STATS["hp"]
+		hp = _e_max
 		_enemy_building.set_meta("enemy_hp", hp)
-	return hp
+	return min(hp, _e_max)
 
 # ─── Build UI ─────────────────────────────────────────────────────────────────
-func _build_ui(player_label: String) -> void:
+func _build_ui() -> void:
 	clear_content()
 
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 
-	_p_panel = _make_fighter_panel(player_label, _p_max, false)
+	_p_panel = _make_fighter_panel("Your Army", _p_count, _p_atk, _p_max, false)
 	_p_bar   = _p_panel.get_node("vbox/bar")
 	_p_hp_label = _p_panel.get_node("vbox/hp_lbl")
 
@@ -90,7 +90,7 @@ func _build_ui(player_label: String) -> void:
 	vs.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	vs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
-	_e_panel = _make_fighter_panel(ENEMY_STATS["label"], _e_max, true)
+	_e_panel = _make_fighter_panel("Marauder Camp", _e_count, _e_atk, _e_max, true)
 	_e_bar   = _e_panel.get_node("vbox/bar")
 	_e_hp_label = _e_panel.get_node("vbox/hp_lbl")
 
@@ -108,7 +108,7 @@ func _build_ui(player_label: String) -> void:
 	_log.bbcode_enabled = true
 	_log.fit_content = true
 	_log.custom_minimum_size = Vector2(360, 52)
-	_log.text = "Your [b]%s[/b] faces a [b]Marauder[/b]!\nClick [b]Attack[/b] to strike." % player_label
+	_log.text = "Your army (%d units, ⚔%d) clashes with the marauder camp (%d units, ⚔%d)!\nClick [b]Attack[/b] to strike." % [_p_count, _p_atk, _e_count, _e_atk]
 
 	add_content_child(row)
 	add_content_child(_raid_timer_lbl)
@@ -145,18 +145,18 @@ func _get_raid_countdown_text() -> String:
 	else:
 		return "🔥 This camp raids in %d days" % days_left
 
-func _make_fighter_panel(unit_name: String, max_hp: int, is_enemy: bool) -> PanelContainer:
+func _make_fighter_panel(title: String, count: int, atk: int, max_hp: int, is_enemy: bool) -> PanelContainer:
 	var panel = PanelContainer.new()
-	panel.custom_minimum_size = Vector2(140, 180)
+	panel.custom_minimum_size = Vector2(150, 200)
 	_apply_panel_style(panel, false)
 
 	var vbox = VBoxContainer.new()
 	vbox.name = "vbox"
-	vbox.add_theme_constant_override("separation", 6)
+	vbox.add_theme_constant_override("separation", 4)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	var name_lbl = Label.new()
-	name_lbl.text = unit_name
+	name_lbl.text = title
 	name_lbl.add_theme_font_size_override("font_size", 15)
 	name_lbl.add_theme_color_override("font_color", Color.WHITE if not is_enemy else Color(1.0, 0.5, 0.4))
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -164,15 +164,27 @@ func _make_fighter_panel(unit_name: String, max_hp: int, is_enemy: bool) -> Pane
 	# Portrait area
 	var portrait_box = CenterContainer.new()
 	var portrait = ColorRect.new()
-	portrait.custom_minimum_size = Vector2(64, 64)
+	portrait.custom_minimum_size = Vector2(56, 56)
 	portrait.color = Color(0.22, 0.18, 0.28) if is_enemy else Color(0.18, 0.22, 0.28)
 	portrait_box.add_child(portrait)
+
+	var count_lbl = Label.new()
+	count_lbl.text = "%d units" % count
+	count_lbl.add_theme_font_size_override("font_size", 11)
+	count_lbl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+	count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	var atk_lbl = Label.new()
+	atk_lbl.text = "⚔ Strength: %d" % atk
+	atk_lbl.add_theme_font_size_override("font_size", 11)
+	atk_lbl.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
+	atk_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var bar = ProgressBar.new()
 	bar.name = "bar"
 	bar.max_value = max_hp
 	bar.value    = max_hp
-	bar.custom_minimum_size = Vector2(120, 14)
+	bar.custom_minimum_size = Vector2(130, 14)
 	bar.show_percentage = false
 
 	var hp_lbl = Label.new()
@@ -184,6 +196,8 @@ func _make_fighter_panel(unit_name: String, max_hp: int, is_enemy: bool) -> Pane
 
 	vbox.add_child(name_lbl)
 	vbox.add_child(portrait_box)
+	vbox.add_child(count_lbl)
+	vbox.add_child(atk_lbl)
 	vbox.add_child(bar)
 	vbox.add_child(hp_lbl)
 	panel.add_child(vbox)
@@ -195,30 +209,30 @@ func _on_attack_pressed() -> void:
 		return
 	_attack_btn.disabled = true
 
-	# Player hits enemy
-	var p_dmg = _p_atk + randi() % 4
+	# Your whole army strikes as one
+	var p_dmg = int(round(_p_atk * randf_range(0.85, 1.15)))
 	_e_hp = max(0, _e_hp - p_dmg)
 	if is_instance_valid(_enemy_building):
 		_enemy_building.set_meta("enemy_hp", _e_hp)
 	_flash(_e_panel)
 	_refresh_bars()
-	_log.text = "You deal [color=#FF8866]%d damage[/color] to the Marauder!" % p_dmg
+	_log.text = "Your army deals [color=#FF8866]%d damage[/color] to the marauder camp!" % p_dmg
 
 	if _e_hp <= 0:
 		await get_tree().create_timer(0.35).timeout
 		_finish(true)
 		return
 
-	# Enemy hits back after a short pause
+	# Enemy camp hits back after a short pause
 	await get_tree().create_timer(0.45).timeout
 	if not is_inside_tree():
 		return
 
-	var e_dmg = _e_atk + randi() % 4
+	var e_dmg = int(round(_e_atk * randf_range(0.85, 1.15)))
 	_p_hp = max(0, _p_hp - e_dmg)
 	_flash(_p_panel)
 	_refresh_bars()
-	_log.text += "\nMarauder hits back for [color=#FF8866]%d damage[/color]!" % e_dmg
+	_log.text += "\nThe marauder camp strikes back for [color=#FF8866]%d damage[/color]!" % e_dmg
 
 	if _p_hp <= 0:
 		await get_tree().create_timer(0.35).timeout
@@ -270,9 +284,10 @@ func _finish(player_won: bool) -> void:
 	_attack_btn.pressed.connect(close_modal)
 
 	if player_won:
-		_log.text = "[color=#66FF99]⚔ Victory![/color] The Marauder has been slain.\nThe enemy barracks crumbles to dust."
+		_log.text = "[color=#66FF99]⚔ Victory![/color] The marauder camp has been wiped out!"
 		if is_instance_valid(_enemy_building):
 			_game.remove_enemy_barracks_node(_enemy_building)
 	else:
-		_log.text = "[color=#FF6666]☠ Defeated![/color] Your unit has fallen in battle.\nThe Marauders remain..."
-		_game.remove_unit_from_combat(_player_unit)
+		var killed: int = _game.wipe_army(_player_id)
+		_log.text = "[color=#FF6666]☠ Defeated![/color] Your army (%d units) has fallen in battle.\nThe Marauders remain..." % killed
+

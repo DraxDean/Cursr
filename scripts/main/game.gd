@@ -24,6 +24,15 @@ const TRAINING_DEFINITIONS: Dictionary = {
 	}
 }
 
+# Army reference guide — used to calculate aggregate army stats (hp pool, strength)
+# from unit roles instead of giving every unit its own combat fields.
+const ARMY_UNIT_STATS: Dictionary = {
+	"peasant":          {"label": "Villager",          "hp": 20, "atk": 5},
+	"soldier_training": {"label": "Soldier (training)", "hp": 30, "atk": 10},
+	"soldier":          {"label": "Soldier",            "hp": 40, "atk": 15},
+	"marauder":         {"label": "Marauder",           "hp": 30, "atk": 5},
+}
+
 # --- Export Variables for Scenes ---
 @export var tree_scene: PackedScene
 @export var mountain_scene: PackedScene
@@ -120,11 +129,11 @@ var players_data: Dictionary = {
 		"buildings": [],  # Array of building names owned by this player
 		"units": [],  # Array of unit data owned by this player
 		"resources": {
-			"gold": 500,
-			"food": 500,
-			"wood": 500,
-			"stone": 500,
-			"science": 500
+			"gold": 100,
+			"food": 100,
+			"wood": 100,
+			"stone": 100,
+			"science": 100
 		},
 		"resource_rates": {
 			# Per-day production/consumption rates
@@ -1495,7 +1504,7 @@ func _migrate_players_data_structure():
 			if not player_data.has("buildings"):
 				player_data["buildings"] = []
 			if not player_data.has("resources"):
-				player_data["resources"] = {"gold": 500, "food": 500, "wood": 500, "stone": 500, "science": 500}
+				player_data["resources"] = {"gold": 100, "food": 100, "wood": 100, "stone": 100, "science": 100}
 			# Don't reset population if it already exists in new format
 			if not player_data.has("population"):
 				player_data["population"] = {
@@ -5483,21 +5492,44 @@ func _pet_the_companion(pet: Dictionary) -> void:
 
 # ─── Combat helpers ───────────────────────────────────────────────────────────
 
+func get_unit_army_role(unit: Dictionary) -> String:
+	"""Classify a unit for army reference-stat purposes (see ARMY_UNIT_STATS)."""
+	var unit_type = unit.get("type", "peasant")
+	if unit_type == "soldier":
+		return "soldier"
+	if unit_type == "marauder":
+		return "marauder"
+	var training = unit.get("training", null)
+	if training != null and training.get("type", "") == "soldier":
+		return "soldier_training"
+	return "peasant"
+
+func is_role_locked_in_army(role: String) -> bool:
+	"""Everyone except plain villagers is automatically part of the army."""
+	return role != "peasant"
+
+func calculate_army_totals(player_id: int) -> Dictionary:
+	"""Sum unit count / hp pool / strength for a player's army using ARMY_UNIT_STATS."""
+	var totals = {"count": 0, "hp": 0, "atk": 0}
+	if not players_data.has(player_id):
+		return totals
+	for unit in players_data[player_id].get("units", []):
+		if unit.get("is_pet", false):
+			continue
+		var role = get_unit_army_role(unit)
+		if not is_role_locked_in_army(role) and not unit.get("in_army", false):
+			continue
+		var stats = ARMY_UNIT_STATS.get(role, ARMY_UNIT_STATS["peasant"])
+		totals["count"] += 1
+		totals["hp"] += stats["hp"]
+		totals["atk"] += stats["atk"]
+	return totals
+
 func _open_combat_modal(enemy_building: Node2D) -> void:
 	"""Open the combat modal when the player clicks an enemy barracks."""
-	# Pick the best available combat unit for player 1
-	var best_unit: Dictionary = {}
-	for unit in players_data.get(1, {}).get("units", []):
-		if unit.get("type") == "soldier":
-			best_unit = unit
-			break
-	if best_unit.is_empty():
-		var all_units: Array = players_data.get(1, {}).get("units", [])
-		if not all_units.is_empty():
-			best_unit = all_units[0]
-	if best_unit.is_empty():
+	if calculate_army_totals(1)["count"] == 0:
 		if is_instance_valid(notification_panel):
-			notification_panel.push("No Units", "You have no units to send into battle!", "⚔", Color(0.7, 0.3, 0.1))
+			notification_panel.push("No Army", "You have no units to send into battle!", "⚔", Color(0.7, 0.3, 0.1))
 		return
 
 	var CombatModalScript = preload("res://scripts/ui/combat_modal.gd")
@@ -5505,7 +5537,7 @@ func _open_combat_modal(enemy_building: Node2D) -> void:
 	ui_layer.add_child(modal)
 	modal.modal_closed.connect(func(_type): modal.queue_free())
 	active_combat_modal = modal
-	modal.start_combat(best_unit, enemy_building)
+	modal.start_combat(1, enemy_building)
 
 func remove_enemy_barracks_node(building_node: Node2D) -> void:
 	"""Remove an enemy barracks from the map and player data after combat victory."""
@@ -5541,6 +5573,22 @@ func remove_enemy_barracks_node(building_node: Node2D) -> void:
 	_try_unlock_achievement("destroy_camp")
 	if camps_killed >= 3:
 		_try_unlock_achievement("destroy_3_camps")
+
+func wipe_army(player_id: int) -> int:
+	"""Kill every unit currently counted in a player's army (used when an army loses a battle).
+	Returns the number of units killed."""
+	if not players_data.has(player_id):
+		return 0
+	var army_units: Array = []
+	for unit in players_data[player_id].get("units", []):
+		if unit.get("is_pet", false):
+			continue
+		var role = get_unit_army_role(unit)
+		if is_role_locked_in_army(role) or unit.get("in_army", false):
+			army_units.append(unit)
+	for unit in army_units:
+		remove_unit_from_combat(unit)
+	return army_units.size()
 
 func remove_unit_from_combat(unit: Dictionary) -> void:
 	"""Remove a player unit that was killed in combat."""
@@ -5635,6 +5683,8 @@ func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 		"progress": 0,
 		"days_required": def["days_required"]
 	}
+	if training_type == "soldier":
+		unit["in_army"] = true  # Recruits join the army the moment training begins
 	DebugConfig.dprint("wave", ["Game: Started %s training for %s (%d days)" % [training_type, unit.get("name", "?"), def["days_required"]]])
 	return true
 
@@ -5663,6 +5713,8 @@ func _process_training_progress():
 				# Update unit type to reflect their highest specialty
 				_update_unit_type_from_specialties(unit)
 				_update_unit_sprite_texture(unit)
+				if unit.get("type", "") == "soldier":
+					unit["in_army"] = true  # Promoted soldiers stay in the army
 				DebugConfig.dprint("wave", ["Game: %s completed %s training! Specialties: %s, Type: %s" % [unit.get("name", "?"), t_type, str(unit.get("specialties", [])), unit.get("type", "?")]])
 				if is_instance_valid(game_log):
 					var GL = preload("res://scripts/managers/game_log.gd")
