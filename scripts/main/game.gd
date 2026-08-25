@@ -4125,38 +4125,35 @@ func _initialize_farmhouse_paths(farmhouse_node: Node2D) -> void:
 			assigned_farms.append(rid)
 
 	var fh_tile: Vector2i = tilemap_layer.local_to_map(farmhouse_node.position)
-
-	# BFS outward from farmhouse, pick unassigned farm buildings
-	var visited := {}
-	var queue: Array = [fh_tile]
-	var found_farms: Array = []
 	var max_radius := 30
+	var slots_needed := max_workers - assigned_farms.size()
 
-	while queue.size() > 0 and found_farms.size() < (max_workers - assigned_farms.size()):
-		var cur: Vector2i = queue.pop_front()
-		if visited.has(cur):
+	# Walk the building list once instead of BFS-scanning every tile within range —
+	# far cheaper since the map only has a handful of farms compared to hundreds of tiles.
+	var candidates: Array = []
+	for child in map_objects_holder.get_children():
+		if not _is_building_node(child):
 			continue
-		visited[cur] = true
-		if _hex_distance(fh_tile, cur) > max_radius:
+		if child.get_meta("building_type", "") != "farm":
 			continue
+		if child.name in assigned_farms:
+			continue
+		if child.get_meta("farm_worker_assigned", false):
+			continue
+		var child_tile: Vector2i = tilemap_layer.local_to_map(child.position)
+		var dist := _hex_distance(fh_tile, child_tile)
+		if dist > max_radius:
+			continue
+		candidates.append({"node": child, "dist": dist})
 
-		# Check if there is a farm building node at this tile
-		for child in map_objects_holder.get_children():
-			if not _is_building_node(child):
-				continue
-			if child.get_meta("building_type", "") != "farm":
-				continue
-			var child_tile: Vector2i = tilemap_layer.local_to_map(child.position)
-			if child_tile == cur and not (child.name in assigned_farms):
-				# Only 1 worker per farm — skip if already assigned to another farmhouse
-				if not child.get_meta("farm_worker_assigned", false):
-					found_farms.append(child)
-					assigned_farms.append(child.name)
-					break
+	candidates.sort_custom(func(a, b): return a["dist"] < b["dist"])
 
-		for nb in _get_hex_neighbors(cur):
-			if not visited.has(nb):
-				queue.append(nb)
+	var found_farms: Array = []
+	for candidate in candidates:
+		if found_farms.size() >= slots_needed:
+			break
+		found_farms.append(candidate["node"])
+		assigned_farms.append(candidate["node"].name)
 
 	# Create job entries for each found farm
 	for farm_node in found_farms:
