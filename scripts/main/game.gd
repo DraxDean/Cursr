@@ -5487,10 +5487,25 @@ func remove_enemy_barracks_node(building_node: Node2D) -> void:
 	var bname: String = building_node.name
 	remove_building_from_player(bname, owner_player)
 	building_node.queue_free()
+
+	# Wipe out the rest of the camp — its marauders don't survive the barracks
+	var units_killed: int = 0
+	if players_data.has(owner_player):
+		var camp_units: Array = players_data[owner_player].get("units", [])
+		for unit in camp_units:
+			var uid: String = unit.get("unique_id", "")
+			if uid != "" and is_instance_valid(map_objects_holder):
+				var sprite = map_objects_holder.get_node_or_null(uid)
+				if is_instance_valid(sprite):
+					sprite.queue_free()
+			unit_sprite_map.erase(uid)
+			units_killed += 1
+		players_data.erase(owner_player)  # Whole camp is gone — barracks was its only building
+
 	if is_instance_valid(game_log):
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
-			GL.Category.COMBAT, "⚔ Enemy barracks '%s' destroyed." % bname)
+			GL.Category.COMBAT, "⚔ Enemy barracks '%s' destroyed, along with %d marauder(s)." % [bname, units_killed])
 	# Track cumulative camp kills for achievements
 	var camps_killed: int = players_data.get(1, {}).get("camps_killed", 0) + 1
 	if players_data.has(1):
