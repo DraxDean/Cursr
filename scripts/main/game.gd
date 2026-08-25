@@ -2530,6 +2530,10 @@ func add_event_units(player_id: int, count: int):
 		DebugConfig.dprint("general", ["Game: Event added unit %s (%s) for player %d" % [uid, unit_data["name"], player_id]])
 	# Try to house the new arrivals in any spare capacity
 	_auto_assign_all_units_to_housing()
+	# Recalculate housing/employment counts (new units are unemployed until auto-assigned to a job)
+	update_player_population(player_id)
+	if is_instance_valid(resource_bar):
+		resource_bar.refresh()
 	# Update population current count to reflect actual unit list size
 	var pop = players_data[player_id].get("population", {})
 	pop["current"] = players_data[player_id]["units"].size()
