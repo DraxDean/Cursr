@@ -31,6 +31,7 @@ var _p_hp_label: Label
 var _e_hp_label: Label
 var _log: RichTextLabel
 var _attack_btn: Button
+var _raid_timer_lbl: Label
 
 # ─── Panel style constants ─────────────────────────────────────────────────────
 const _STYLE_NORMAL := {"bg": Color(0.1, 0.1, 0.15, 0.95), "border": Color(0.45, 0.45, 0.6)}
@@ -52,12 +53,23 @@ func start_combat(player_unit: Dictionary, enemy_building: Node2D) -> void:
 	_p_hp  = pstats["hp"]
 	_p_max = pstats["hp"]
 	_p_atk = pstats["atk"]
-	_e_hp  = ENEMY_STATS["hp"]
+	_e_hp  = _get_or_init_enemy_hp()
 	_e_max = ENEMY_STATS["hp"]
 	_e_atk = ENEMY_STATS["atk"]
 
 	_build_ui(pstats["label"])
 	show()
+
+func _get_or_init_enemy_hp() -> int:
+	"""Read the camp's current defender HP, persisted on the barracks node so
+	partial damage survives closing the modal and saving/loading the game."""
+	if not is_instance_valid(_enemy_building):
+		return ENEMY_STATS["hp"]
+	var hp: int = _enemy_building.get_meta("enemy_hp", -1)
+	if hp < 0:
+		hp = ENEMY_STATS["hp"]
+		_enemy_building.set_meta("enemy_hp", hp)
+	return hp
 
 # ─── Build UI ─────────────────────────────────────────────────────────────────
 func _build_ui(player_label: String) -> void:
@@ -86,6 +98,12 @@ func _build_ui(player_label: String) -> void:
 	row.add_child(vs)
 	row.add_child(_e_panel)
 
+	_raid_timer_lbl = Label.new()
+	_raid_timer_lbl.text = _get_raid_countdown_text()
+	_raid_timer_lbl.add_theme_font_size_override("font_size", 12)
+	_raid_timer_lbl.add_theme_color_override("font_color", Color(0.95, 0.55, 0.25))
+	_raid_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
 	_log.fit_content = true
@@ -93,6 +111,7 @@ func _build_ui(player_label: String) -> void:
 	_log.text = "Your [b]%s[/b] faces a [b]Marauder[/b]!\nClick [b]Attack[/b] to strike." % player_label
 
 	add_content_child(row)
+	add_content_child(_raid_timer_lbl)
 	add_content_child(_log)
 
 	_attack_btn = Button.new()
@@ -101,7 +120,30 @@ func _build_ui(player_label: String) -> void:
 	_attack_btn.pressed.connect(_on_attack_pressed)
 	add_footer_child(_attack_btn)
 
+	# Panels are built at full HP by default — sync them to any already-taken damage
+	_refresh_bars()
+
 	fit_to_content()
+
+func refresh_raid_timer() -> void:
+	"""Recompute the countdown label — called by game.gd whenever a day ends."""
+	if is_instance_valid(_raid_timer_lbl):
+		_raid_timer_lbl.text = _get_raid_countdown_text()
+
+func _get_raid_countdown_text() -> String:
+	"""Days remaining until this specific camp raids a player building."""
+	if not is_instance_valid(_enemy_building) or not is_instance_valid(_game) or not is_instance_valid(_game.turn_manager):
+		return ""
+	if not is_instance_valid(_game.wave_spawner):
+		return ""
+	var next_attack_day: int = _game.wave_spawner.get_or_init_attack_day(_enemy_building)
+	var days_left: int = next_attack_day - _game.turn_manager.get_day()
+	if days_left <= 0:
+		return "🔥 This camp is raiding a building this turn!"
+	elif days_left == 1:
+		return "🔥 This camp raids in 1 day!"
+	else:
+		return "🔥 This camp raids in %d days" % days_left
 
 func _make_fighter_panel(unit_name: String, max_hp: int, is_enemy: bool) -> PanelContainer:
 	var panel = PanelContainer.new()
@@ -156,6 +198,8 @@ func _on_attack_pressed() -> void:
 	# Player hits enemy
 	var p_dmg = _p_atk + randi() % 4
 	_e_hp = max(0, _e_hp - p_dmg)
+	if is_instance_valid(_enemy_building):
+		_enemy_building.set_meta("enemy_hp", _e_hp)
 	_flash(_e_panel)
 	_refresh_bars()
 	_log.text = "You deal [color=#FF8866]%d damage[/color] to the Marauder!" % p_dmg

@@ -65,6 +65,7 @@ var turn_events_modal: Control
 var turn_event_manager: Node
 var notification_panel: Control
 var world_event_modal: Control
+var active_combat_modal: Control  # Tracked so its raid timer can be refreshed on End Day
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
 # Pending pop growth to notify at end of _on_end_day_pressed (after world event)
@@ -4741,6 +4742,15 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			if building_info.has("display_name") and not building_info["display_name"].is_empty():
 				building_scene.set_meta("display_name", building_info["display_name"])
 			
+			# Restore marauder camp state (raid timer + defender HP) if present
+			if building_type == "barracks":
+				var saved_next_attack_day: int = building_info.get("next_attack_day", -1)
+				if saved_next_attack_day >= 0:
+					building_scene.set_meta("next_attack_day", saved_next_attack_day)
+				var saved_enemy_hp: int = building_info.get("enemy_hp", -1)
+				if saved_enemy_hp >= 0:
+					building_scene.set_meta("enemy_hp", saved_enemy_hp)
+			
 			# Auto-create jobs if they're missing (use max capacity, not current occupancy)
 			if saved_jobs.is_empty():
 				var max_capacity = _get_worker_capacity(building_type)
@@ -5154,10 +5164,14 @@ func _on_end_day_pressed():
 		# Always refresh the resource bar
 		if resource_bar:
 			resource_bar.refresh()
-		
+
 		# Tick wave spawner — may trigger a new enemy wave
 		if is_instance_valid(wave_spawner):
 			wave_spawner.on_day_end(turn_manager.get_day())
+
+		# Keep an open combat modal's raid countdown in sync with the new day
+		if is_instance_valid(active_combat_modal) and active_combat_modal.visible:
+			active_combat_modal.refresh_raid_timer()
 
 		# Fire a random world event each turn
 		_fire_random_world_event()
@@ -5461,6 +5475,8 @@ func _open_combat_modal(enemy_building: Node2D) -> void:
 	var CombatModalScript = preload("res://scripts/ui/combat_modal.gd")
 	var modal = CombatModalScript.new(self)
 	ui_layer.add_child(modal)
+	modal.modal_closed.connect(func(_type): modal.queue_free())
+	active_combat_modal = modal
 	modal.start_combat(best_unit, enemy_building)
 
 func remove_enemy_barracks_node(building_node: Node2D) -> void:
@@ -5889,7 +5905,9 @@ func _execute_save() -> bool:
 					"resource_jobs": child.get_meta("resource_jobs", []),
 					"display_name": child.get_meta("display_name", ""),
 					"farm_state": child.get_meta("farm_state", ""),
-					"farm_worker_assigned": child.get_meta("farm_worker_assigned", false)
+					"farm_worker_assigned": child.get_meta("farm_worker_assigned", false),
+					"next_attack_day": child.get_meta("next_attack_day", -1),
+					"enemy_hp": child.get_meta("enemy_hp", -1)
 				}
 				
 				buildings_data.append(building_info)

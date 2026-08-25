@@ -7,6 +7,7 @@ extends Node
 # --- Config ---
 const WAVE_INTERVAL: int = 28        # Days between waves (one "season")
 const SPAWN_CANDIDATE_POOL: int = 8  # Pick randomly from the N farthest valid tiles
+const ATTACK_INTERVAL: int = 10      # Days between marauder raids on player buildings
 
 # Atlas coords from world_gen — tiles we can build on
 const BUILDABLE_ATLAS = [
@@ -35,6 +36,7 @@ func on_day_end(current_day: int):
 		wave_number += 1
 		next_wave_day += WAVE_INTERVAL
 		_spawn_wave(wave_number)
+	_process_marauder_attacks(current_day)
 
 # --------------------------------------------------------------- spawn -----
 
@@ -49,7 +51,9 @@ func _spawn_wave(wave_num: int):
 		DebugConfig.dprint("wave", ["WaveSpawner: No valid spawn tile found for wave %d. Skipping." % wave_num])
 		return
 
-	_place_enemy_barracks(spawn_tile, enemy_player_id)
+	var barracks_node = _place_enemy_barracks(spawn_tile, enemy_player_id)
+	if is_instance_valid(barracks_node):
+		_spawn_marauder_units(barracks_node, enemy_player_id, 5)
 	wave_spawned.emit(wave_num, enemy_player_id, spawn_tile)
 	DebugConfig.dprint("wave", ["WaveSpawner: Wave %d enemy (player %d) barracks placed at tile %s." % [wave_num, enemy_player_id, str(spawn_tile)]])
 
@@ -149,12 +153,12 @@ func _tile_occupied(tile_coords: Vector2i) -> bool:
 
 # ---------------------------------------------------------- placement -----
 
-func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int):
+func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2D:
 	var building_type = "barracks"
 	var texture_path = "res://assets/buildings/human_barracks.png"
 	if not ResourceLoader.exists(texture_path):
 		push_error("WaveSpawner: Barracks texture not found at %s" % texture_path)
-		return
+		return null
 
 	var building_id = game._get_next_building_id(building_type)
 	var building_name = building_type + str(building_id)
@@ -188,8 +192,171 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int):
 
 	game.map_objects_holder.add_child(building_scene)
 
+	# Schedule this camp's first raid on a player building
+	building_scene.set_meta("next_attack_day", game.turn_manager.get_day() + ATTACK_INTERVAL)
+
 	# Register in the enemy player's buildings list
 	if game.players_data.has(owner_player_id):
 		game.players_data[owner_player_id]["buildings"].append(building_name)
 
 	DebugConfig.dprint("wave", ["WaveSpawner: Placed %s ('%s') for player %d at world %s." % [building_type, building_name, owner_player_id, str(world_pos)]])
+	return building_scene
+
+# -------------------------------------------------------- unit spawning ----
+
+func _spawn_marauder_units(barracks_node: Node2D, owner_player_id: int, count: int) -> void:
+	"""Spawn `count` marauder units at the camp. They live under the marauder player's
+	data only (never player 1's unit list) and idle-wander around their barracks."""
+	if not game.players_data.has(owner_player_id):
+		return
+	var barracks_name: String = barracks_node.name
+	for _i in range(count):
+		var uid: String = game._get_next_unit_id()
+		var scatter_angle: float = randf() * TAU
+		var scatter_dist: float = randf_range(20.0, 60.0)
+		var spawn_pos: Vector2 = barracks_node.position + Vector2(cos(scatter_angle), sin(scatter_angle)) * scatter_dist
+		var unit_data: Dictionary = {
+			"unique_id": uid,
+			"name": game._generate_random_name("human", "male"),
+			"type": "marauder",
+			"race": "human",
+			"gender": "male",
+			"player_id": owner_player_id,
+			"position": spawn_pos,
+			"living_quarters": null,
+			"job": barracks_name,  # Anchors idle-wander to the barracks (their "town centre")
+			"assigned_job_index": -1,
+			"previous_job": null,
+			"job_connections": [],
+			"current_path": [],
+			"path_index": 0,
+			"movement_state": "idle_wander",
+			"movement_target": null,
+			"movement_cycle_step": 0,
+			"work_timer": randf_range(0.0, 3.0),
+			"wander_wait_time": randf_range(1.0, 4.0),
+			"movement_speed": 25.0,
+			"speed_multiplier": randf_range(0.85, 1.15),
+			"sprite_id": uid,
+			"specialties": [],
+			"training": null
+		}
+		game.players_data[owner_player_id]["units"].append(unit_data)
+		game._spawn_event_unit_sprite(unit_data)
+	DebugConfig.dprint("wave", ["WaveSpawner: Spawned %d marauder units for player %d at barracks '%s'." % [count, owner_player_id, barracks_name]])
+
+# --------------------------------------------------------- raid attacks ----
+
+func _process_marauder_attacks(current_day: int) -> void:
+	"""Check every enemy barracks and raid a player building once its timer is up."""
+	if not is_instance_valid(game.map_objects_holder):
+		return
+	for child in game.map_objects_holder.get_children():
+		if not game._is_building_node(child):
+			continue
+		if child.get_meta("building_type", "") != "barracks":
+			continue
+		var owner_player = child.get_meta("owner_player", 1)
+		if not game.players_data.has(owner_player):
+			continue
+		if game.players_data[owner_player].get("faction", "") != "enemy":
+			continue
+		var next_attack_day: int = get_or_init_attack_day(child)
+		if current_day < next_attack_day:
+			continue
+		_launch_attack(child, current_day)
+		child.set_meta("next_attack_day", current_day + ATTACK_INTERVAL)
+
+# ------------------------------------------------------------------ misc ---
+
+func get_or_init_attack_day(barracks_node: Node2D) -> int:
+	"""Read a camp's next raid day, backfilling it for camps that predate this
+	timer (e.g. loaded saves) instead of leaving them stuck forever."""
+	var next_attack_day: int = barracks_node.get_meta("next_attack_day", -1)
+	if next_attack_day < 0:
+		next_attack_day = game.turn_manager.get_day() + ATTACK_INTERVAL
+		barracks_node.set_meta("next_attack_day", next_attack_day)
+	return next_attack_day
+
+func _find_nearest_target_building(barracks_node: Node2D) -> Node2D:
+	"""Find the nearest player-1 building that isn't a town centre."""
+	var nearest: Node2D = null
+	var nearest_dist: float = INF
+	for child in game.map_objects_holder.get_children():
+		if not game._is_building_node(child):
+			continue
+		if child.get_meta("owner_player", 1) != 1:
+			continue  # Only raid the human player's buildings
+		if child.get_meta("building_type", "") == "town_center":
+			continue  # Town centre is protected
+		var dist: float = barracks_node.position.distance_to(child.position)
+		if dist < nearest_dist:
+			nearest_dist = dist
+			nearest = child
+	return nearest
+
+func _launch_attack(barracks_node: Node2D, current_day: int) -> void:
+	"""Raid the nearest player building: destroy it and kill every unit working there."""
+	var target: Node2D = _find_nearest_target_building(barracks_node)
+	if not is_instance_valid(target):
+		return  # Nothing left to raid but the town centre
+
+	var building_name: String = target.name
+	var building_type: String = target.get_meta("building_type", "unknown")
+	var target_owner: int = target.get_meta("owner_player", 1)
+	var target_pos: Vector2 = target.position
+
+	var killed_count: int = 0
+	if game.players_data.has(target_owner):
+		var player_units: Array = game.players_data[target_owner].get("units", [])
+		var survivors: Array = []
+		for unit in player_units:
+			var job: String = unit.get("job", "") if unit.get("job", null) != null else ""
+			var works_here: bool = job == building_name or job.begins_with(building_name + "_")
+			if works_here:
+				killed_count += 1
+				var uid: String = unit.get("unique_id", "")
+				if uid != "" and is_instance_valid(game.map_objects_holder):
+					var sprite = game.map_objects_holder.get_node_or_null(uid)
+					if is_instance_valid(sprite):
+						sprite.queue_free()
+				game.unit_sprite_map.erase(uid)
+			else:
+				# Building's gone — clear the reference for anyone who merely lived there
+				if unit.get("living_quarters", null) == building_name:
+					unit["living_quarters"] = null
+				survivors.append(unit)
+		game.players_data[target_owner]["units"] = survivors
+
+	game.remove_building_from_player(building_name, target_owner)
+	target.queue_free()
+
+	if game.players_data.has(target_owner):
+		game.update_player_population(target_owner)
+	if is_instance_valid(game.resource_bar):
+		game.resource_bar.refresh()
+
+	var type_label: String = building_type.capitalize().replace("_", " ")
+	var body: String
+	if killed_count > 0:
+		body = "The %s was razed. %d %s lost." % [type_label, killed_count, "unit was" if killed_count == 1 else "units were"]
+	else:
+		body = "The %s was razed to the ground." % type_label
+
+	if is_instance_valid(game.game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game.game_log.add(current_day, GL.Category.COMBAT, "⚔ Marauders raided and destroyed %s! %s" % [building_name, body])
+
+	if is_instance_valid(game.turn_event_manager):
+		game.turn_event_manager.push_event("Marauders Raid!", body, "🔥")
+
+	if is_instance_valid(game.notification_panel):
+		game.notification_panel.push(
+			"Marauders Raid!",
+			body,
+			"🔥",
+			Color(0.85, 0.18, 0.10),
+			{"action": "pan_to", "world_pos": target_pos}
+		)
+
+	DebugConfig.dprint("wave", ["WaveSpawner: Marauders razed %s (%s), killing %d units." % [building_name, building_type, killed_count]])
