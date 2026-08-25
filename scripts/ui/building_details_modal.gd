@@ -424,7 +424,6 @@ func _extract_building_data(building: Node2D) -> Dictionary:
 	# Get occupancy data based on building type
 	if data["building_type"] == "barracks":
 		data["station_occupancy"] = building.get_meta("station_occupancy", 0)
-		data["training_occupancy"] = building.get_meta("training_occupancy", 0)
 	else:
 		data["living_occupancy"] = building.get_meta("living_occupancy", 0)
 		data["worker_occupancy"] = building.get_meta("worker_occupancy", 0)
@@ -1056,11 +1055,10 @@ func _populate_building_info():
 		var building_type = building_data.get("building_type", "unknown")
 		DebugConfig.dprint("buildings", ["UI DEBUG: Populating capacity section for building_type: ", building_type])
 		
-		# Barracks uses station and training job types
+		# Barracks has a single job type: soldiers stationed there auto-train
 		if building_type == "barracks":
 			DebugConfig.dprint("buildings", ["UI DEBUG: Creating barracks capacity controls"])
-			_create_capacity_control(capacity_container, "Station:", 5, "station")
-			_create_capacity_control(capacity_container, "Training:", 5, "training")
+			_create_capacity_control(capacity_container, "Soldiers:", 10, "station")
 		elif building_type == "farm":
 			# Farm tile — show current growth state and worker assignment
 			_create_farm_state_display(capacity_container)

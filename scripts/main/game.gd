@@ -263,10 +263,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 			building_scene.set_meta("farm_state", "tilled")
 			building_scene.set_meta("farm_worker_assigned", false)
 		
-		# Add barracks-specific occupancy types
+		# Add barracks-specific occupancy (single job type: stationed soldiers-in-training)
 		if building_type == "barracks":
 			setup_data["station_occupancy"] = 0
-			setup_data["training_occupancy"] = 0
 		
 		if building_scene.has_method("setup"):
 			building_scene.setup(setup_data)
@@ -275,10 +274,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		building_scene.set_meta("living_occupancy", 0)
 		building_scene.set_meta("worker_occupancy", 0)
 		
-		# Set barracks-specific occupancy types
+		# Set barracks-specific occupancy
 		if building_type == "barracks":
 			building_scene.set_meta("station_occupancy", 0)
-			building_scene.set_meta("training_occupancy", 0)
 		
 		# Initialize empty jobs array for work buildings
 		building_scene.set_meta("resource_jobs", [])
@@ -893,9 +891,9 @@ func _count_actual_occupancy(building_name: String, capacity_type: String, owner
 			count += 1
 		elif capacity_type == "worker" and job == building_name:
 			count += 1
-		elif (capacity_type == "station" or capacity_type == "training"):
+		elif capacity_type == "station":
 			# For barracks jobs, check the job naming convention
-			var expected_job = building_name + "_" + capacity_type
+			var expected_job = building_name + "_station"
 			if job == expected_job:
 				count += 1
 	
@@ -944,7 +942,7 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 		
 		return true
 	
-	# For non-worker capacity types (living, station, training), use original logic
+	# For non-worker capacity types (living, station), use original logic
 	var current_occupancy = building_node.get_meta(capacity_type + "_occupancy", 0)
 	var occupancy_difference = new_value - current_occupancy
 	
@@ -954,7 +952,7 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 		var available = 0
 		if capacity_type == "living":
 			available = pop_data.get("unhoused", 0)
-		elif capacity_type == "station" or capacity_type == "training":
+		elif capacity_type == "station":
 			# For barracks jobs, check unemployed population
 			available = pop_data.get("unemployed", 0)
 		
@@ -970,7 +968,7 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	# Auto-assign units to this building if capacity increased
 	if occupancy_difference > 0:
 		# For barracks: ensure job slots exist before assigning units
-		if capacity_type == "station" or capacity_type == "training":
+		if capacity_type == "station":
 			var current_jobs = building_node.get_meta("resource_jobs", []).size()
 			_create_jobs_for_worker_capacity(building_node, current_jobs + occupancy_difference)
 		# Assign units to existing unassigned jobs (jobs exist at max capacity from creation)
@@ -1232,9 +1230,9 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 			should_remove = true
 		elif capacity_type == "worker" and unit.get("job", null) == building_name:
 			should_remove = true
-		elif (capacity_type == "station" or capacity_type == "training"):
+		elif capacity_type == "station":
 			# For barracks jobs, look for the specific job name pattern
-			var expected_job = building_name + "_" + capacity_type
+			var expected_job = building_name + "_station"
 			if unit.get("job", null) == expected_job:
 				should_remove = true
 		
@@ -1262,8 +1260,9 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 				unit["living_quarters"] = null
 			elif capacity_type == "worker":
 				unit["job"] = null
-			elif capacity_type == "station" or capacity_type == "training":
+			elif capacity_type == "station":
 				unit["job"] = null
+				_cancel_unit_training(unit)  # No longer stationed — stop any in-progress training
 			
 			assignments_removed += 1
 			DebugConfig.dprint("population", ["Removed ", capacity_type, " assignment for unit ", unit_id, " due to capacity reduction at ", building_name])
@@ -2453,11 +2452,10 @@ func _spawn_unit(unit_data: Dictionary):
 		unit_sprite.name = unit_data["unique_id"]  # Use unique_id for node name
 		unit_sprite.position = unit_data["position"]
 		unit_sprite.z_index = 6  # Above buildings but below UI
-		if unit_data.get("is_pet", false):
-			unit_sprite.scale = Vector2(0.25, 0.25)
+		unit_sprite.scale = _get_unit_sprite_scale(unit_data)
 		
 	# Load appropriate texture based on race and type
-		var texture_path = "res://assets/units/wilson.png" if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"))
+		var texture_path = "res://assets/units/wilson.png" if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"), unit_data.get("type", "peasant"))
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
 		else:
@@ -2595,10 +2593,9 @@ func _spawn_event_unit_sprite(unit: Dictionary):
 	unit_sprite.position = unit["position"]
 	unit_sprite.z_index = 6
 	unit_sprite.centered = true
-	if unit.get("is_pet", false):
-		unit_sprite.scale = Vector2(0.25, 0.25)
+	unit_sprite.scale = _get_unit_sprite_scale(unit)
 
-	var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
+	var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
 	if ResourceLoader.exists(texture_path):
 		unit_sprite.texture = load(texture_path)
 	else:
@@ -2748,11 +2745,21 @@ func _generate_random_name(race: String, gender: String = "male") -> String:
 	
 	return random_given + " " + random_surname
 
-func _get_unit_sprite_path(race: String, gender: String) -> String:
-	"""Get the sprite path for a unit based on race and gender"""
+func _get_unit_sprite_path(race: String, gender: String, type: String = "peasant") -> String:
+	"""Get the sprite path for a unit based on race, gender, and type"""
+	if type == "soldier":
+		return "res://assets/units/human_soldier.png"
 	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
 	var race_prefix = race.to_lower()
 	return "res://assets/units/%s_%s_peasant_side.png" % [race_prefix, gender_prefix]
+
+func _get_unit_sprite_scale(unit: Dictionary) -> Vector2:
+	"""Per-texture scale correction — human_soldier.png is drawn at 2x the size of other unit sprites"""
+	if unit.get("is_pet", false):
+		return Vector2(0.25, 0.25)
+	if unit.get("type", "peasant") == "soldier":
+		return Vector2(0.5, 0.5)
+	return Vector2.ONE
 
 func _get_unit_portrait_path(race: String, gender: String) -> String:
 	"""Get the portrait path for a unit based on race and gender"""
@@ -3015,7 +3022,7 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 			can_assign = true
 		elif capacity_type == "worker" and job == null:
 			can_assign = true
-		elif (capacity_type == "station" or capacity_type == "training") and job == null:
+		elif capacity_type == "station" and job == null:
 			can_assign = true
 		
 		if can_assign:
@@ -3033,9 +3040,9 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections
-			elif capacity_type == "station" or capacity_type == "training":
+			elif capacity_type == "station":
 				# Barracks uses a compound job name so unit_view_modal can strip the suffix
-				unit["job"] = building_id + "_" + capacity_type
+				unit["job"] = building_id + "_station"
 				if buildings_connections_cache.has(building_id):
 					unit["job_connections"] = buildings_connections_cache[building_id]
 				else:
@@ -3044,6 +3051,9 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 						var connections = _find_building_connections_for_unit(job_building_node)
 						unit["job_connections"] = connections
 						buildings_connections_cache[building_id] = connections
+				# Peasants stationed at the barracks automatically begin soldier training
+				if unit.get("type", "peasant") == "peasant":
+					_start_unit_training(unit, "soldier")
 			
 			# Also update the job metadata to track which unit is assigned
 			var jobs = building_node.get_meta("resource_jobs", [])
@@ -3181,11 +3191,10 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		
 		unit_sprite.z_index = 6
 		unit_sprite.centered = true  # Center the sprite on its position
-		if unit.get("is_pet", false):
-			unit_sprite.scale = Vector2(0.25, 0.25)
+		unit_sprite.scale = _get_unit_sprite_scale(unit)
 		
 		# Load texture based on unit's race and gender
-		var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"))
+		var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
 		if ResourceLoader.exists(texture_path):
 			var texture = load(texture_path)
 			unit_sprite.texture = texture
@@ -3493,6 +3502,13 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			# Route based on assignment: unassigned units return home then wander
 			if unit.get("job", null) == null or unit.get("living_quarters", null) == null:
 				_start_return_home(unit)
+			elif is_instance_valid(_get_stationary_job_building(unit)):
+				# Stationary job (barracks/research) — wander near the workplace instead of commuting
+				unit["work_timer"] += delta
+				var wander_wait = unit.get("wander_wait_time", 3.0)
+				if unit["work_timer"] >= wander_wait:
+					unit["work_timer"] = 0.0
+					_start_idle_wander(unit)
 			else:
 				# Fully assigned — run work cycle
 				unit["work_timer"] += delta
@@ -3553,14 +3569,14 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			var current_path = unit.get("current_path", [])
 			if current_path.is_empty():
 				# No path — go back to appropriate idle state
-				var has_job = unit.get("job", null) != null and unit.get("living_quarters", null) != null
+				var has_job = unit.get("job", null) != null and unit.get("living_quarters", null) != null and not is_instance_valid(_get_stationary_job_building(unit))
 				unit["movement_state"] = "idle" if has_job else "idle_wander"
 				return
 			
 			var path_index = unit.get("path_index", 0)
 			if path_index >= current_path.size():
 				# Reached end of path
-				var has_job = unit.get("job", null) != null and unit.get("living_quarters", null) != null
+				var has_job = unit.get("job", null) != null and unit.get("living_quarters", null) != null and not is_instance_valid(_get_stationary_job_building(unit))
 				if has_job:
 					unit["movement_state"] = "waiting"  # Work cycle: wait at destination
 					unit["work_timer"] = 0.0
@@ -3704,27 +3720,41 @@ func _start_return_home(unit: Dictionary):
 	unit["movement_cycle_step"] = 0
 	unit["work_timer"] = 0.0
 
+func _get_stationary_job_building(unit: Dictionary) -> Node2D:
+	"""Returns the workplace node if unit's job is a 'stationary' role (barracks/research) that
+	wanders near the worksite instead of running the fetch-a-resource commute cycle. Null otherwise."""
+	var job = unit.get("job", null)
+	if job == null or not map_objects_holder:
+		return null
+	var job_building_name: String = job
+	if job.contains("_station") or job.contains("_training"):
+		job_building_name = job.substr(0, job.rfind("_"))
+	var job_node = map_objects_holder.get_node_or_null(NodePath(job_building_name))
+	if not job_node:
+		return null
+	var btype = job_node.get_meta("building_type", "")
+	if btype == "barracks" or btype == "research":
+		return job_node
+	return null
+
 func _start_idle_wander(unit: Dictionary):
-	"""Pick a random walkable tile near the anchor (barracks if stationed, else town centre) and A* pathfind there"""
+	"""Pick a random walkable tile near the anchor (workplace if stationed, else town centre) and A* pathfind there"""
 	if not tilemap_layer:
 		return
 	var player_id = unit.get("player_id", 1)
 	
-	# Use barracks position as anchor if unit is assigned to one
+	# Use the workplace position as anchor if unit has a stationary job (barracks/research)
 	var anchor = Vector2.ZERO
-	var job = unit.get("job")
-	if job and map_objects_holder:
-		var job_node = map_objects_holder.get_node_or_null(NodePath(job))
-		if job_node:
-			var btype = job_node.get_meta("building_type", "")
-			if btype == "barracks":
-				anchor = job_node.position
+	var wander_radius = 8  # tiles — default when wandering near town centre
+	var stationary_building = _get_stationary_job_building(unit)
+	if is_instance_valid(stationary_building):
+		anchor = stationary_building.position
+		wander_radius = 4  # Stay closer to their worksite
 	if anchor == Vector2.ZERO:
 		anchor = _get_player_town_centre_position(player_id)
 	if anchor == Vector2.ZERO:
 		return
 	var anchor_tile = tilemap_layer.local_to_map(anchor)
-	var wander_radius = 8  # tiles
 	var target_tile: Vector2i = anchor_tile  # fallback
 	var found = false
 	for _attempt in range(15):
@@ -4707,10 +4737,9 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 				"worker_occupancy": building_info.get("worker_occupancy", 0)
 			}
 			
-			# Add barracks-specific occupancy types if present
+			# Add barracks-specific occupancy if present (single job type: station)
 			if building_type == "barracks":
 				setup_data["station_occupancy"] = building_info.get("station_occupancy", 0)
-				setup_data["training_occupancy"] = building_info.get("training_occupancy", 0)
 			
 			if building_scene.has_method("setup"):
 				building_scene.setup(setup_data)
@@ -4719,10 +4748,9 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			building_scene.set_meta("living_occupancy", building_info.get("living_occupancy", 0))
 			building_scene.set_meta("worker_occupancy", building_info.get("worker_occupancy", 0))
 			
-			# Set barracks-specific occupancy types if present
+			# Set barracks-specific occupancy if present
 			if building_type == "barracks":
 				building_scene.set_meta("station_occupancy", building_info.get("station_occupancy", 0))
-				building_scene.set_meta("training_occupancy", building_info.get("training_occupancy", 0))
 			
 			# Restore farm state if it's a farm tile
 			if building_type == "farm":
@@ -5634,6 +5662,7 @@ func _process_training_progress():
 				unit["training"] = null
 				# Update unit type to reflect their highest specialty
 				_update_unit_type_from_specialties(unit)
+				_update_unit_sprite_texture(unit)
 				DebugConfig.dprint("wave", ["Game: %s completed %s training! Specialties: %s, Type: %s" % [unit.get("name", "?"), t_type, str(unit.get("specialties", [])), unit.get("type", "?")]])
 				if is_instance_valid(game_log):
 					var GL = preload("res://scripts/managers/game_log.gd")
@@ -5652,6 +5681,21 @@ func _update_unit_type_from_specialties(unit: Dictionary):
 	else:
 		# Fallback: use the first specialty name
 		unit["type"] = specialties[0]
+
+func _update_unit_sprite_texture(unit: Dictionary) -> void:
+	"""Refresh a unit's sprite texture to match its current type (e.g. after training completes)."""
+	var uid: String = unit.get("unique_id", "")
+	if uid == "" or not is_instance_valid(map_objects_holder):
+		return
+	var sprite = unit_sprite_map.get(uid)
+	if not is_instance_valid(sprite):
+		sprite = map_objects_holder.get_node_or_null(uid)
+	if not is_instance_valid(sprite):
+		return
+	var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+	if ResourceLoader.exists(texture_path):
+		sprite.texture = load(texture_path)
+		sprite.scale = _get_unit_sprite_scale(unit)
 
 # Footer button handlers
 func _on_build_pressed():
@@ -5917,6 +5961,7 @@ func _execute_save() -> bool:
 					"construction_day": child.get_meta("construction_day", 0),
 					"living_occupancy": child.get_meta("living_occupancy", 0),
 					"worker_occupancy": child.get_meta("worker_occupancy", 0),
+					"station_occupancy": child.get_meta("station_occupancy", 0),
 					"resource_jobs": child.get_meta("resource_jobs", []),
 					"display_name": child.get_meta("display_name", ""),
 					"farm_state": child.get_meta("farm_state", ""),

@@ -179,7 +179,6 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2
 		"living_occupancy": 0,
 		"worker_occupancy": 0,
 		"station_occupancy": 0,
-		"training_occupancy": 0,
 	}
 	if building_scene.has_method("setup"):
 		building_scene.setup(setup_data)
@@ -187,7 +186,6 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2
 	building_scene.set_meta("living_occupancy", 0)
 	building_scene.set_meta("worker_occupancy", 0)
 	building_scene.set_meta("station_occupancy", 0)
-	building_scene.set_meta("training_occupancy", 0)
 	building_scene.set_meta("resource_jobs", [])
 
 	game.map_objects_holder.add_child(building_scene)
