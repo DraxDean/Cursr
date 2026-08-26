@@ -43,14 +43,6 @@ const EVENTS: Array = [
 	},
 	{
 		"id": "event_human_f2", "tier": "F",
-		"title": "Stray Dog Adopted",
-		"body": "A friendly stray wandered into the marketplace and was adopted by the blacksmith's apprentice.",
-		"icon": "🐕",
-		"effects": {"resources": {"food": -2}},
-		"choices": [{"label": "Aww. (Food -2)", "effects": null}]
-	},
-	{
-		"id": "event_human_f3", "tier": "F",
 		"title": "Minor Street Squabble",
 		"body": "Two merchants argued outside the inn. A guard had to intervene. Productivity dropped slightly.",
 		"icon": "🗣",
@@ -107,6 +99,22 @@ const EVENTS: Array = [
 			{"label": "Smoke Them Out (Gold +10, Food -30)", "effects": null},
 			{"label": "Leave Them Be", "effects": {"resources": {"food": -5}}}
 		]
+	},
+	{
+		"id": "event_human_d5", "tier": "D",
+		"title": "Stray Dog Adopted",
+		"body": "A friendly stray dog wandered into the marketplace and has decided to stay. It could use a new best friend.",
+		"icon": "🐕",
+		"effects": {"resources": {"food": -2}, "add_pet": "dog"},
+		"choices": [{"label": "Welcome the Pup (Food -2)", "effects": null}]
+	},
+	{
+		"id": "event_human_d6", "tier": "D",
+		"title": "Stray Cat Adopted",
+		"body": "A sleek cat has taken a liking to the granary and refuses to leave. Perhaps it's found a new home.",
+		"icon": "🐈",
+		"effects": {"resources": {"food": -2}, "add_pet": "cat"},
+		"choices": [{"label": "Welcome the Cat (Food -2)", "effects": null}]
 	},
 
 	# C TIER

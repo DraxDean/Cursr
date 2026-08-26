@@ -2341,6 +2341,7 @@ func _create_initial_units():
 		var pet_name: String = world_data.get("player_data", {}).get("pet_name", "Wilson")
 		if pet_name.strip_edges().is_empty():
 			pet_name = "Wilson"
+		var pet_type: String = world_data.get("player_data", {}).get("pet_type", "cat")
 		var pet_id: String = _get_next_unit_id()
 		var pet_race: String = players_data.get(1, {}).get("race", "human")
 		var pet_data: Dictionary = {
@@ -2348,6 +2349,7 @@ func _create_initial_units():
 			"name": pet_name,
 			"type": "peasant",
 			"is_pet": true,
+			"pet_type": pet_type,
 			"race": pet_race,
 			"gender": "male",
 			"player_id": 1,
@@ -2481,7 +2483,7 @@ func _spawn_unit(unit_data: Dictionary):
 		unit_sprite.scale = _get_unit_sprite_scale(unit_data)
 		
 	# Load appropriate texture based on race and type
-		var texture_path = "res://assets/units/wilson.png" if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"), unit_data.get("type", "peasant"))
+		var texture_path = _get_pet_sprite_path(unit_data.get("pet_type", "cat")) if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"), unit_data.get("type", "peasant"))
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
 		else:
@@ -2621,7 +2623,7 @@ func _spawn_event_unit_sprite(unit: Dictionary):
 	unit_sprite.centered = true
 	unit_sprite.scale = _get_unit_sprite_scale(unit)
 
-	var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+	var texture_path = _get_pet_sprite_path(unit.get("pet_type", "cat")) if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
 	if ResourceLoader.exists(texture_path):
 		unit_sprite.texture = load(texture_path)
 	else:
@@ -2780,6 +2782,10 @@ func _get_unit_sprite_path(race: String, gender: String, type: String = "peasant
 	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
 	var race_prefix = race.to_lower()
 	return "res://assets/units/%s_%s_peasant_side.png" % [race_prefix, gender_prefix]
+
+func _get_pet_sprite_path(pet_type: String) -> String:
+	"""Get the sprite path for the player's companion based on chosen pet type"""
+	return "res://assets/units/dog_1.png" if pet_type == "dog" else "res://assets/units/wilson.png"
 
 func _get_unit_sprite_scale(unit: Dictionary) -> Vector2:
 	"""Per-texture scale correction — human_soldier.png/human_scholar.png are drawn at 2x the size of other unit sprites"""
@@ -3229,7 +3235,7 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		unit_sprite.scale = _get_unit_sprite_scale(unit)
 		
 		# Load texture based on unit's race and gender
-		var texture_path = "res://assets/units/wilson.png" if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+		var texture_path = _get_pet_sprite_path(unit.get("pet_type", "cat")) if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
 		if ResourceLoader.exists(texture_path):
 			var texture = load(texture_path)
 			unit_sprite.texture = texture
@@ -5404,6 +5410,57 @@ func check_research_achievements() -> void:
 		_try_unlock_achievement("research_all")
 
 # ─── Pet system ───────────────────────────────────────────────────────────────
+
+const PET_NAMES := {
+	"dog": ["Rex", "Buddy", "Max", "Charlie", "Daisy", "Duke", "Rusty", "Bella"],
+	"cat": ["Whiskers", "Shadow", "Mittens", "Simba", "Luna", "Oreo", "Salem", "Tom"]
+}
+
+func add_pet_companion(player_id: int, pet_type: String = "cat"):
+	"""Spawn an additional wandering companion pet for a player (used by world events)."""
+	if not players_data.has(player_id):
+		return
+	if not players_data[player_id].has("units"):
+		players_data[player_id]["units"] = []
+	var uid: String = _get_next_unit_id()
+	var anchor: Vector2 = _get_player_town_centre_position(player_id)
+	var scatter_angle: float = randf() * TAU
+	var scatter_dist: float = randf_range(20.0, 60.0)
+	var spawn_pos: Vector2 = anchor + Vector2(cos(scatter_angle), sin(scatter_angle)) * scatter_dist
+	var names: Array = PET_NAMES.get(pet_type, PET_NAMES["cat"])
+	var pet_name: String = names[randi() % names.size()]
+	var unit_data: Dictionary = {
+		"unique_id": uid,
+		"name": pet_name,
+		"type": "peasant",
+		"is_pet": true,
+		"pet_type": pet_type,
+		"race": players_data[player_id].get("race", "human"),
+		"gender": "male",
+		"player_id": player_id,
+		"position": spawn_pos,
+		"living_quarters": null,
+		"job": null,
+		"assigned_job_index": -1,
+		"previous_job": null,
+		"job_connections": [],
+		"current_path": [],
+		"path_index": 0,
+		"movement_state": "idle_wander",
+		"movement_target": null,
+		"movement_cycle_step": 0,
+		"work_timer": randf_range(0.0, 3.0),
+		"wander_wait_time": randf_range(1.0, 4.0),
+		"movement_speed": 20.0,
+		"speed_multiplier": randf_range(0.85, 0.95),
+		"sprite_id": uid,
+		"specialties": [],
+		"training": null,
+		"pet_cooldown_day": 0
+	}
+	players_data[player_id]["units"].append(unit_data)
+	_spawn_event_unit_sprite(unit_data)
+	DebugConfig.dprint("general", ["Game: Event added new %s companion '%s' for player %d" % [pet_type, pet_name, player_id]])
 
 func _on_pet_clicked(pet: Dictionary) -> void:
 	"""Open the pet interaction prompt when the player clicks their companion."""

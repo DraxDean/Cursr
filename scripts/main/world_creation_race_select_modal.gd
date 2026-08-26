@@ -47,6 +47,9 @@ var race_info_container: VBoxContainer
 var building_selected_container: VBoxContainer
 var buildings_grid: GridContainer
 var pet_name_field: LineEdit
+var pet_type_button: Button
+var pet_selection_popup: Control
+var selected_pet_type: String = "cat"
 
 func setup_integrated(game_ref: Node, world_creation_ref: Node, ui_layer: CanvasLayer):
 	game_node = game_ref
@@ -177,6 +180,16 @@ func _create_race_ui_content(parent_container: VBoxContainer):
 	pet_name_field.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pet_name_field.add_theme_font_size_override("font_size", 14)
 	pet_row.add_child(pet_name_field)
+	
+	pet_type_button = Button.new()
+	pet_type_button.custom_minimum_size = Vector2(90, 32)
+	pet_type_button.text = _pet_type_label(selected_pet_type)
+	pet_type_button.expand_icon = true
+	var pet_tex_path = _pet_sprite_path(selected_pet_type)
+	if ResourceLoader.exists(pet_tex_path):
+		pet_type_button.icon = load(pet_tex_path)
+	pet_type_button.pressed.connect(_open_pet_selection_popup)
+	pet_row.add_child(pet_type_button)
 	
 	var pet_hint = Label.new()
 	pet_hint.text = "(will join your settlement)"
@@ -383,14 +396,102 @@ func _finish_race_selection_internal():
 		world_creation_modal.world_data["player_data"].merge({
 			"race": selected_race,
 			"starting_building": selected_building,
-			"pet_name": pet_name
+			"pet_name": pet_name,
+			"pet_type": selected_pet_type
 		})
 	else:
 		world_creation_modal.world_data["player_data"] = {
 			"race": selected_race,
 			"starting_building": selected_building,
-			"pet_name": pet_name
+			"pet_name": pet_name,
+			"pet_type": selected_pet_type
 		}
 	
 	# Clean up and let the normal step progression handle the next steps
 	queue_free()
+
+func _pet_sprite_path(pet_type: String) -> String:
+	return "res://assets/units/dog_1.png" if pet_type == "dog" else "res://assets/units/wilson.png"
+
+func _pet_type_label(pet_type: String) -> String:
+	return "Dog" if pet_type == "dog" else "Cat"
+
+func _open_pet_selection_popup():
+	if is_instance_valid(pet_selection_popup):
+		pet_selection_popup.queue_free()
+	
+	var screen_size = get_viewport().get_visible_rect().size
+	
+	pet_selection_popup = Control.new()
+	pet_selection_popup.name = "PetSelectionPopup"
+	pet_selection_popup.position = Vector2.ZERO
+	pet_selection_popup.size = screen_size
+	pet_selection_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	get_parent().add_child(pet_selection_popup)
+	
+	var overlay = ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.55)
+	overlay.position = Vector2.ZERO
+	overlay.size = screen_size
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	pet_selection_popup.add_child(overlay)
+	
+	var panel_size = Vector2(320, 230)
+	var panel = PanelContainer.new()
+	panel.position = (screen_size - panel_size) / 2
+	panel.size = panel_size
+	pet_selection_popup.add_child(panel)
+	
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	
+	var title = Label.new()
+	title.text = "Choose your companion"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 18)
+	vbox.add_child(title)
+	
+	var options_row = HBoxContainer.new()
+	options_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	options_row.add_theme_constant_override("separation", 24)
+	vbox.add_child(options_row)
+	
+	options_row.add_child(_build_pet_option("cat"))
+	options_row.add_child(_build_pet_option("dog"))
+	
+	var cancel_button = Button.new()
+	cancel_button.text = "Cancel"
+	cancel_button.pressed.connect(func(): pet_selection_popup.queue_free())
+	vbox.add_child(cancel_button)
+
+func _build_pet_option(pet_type: String) -> VBoxContainer:
+	var option = VBoxContainer.new()
+	option.alignment = BoxContainer.ALIGNMENT_CENTER
+	
+	var button = TextureButton.new()
+	button.custom_minimum_size = Vector2(96, 96)
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	var tex_path = _pet_sprite_path(pet_type)
+	if ResourceLoader.exists(tex_path):
+		button.texture_normal = load(tex_path)
+	button.pressed.connect(_on_pet_type_chosen.bind(pet_type))
+	option.add_child(button)
+	
+	var label = Label.new()
+	label.text = _pet_type_label(pet_type)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	option.add_child(label)
+	
+	return option
+
+func _on_pet_type_chosen(pet_type: String):
+	selected_pet_type = pet_type
+	if is_instance_valid(pet_type_button):
+		pet_type_button.text = _pet_type_label(pet_type)
+		var tex_path = _pet_sprite_path(pet_type)
+		if ResourceLoader.exists(tex_path):
+			pet_type_button.icon = load(tex_path)
+	if is_instance_valid(pet_selection_popup):
+		pet_selection_popup.queue_free()

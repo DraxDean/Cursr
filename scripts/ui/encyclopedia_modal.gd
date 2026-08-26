@@ -328,6 +328,9 @@ func _populate_events(v: VBoxContainer):
 			var pop_gain_pct: float = base_fx.get("pop_gain_pct", 0.0)
 			if pop_gain_pct > 0.0:
 				parts.append("+%.0f%% Pop" % pop_gain_pct)
+			var add_pet: String = base_fx.get("add_pet", "")
+			if add_pet != "":
+				parts.append("+1 %s Companion" % add_pet.capitalize())
 			if not parts.is_empty():
 				var fx_lbl = Label.new()
 				fx_lbl.text = "Base effects: " + ", ".join(parts)

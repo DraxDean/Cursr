@@ -219,3 +219,7 @@ func _apply_effects(effects: Dictionary):
 
 	if effects.get("spawn_wave", false):
 		_game.trigger_wave_from_event()
+
+	var add_pet: String = effects.get("add_pet", "")
+	if add_pet != "" and _game.has_method("add_pet_companion"):
+		_game.add_pet_companion(player_id, add_pet)
