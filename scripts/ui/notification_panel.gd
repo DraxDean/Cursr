@@ -83,6 +83,7 @@ func _build_card(data: Dictionary) -> Control:
 		body_btn.add_theme_stylebox_override(s, empty)
 	body_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	body_btn.pressed.connect(func(): notification_clicked.emit(data))
+	body_btn.gui_input.connect(_on_card_gui_input.bind(card))
 	card.add_child(body_btn)
 
 	# Content row (non-interactive, rendered above button)
@@ -133,14 +134,15 @@ func _build_card(data: Dictionary) -> Control:
 	dismiss.custom_minimum_size = Vector2(26, CARD_H)
 	dismiss.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	dismiss.add_theme_font_size_override("font_size", 11)
-	dismiss.pressed.connect(_dismiss_card.bind(card))
+	dismiss.pressed.connect(_try_dismiss_card.bind(card))
+	dismiss.gui_input.connect(_on_card_gui_input.bind(card))
 	hbox.add_child(dismiss)
 
 	# Event cards must be resolved before they can be dismissed
 	var is_event_card: bool = data.get("action", "") == "open_event"
 	if is_event_card:
 		dismiss.disabled = true
-		dismiss.add_theme_color_override("font_color", Color(0.30, 0.30, 0.30))
+		dismiss.modulate.a = 0.0  # Invisible but keeps its layout space — structure stays intact
 		dismiss.tooltip_text = "Resolve this event first."
 		# Tag for later lookup (per-firing instance id, falling back to the static event id)
 		var event_data: Dictionary = data.get("event_data", {})
@@ -153,6 +155,19 @@ func _build_card(data: Dictionary) -> Control:
 
 	return card
 
+func _on_card_gui_input(event: InputEvent, card: Control):
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_try_dismiss_card(card)
+		accept_event()
+
+func _try_dismiss_card(card: Control):
+	"""Dismiss a card unless it's an event still awaiting a decision."""
+	if card.has_meta("dismiss_button"):
+		var dismiss_btn = card.get_meta("dismiss_button")
+		if is_instance_valid(dismiss_btn) and dismiss_btn.disabled:
+			return
+	_dismiss_card(card)
+
 func mark_event_resolved(event_id: String):
 	"""Re-enable the dismiss button on the card matching event_id."""
 	for entry in _cards:
@@ -161,6 +176,7 @@ func mark_event_resolved(event_id: String):
 			var dismiss = panel.get_meta("dismiss_button", null)
 			if is_instance_valid(dismiss):
 				dismiss.disabled = false
+				dismiss.modulate.a = 1.0
 				dismiss.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 				dismiss.tooltip_text = ""
 			break

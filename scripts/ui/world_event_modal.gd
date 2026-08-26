@@ -51,6 +51,9 @@ func show_event(event_data: Dictionary, reopen: bool = false):
 
 func refresh_content():
 	clear_content()
+	# Hide the X entirely while this day-blocking event is still unresolved — no dismissing it
+	if close_button:
+		close_button.visible = _choice_made
 	if _event_data.is_empty():
 		return
 

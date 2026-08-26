@@ -5276,10 +5276,8 @@ func _on_end_day_pressed():
 		if is_instance_valid(active_combat_modal) and active_combat_modal.visible:
 			active_combat_modal.refresh_raid_timer()
 
-		# Fire a random world event each turn
-		_fire_random_world_event()
-
-		# Fire pop growth notification after the world event
+		# Fire pop growth notification first, so the world event (which blocks End Day) ends up
+		# as the most recent — and therefore most prominent — notification card
 		if _pending_pop_growth > 0:
 			var grew := _pending_pop_growth
 			_pending_pop_growth = 0
@@ -5293,6 +5291,9 @@ func _on_end_day_pressed():
 					Color(0.35, 0.75, 1.0)
 				)
 			check_population_achievements()
+
+		# Fire a random world event last, each turn
+		_fire_random_world_event()
 
 		# Daily achievement checks
 		check_day_achievements()
