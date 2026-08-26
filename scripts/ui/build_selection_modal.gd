@@ -23,6 +23,7 @@ var buildings_data = [
 	{"type": "lumberjack", "name": "Lumberjack", "icon": "res://assets/buildings/human_lumberjack.png"},
 	{"type": "stoneworker", "name": "Stoneworker", "icon": "res://assets/buildings/human_stoneworker.png"},
 	{"type": "research", "name": "Research", "icon": "res://assets/buildings/human_research.png"},
+	{"type": "merchant", "name": "Merchant", "icon": "res://assets/buildings/human_merchant1.png"},
 	{"type": "town_center", "name": "Town Center", "icon": "res://assets/buildings/human_towncentre-export.png"},
 	{"type": "farmhouse", "name": "Farmhouse", "icon": "res://assets/buildings/human_farmhouse.png"},
 	{"type": "farm", "name": "Farm", "icon": "res://assets/buildings/human_farm_tilled.png"}
@@ -256,6 +257,7 @@ func _get_building_costs(btype: String) -> Dictionary:
 		"lumberjack": {"Wood": 15, "Stone": 8, "Labor": 80},
 		"stoneworker": {"Wood": 8, "Stone": 15, "Labor": 150},
 		"research": {"Wood": 20, "Stone": 10, "Labor": 120},
+		"merchant": {"Wood": 20, "Stone": 10, "Labor": 120},
 		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15, "Labor": 300},
 		"farmhouse": {"Wood": 15},
 		"farm": {"Wood": 10}
@@ -271,6 +273,7 @@ func _get_building_description(btype: String) -> String:
 		"lumberjack": "Harvests wood from nearby forests. +1 wood per worker.",
 		"stoneworker": "Quarries stone from nearby mountains. +1 stone per worker.",
 		"research": "Advances civilization through research. +3 science per researcher.",
+		"merchant": "Trades goods for profit. +5 gold per trader, +10 once trained as a merchant.",
 		"town_center": "Administrative center. Provides science production.",
 		"farmhouse": "Agricultural center. Manages nearby food production.",
 		"farm": "Food production field. Managed by farmhouse."

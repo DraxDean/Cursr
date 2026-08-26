@@ -97,10 +97,22 @@ func refresh_content():
 	var separator = HSeparator.new()
 	add_content_child(separator)
 	
+	# Unit rows live in a scroll area so long rosters don't get clipped off-screen
+	var units_scroll = ScrollContainer.new()
+	units_scroll.custom_minimum_size = Vector2(0, 260)
+	units_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	units_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	units_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_content_child(units_scroll)
+	
+	var units_list = VBoxContainer.new()
+	units_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	units_scroll.add_child(units_list)
+	
 	# Add unit rows
 	for unit in all_units:
 		var row_container = HBoxContainer.new()
-		add_content_child(row_container)
+		units_list.add_child(row_container)
 		
 		# Make unit name clickable
 		_add_clickable_unit_cell(row_container, unit.get("name", "unnamed"), unit, 100)

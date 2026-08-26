@@ -21,6 +21,12 @@ const TRAINING_DEFINITIONS: Dictionary = {
 		"days_required": 4,
 		"description": "Learned academic. +10% science per turn.",
 		"building_type": "research"
+	},
+	"merchant": {
+		"name": "Merchant",
+		"days_required": 6,
+		"description": "Skilled trader. Gold income per turn doubles (+5 to +10).",
+		"building_type": "merchant"
 	}
 }
 const SOLDIER_TRAINING_COST: int = 20  # One-time gold cost to begin soldier training
@@ -332,7 +338,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		_calculate_and_cache_building_connections(building_scene)
 		
 		# Create jobs for work buildings
-		var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "farmhouse", "town_center"]
+		var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "farmhouse", "town_center", "merchant"]
 		DebugConfig.dprint("buildings", ["DEBUG: Checking if ", building_type, " is a work building. Is in list: ", building_type in work_buildings])
 		if building_type in work_buildings:
 			DebugConfig.dprint("buildings", ["DEBUG: Creating jobs for work building ", building_type])
@@ -377,6 +383,8 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_stoneworker.png"
 		"research":
 			return "res://assets/buildings/human_research.png"
+		"merchant":
+			return "res://assets/buildings/human_merchant1.png"
 		"town_center":
 			return "res://assets/buildings/human_towncentre-export.png"
 		"farmhouse":
@@ -403,6 +411,8 @@ func _get_worker_capacity(building_type: String) -> int:
 			return 2  # 2 scientist slots
 		"research":
 			return 8  # Research team size
+		"merchant":
+			return 8  # Trading post team size
 		"stoneworker":
 			return 10  # Most work stations employ up to 10
 		"lumberjack":
@@ -427,7 +437,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill", "merchant"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -435,7 +445,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "house", "barracks", "farm"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "merchant", "house", "barracks", "farm"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type
@@ -559,6 +569,20 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 				# Per-farm contribution: +FARM_HARVEST_FOOD only if this tile is grown with a worker
 				if child.get_meta("farm_worker_assigned", false) and child.get_meta("farm_state", "tilled") == "grown":
 					rates["food"] += FARM_HARVEST_FOOD
+			"merchant":
+				# Tiered production: trainee traders contribute less than fully trained merchants
+				if jobs.is_empty():
+					rates["gold"] += worker_count * 5  # Fallback when no job slots exist yet
+				else:
+					for job in jobs:
+						var assigned_uid = job.get("unit_assigned")
+						if assigned_uid == null:
+							continue
+						var worker_unit = _get_unit_by_uid(player_id, assigned_uid)
+						if worker_unit.get("type", "peasant") == "merchant":
+							rates["gold"] += 10
+						else:
+							rates["gold"] += 5
 			"barracks":
 				# Barracks don't produce resources
 				pass
@@ -740,6 +764,7 @@ func _deduct_building_cost(player_id: int, building_type: String):
 		"lumberjack": {"wood": 15, "stone": 8},
 		"stoneworker": {"wood": 8, "stone": 15},
 		"research": {"wood": 20, "stone": 10},
+		"merchant": {"wood": 20, "stone": 10},
 		"town_center": {"wood": 30, "stone": 25, "gold": 15},
 		"farmhouse": {"wood": 15},
 		"farm": {"wood": 10},
@@ -1317,7 +1342,7 @@ func _create_jobs_for_worker_capacity(building_node: Node2D, new_capacity: int):
 	var building_type = building_node.get_meta("building_type", "unknown")
 	
 	# Only create jobs for work buildings (farmhouse jobs are farm-specific — created by _initialize_farmhouse_paths)
-	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "barracks", "town_center"]
+	var work_buildings = ["lumberjack", "stoneworker", "fishing_hut", "research", "lumber_mill", "barracks", "town_center", "merchant"]
 	if not building_type in work_buildings:
 		DebugConfig.dprint("jobs", ["DEBUG: Building type ", building_type, " is not a work building, skipping job creation"])
 		return
@@ -2805,6 +2830,8 @@ func _get_unit_sprite_path(race: String, gender: String, type: String = "peasant
 		return "res://assets/units/human_soldier.png"
 	if type == "scholar":
 		return "res://assets/units/human_scholar.png"
+	if type == "merchant":
+		return "res://assets/units/human_merchant.png"
 	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
 	var race_prefix = race.to_lower()
 	return "res://assets/units/%s_%s_peasant_side.png" % [race_prefix, gender_prefix]
@@ -2814,16 +2841,16 @@ func _get_pet_sprite_path(pet_type: String) -> String:
 	return "res://assets/units/dog_1.png" if pet_type == "dog" else "res://assets/units/wilson.png"
 
 func _get_unit_sprite_scale(unit: Dictionary) -> Vector2:
-	"""Per-texture scale correction — human_soldier.png/human_scholar.png are drawn at 2x the size of other unit sprites"""
+	"""Per-texture scale correction — human_soldier.png/human_scholar.png/human_merchant.png are drawn at 2x the size of other unit sprites"""
 	if unit.get("is_pet", false):
 		return Vector2(0.25, 0.25)
-	if unit.get("type", "peasant") in ["soldier", "scholar"]:
+	if unit.get("type", "peasant") in ["soldier", "scholar", "merchant"]:
 		return Vector2(0.5, 0.5)
 	return Vector2.ONE
 
 func _unit_sprite_is_reversed(unit: Dictionary) -> bool:
-	"""Soldier/scholar artwork faces the opposite default direction from the peasant sprites."""
-	return unit.get("type", "peasant") in ["soldier", "scholar"]
+	"""Soldier/scholar/merchant artwork faces the opposite default direction from the peasant sprites."""
+	return unit.get("type", "peasant") in ["soldier", "scholar", "merchant"]
 
 func _get_unit_portrait_path(race: String, gender: String) -> String:
 	"""Get the portrait path for a unit based on race and gender"""
@@ -2858,7 +2885,7 @@ func _load_building_work_names():
 	"""Load work-related names for each workplace building type"""
 	DebugConfig.dprint("naming", ["Game: Loading building work names..."])
 	
-	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker"]
+	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker", "merchant"]
 	
 	for building_type in workplace_types:
 		var names_path = "res://assets/names/buildings/%s.txt" % building_type
@@ -2889,7 +2916,7 @@ func _rename_workplace_on_first_assignment(building_node: Node2D, unit: Dictiona
 	DebugConfig.dprint("naming", ["DEBUG RENAME: Starting rename check for %s (type: %s)" % [building_id, building_type]])
 	
 	# Only rename workplaces (fishing_hut, lumberjack, stoneworker, research, lumber_mill)
-	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker", "research", "lumber_mill"]
+	var workplace_types = ["fishing_hut", "lumberjack", "stoneworker", "research", "lumber_mill", "merchant"]
 	if building_type not in workplace_types:
 		DebugConfig.dprint("naming", ["DEBUG RENAME: Failed - %s not in workplace_types" % building_type])
 		return false
@@ -3098,6 +3125,9 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 				# Peasants assigned to a research post automatically begin scholar training
 				if building_node.get_meta("building_type", "") == "research" and unit.get("type", "peasant") == "peasant":
 					_start_unit_training(unit, "scholar")
+				# Peasants assigned to a merchant post automatically begin merchant training
+				if building_node.get_meta("building_type", "") == "merchant" and unit.get("type", "peasant") == "peasant":
+					_start_unit_training(unit, "merchant")
 				# Use cached building connections if available, otherwise calculate
 				if buildings_connections_cache.has(building_id):
 					unit["job_connections"] = buildings_connections_cache[building_id]
@@ -3515,7 +3545,7 @@ func _building_provides_capacity(building_type: String, capacity_type: String) -
 		"living":
 			return building_type in ["house", "town_center"]
 		"worker":
-			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "research", "lumber_mill", "lumberjack", "town_center"]
+			return building_type in ["barracks", "fishing_hut", "farmhouse", "stoneworker", "research", "lumber_mill", "lumberjack", "town_center", "merchant"]
 	return false
 
 func _get_building_max_capacity(building_type: String, capacity_type: String) -> int:
@@ -3529,6 +3559,7 @@ func _get_building_max_capacity(building_type: String, capacity_type: String) ->
 		"fishing_hut": {"living": 0, "worker": 5},
 		"stoneworker": {"living": 0, "worker": 10},
 		"research": {"living": 0, "worker": 8},
+		"merchant": {"living": 0, "worker": 8},
 		"lumber_mill": {"living": 0, "worker": 10},
 		"lumberjack": {"living": 0, "worker": 10}
 	}
@@ -3788,7 +3819,7 @@ func _start_return_home(unit: Dictionary):
 	unit["work_timer"] = 0.0
 
 func _get_stationary_job_building(unit: Dictionary) -> Node2D:
-	"""Returns the workplace node if unit's job is a 'stationary' role (barracks/research) that
+	"""Returns the workplace node if unit's job is a 'stationary' role (barracks/research/merchant) that
 	wanders near the worksite instead of running the fetch-a-resource commute cycle. Null otherwise."""
 	var job = unit.get("job", null)
 	if job == null or not map_objects_holder:
@@ -3800,7 +3831,7 @@ func _get_stationary_job_building(unit: Dictionary) -> Node2D:
 	if not job_node:
 		return null
 	var btype = job_node.get_meta("building_type", "")
-	if btype == "barracks" or btype == "research":
+	if btype == "barracks" or btype == "research" or btype == "merchant":
 		return job_node
 	return null
 
@@ -5881,6 +5912,8 @@ func _update_unit_type_from_specialties(unit: Dictionary):
 		unit["type"] = "soldier"
 	elif "scholar" in specialties:
 		unit["type"] = "scholar"
+	elif "merchant" in specialties:
+		unit["type"] = "merchant"
 	else:
 		# Fallback: use the first specialty name
 		unit["type"] = specialties[0]

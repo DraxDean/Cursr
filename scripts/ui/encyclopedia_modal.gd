@@ -150,6 +150,8 @@ func _populate_jobs(v: VBoxContainer):
 		"Assigned to a Research building. Produces science each turn. Researchers can be further trained for bonus output.")
 	_entry(v, "⚔", "Soldier",
 		"Assigned to a Barracks station. Trained soldiers defend the settlement and can be ordered to attack enemy camps.")
+	_entry(v, "💰", "Merchant",
+		"Assigned to a Merchant building. Produces gold each turn. Merchants can be further trained for bonus output.")
 
 	_section(v, "Training")
 	_entry(v, "📜", "Specialties",
@@ -184,6 +186,10 @@ func _populate_buildings(v: VBoxContainer):
 	_section(v, "Military")
 	_entry(v, "⚔", "Barracks",
 		"Trains soldiers and stations a garrison. Station slots hold soldiers on patrol; training slots are for units actively training a specialty.")
+
+	_section(v, "Commerce")
+	_entry(v, "💰", "Merchant",
+		"Employs up to 8 traders. Produces gold each turn — untrained traders give +5 gold, and after 6 days of training become full Merchants worth +10 gold.")
 
 
 func _populate_world_objects(v: VBoxContainer):

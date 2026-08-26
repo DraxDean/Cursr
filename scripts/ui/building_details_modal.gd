@@ -298,7 +298,7 @@ func _create_actions_section() -> Control:
 		train_button.text = "Train Units"
 		train_button.pressed.connect(_on_train_units_pressed)
 		actions_container.add_child(train_button)
-	elif building_type in ["research", "fishing_hut", "stoneworker", "lumberjack", "lumber_mill"]:
+	elif building_type in ["research", "fishing_hut", "stoneworker", "lumberjack", "lumber_mill", "merchant"]:
 		var collect_button = Button.new()
 		collect_button.text = "Collect Resources"
 		collect_button.pressed.connect(_on_collect_resources_pressed)
@@ -467,8 +467,9 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	var connection_rules = {
 		"house": ["town_center", "barracks", "stoneworker"],
 		"barracks": ["town_center", "house"],
-		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack", "research"],
+		"town_center": ["house", "barracks", "fishing_hut", "farmhouse", "stoneworker", "lumber_mill", "lumberjack", "research", "merchant"],
 		"research": ["town_center"],
+		"merchant": ["town_center"],
 		"fishing_hut": ["town_center"],
 		"farmhouse": ["town_center", "house"],
 		"stoneworker": ["house", "town_center"],
@@ -720,6 +721,7 @@ func _redraw_connections():
 		"town_center": Color.ORANGE,
 		"barracks": Color.CRIMSON,
 		"research": Color.MAGENTA,
+		"merchant": Color.GOLD,
 		"fishing_hut": Color.AQUA,
 		"farm": Color.LIME_GREEN,
 		"farmhouse": Color.YELLOW_GREEN,
@@ -1144,6 +1146,30 @@ func _populate_jobs_from_building():
 	
 	# Get jobs from building metadata
 	var jobs = building_node.get_meta("resource_jobs", [])
+	
+	# Self-heal: a work building with capacity but no job slots (e.g. placed before a building
+	# type was wired into job creation) gets its slots backfilled here instead of staying empty
+	if jobs.is_empty():
+		var game = game_node if game_node else _get_game_node()
+		var btype_for_jobs = building_node.get_meta("building_type", "")
+		var capacity_for_jobs = _get_worker_capacity(btype_for_jobs)
+		if capacity_for_jobs > 0 and game and game.has_method("_create_jobs_for_worker_capacity"):
+			game._create_jobs_for_worker_capacity(building_node, capacity_for_jobs)
+			jobs = building_node.get_meta("resource_jobs", [])
+			# Re-link units that were already assigned here before the slots existed
+			if game.get("players_data") != null:
+				for pid in game.players_data:
+					if str(pid) == "environment":
+						continue
+					for u in game.players_data[pid].get("units", []):
+						if u.get("job", null) == building_node.name:
+							for i in range(jobs.size()):
+								if jobs[i].get("unit_assigned") == null:
+									jobs[i]["unit_assigned"] = u.get("unique_id", "")
+									u["assigned_job_index"] = i
+									break
+			building_node.set_meta("resource_jobs", jobs)
+	
 	DebugConfig.dprint("buildings", ["UI DEBUG: _populate_jobs_from_building - found ", jobs.size(), " jobs on building ", building_node.name])
 	
 	if jobs.is_empty():
@@ -1178,6 +1204,7 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 		var building_type = building_node.get_meta("building_type", "worker") if building_node else "worker"
 		var slot_label_map = {
 			"research": "Researcher",
+			"merchant": "Trader",
 			"town_center": "Scientist",
 			"barracks": "Soldier",
 			"farmhouse": "Farmer",
@@ -1220,9 +1247,9 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 			unit_btn.pressed.connect(_on_unit_name_clicked.bind(found_unit))
 		job_row.add_child(unit_btn)
 		
-		# Barracks/research-specific: show training progress and Train / Cancel button
+		# Barracks/research/merchant-specific: show training progress and Train / Cancel button
 		var btype = building_node.get_meta("building_type", "") if building_node else ""
-		if (btype == "barracks" or btype == "research") and not found_unit.is_empty():
+		if (btype == "barracks" or btype == "research" or btype == "merchant") and not found_unit.is_empty():
 			_add_training_row(container, found_unit, btype)
 	else:
 		var unit_label = Label.new()
@@ -1232,11 +1259,12 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 		job_row.add_child(unit_label)
 
 func _add_training_row(container: Container, unit: Dictionary, building_type: String):
-	"""Add a training progress / action row below a barracks or research job row."""
+	"""Add a training progress / action row below a barracks, research, or merchant job row."""
 	var training = unit.get("training")
 	var specialties = unit.get("specialties", [])
 	var game = game_node if game_node else _get_game_node()
-	var training_type: String = "soldier" if building_type == "barracks" else "scholar"
+	var training_type_map := {"barracks": "soldier", "research": "scholar", "merchant": "merchant"}
+	var training_type: String = training_type_map.get(building_type, "scholar")
 	
 	var train_row = HBoxContainer.new()
 	train_row.add_theme_constant_override("separation", 6)
@@ -1634,6 +1662,8 @@ func _get_building_display_name(building_type: String) -> String:
 			return "Lumberjack"
 		"lumber_mill":
 			return "Lumber Mill"
+		"merchant":
+			return "Merchant"
 		_:
 			return building_type.capitalize().replace("_", " ")
 
@@ -1704,6 +1734,9 @@ func _get_building_production() -> String:
 		"lumber_mill":
 			var wood_production = worker_occupancy * 1  # +1 wood per worker
 			return "+" + str(wood_production) + " Wood/day (" + str(worker_occupancy) + " workers)"
+		"merchant":
+			var gold_production = worker_occupancy * 5  # +5 gold per trader (untrained)
+			return "+" + str(gold_production) + " Gold/day (" + str(worker_occupancy) + " traders)"
 		_:
 			return "Unknown"
 
@@ -1730,6 +1763,8 @@ func _get_building_maintenance() -> String:
 			return "1.5 Gold/turn"
 		"lumber_mill":
 			return "1.5 Gold/turn"
+		"merchant":
+			return "2 Gold/turn"
 		_:
 			return "0 Gold/turn"
 
@@ -1769,6 +1804,8 @@ func _get_worker_capacity(building_type: String) -> int:
 			return 6  # Agricultural workers
 		"fishing_hut":
 			return 5  # Fishing employs 5 labourers
+		"merchant":
+			return 8  # Trading post team size
 		_:
 			return 0
 
@@ -1790,6 +1827,8 @@ func _get_special_effects(building_type: String) -> String:
 			return "Must be near forests"
 		"lumber_mill":
 			return "Must be near forest"
+		"merchant":
+			return "Trades goods for gold, generates gold for the treasury"
 		_:
 			return "None"
 
