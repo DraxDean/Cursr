@@ -1220,10 +1220,10 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 			unit_btn.pressed.connect(_on_unit_name_clicked.bind(found_unit))
 		job_row.add_child(unit_btn)
 		
-		# Barracks-specific: show training progress and Train / Cancel button
+		# Barracks/research-specific: show training progress and Train / Cancel button
 		var btype = building_node.get_meta("building_type", "") if building_node else ""
-		if btype == "barracks" and not found_unit.is_empty():
-			_add_barracks_training_row(container, found_unit)
+		if (btype == "barracks" or btype == "research") and not found_unit.is_empty():
+			_add_training_row(container, found_unit, btype)
 	else:
 		var unit_label = Label.new()
 		unit_label.text = "Unassigned"
@@ -1231,11 +1231,12 @@ func _add_job_row(container: Container, job: Dictionary, job_index: int):
 		unit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		job_row.add_child(unit_label)
 
-func _add_barracks_training_row(container: Container, unit: Dictionary):
-	"""Add a training progress / action row below a barracks job row."""
+func _add_training_row(container: Container, unit: Dictionary, building_type: String):
+	"""Add a training progress / action row below a barracks or research job row."""
 	var training = unit.get("training")
 	var specialties = unit.get("specialties", [])
 	var game = game_node if game_node else _get_game_node()
+	var training_type: String = "soldier" if building_type == "barracks" else "scholar"
 	
 	var train_row = HBoxContainer.new()
 	train_row.add_theme_constant_override("separation", 6)
@@ -1292,17 +1293,18 @@ func _add_barracks_training_row(container: Container, unit: Dictionary):
 			spec_lbl.add_theme_font_size_override("font_size", 11)
 			train_row.add_child(spec_lbl)
 		
-		# Train as Soldier button
+		# Train as Soldier/Scholar button
 		var train_btn = Button.new()
-		if "soldier" in specialties:
-			train_btn.text = "Re-train Soldier"
+		var training_label: String = game.TRAINING_DEFINITIONS[training_type]["name"] if game and game.TRAINING_DEFINITIONS.has(training_type) else training_type.capitalize()
+		if training_type in specialties:
+			train_btn.text = "Re-train %s" % training_label
 		else:
-			train_btn.text = "Train as Soldier"
+			train_btn.text = "Train as %s" % training_label
 		train_btn.custom_minimum_size = Vector2(130, 22)
 		train_btn.add_theme_color_override("font_color", Color.LIGHT_BLUE)
 		if game and game.has_method("_start_unit_training"):
 			train_btn.pressed.connect(func():
-				game._start_unit_training(unit, "soldier")
+				game._start_unit_training(unit, training_type)
 				if building_node and is_instance_valid(building_node):
 					setup_building_details(building_node))
 		train_row.add_child(train_btn)

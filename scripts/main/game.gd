@@ -18,11 +18,12 @@ const TRAINING_DEFINITIONS: Dictionary = {
 	},
 	"scholar": {
 		"name": "Scholar",
-		"days_required": 7,
+		"days_required": 4,
 		"description": "Learned academic. +10% science per turn.",
 		"building_type": "research"
 	}
 }
+const SOLDIER_TRAINING_COST: int = 20  # One-time gold cost to begin soldier training
 
 # Army reference guide — used to calculate aggregate army stats (hp pool, strength)
 # from unit roles instead of giving every unit its own combat fields.
@@ -529,7 +530,19 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 			"town_center":
 				rates["science"] += worker_count * 3  # +3 science per scientist
 			"research":
-				rates["science"] += worker_count * 3  # +3 science per researcher
+				# Tiered production: scholars-in-training contribute less than fully trained scholars
+				if jobs.is_empty():
+					rates["science"] += worker_count * 3  # Fallback when no job slots exist yet
+				else:
+					for job in jobs:
+						var assigned_uid = job.get("unit_assigned")
+						if assigned_uid == null:
+							continue
+						var worker_unit = _get_unit_by_uid(player_id, assigned_uid)
+						if worker_unit.get("type", "peasant") == "scholar":
+							rates["science"] += 5
+						else:
+							rates["science"] += 3
 			"farm":
 				# Per-farm contribution: +FARM_HARVEST_FOOD only if this tile is grown with a worker
 				if child.get_meta("farm_worker_assigned", false) and child.get_meta("farm_state", "tilled") == "grown":
@@ -1205,6 +1218,7 @@ func _remove_unit_assignments_for_building(building_name: String, owner_player: 
 		# Check if unit was working in this building
 		if unit.get("job", null) == building_name:
 			unit["job"] = null
+			_cancel_unit_training(unit)  # No longer working here — stop any in-progress training
 			assignments_removed = true
 			DebugConfig.dprint("buildings", ["Removed job assignment for unit ", unit_id, " from demolished building ", building_name])
 		
@@ -1271,6 +1285,7 @@ func _remove_excess_unit_assignments(building_node: Node2D, capacity_type: Strin
 				unit["living_quarters"] = null
 			elif capacity_type == "worker":
 				unit["job"] = null
+				_cancel_unit_training(unit)  # No longer working here — stop any in-progress training
 			elif capacity_type == "station":
 				unit["job"] = null
 				_cancel_unit_training(unit)  # No longer stationed — stop any in-progress training
@@ -2760,17 +2775,23 @@ func _get_unit_sprite_path(race: String, gender: String, type: String = "peasant
 	"""Get the sprite path for a unit based on race, gender, and type"""
 	if type == "soldier":
 		return "res://assets/units/human_soldier.png"
+	if type == "scholar":
+		return "res://assets/units/human_scholar.png"
 	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
 	var race_prefix = race.to_lower()
 	return "res://assets/units/%s_%s_peasant_side.png" % [race_prefix, gender_prefix]
 
 func _get_unit_sprite_scale(unit: Dictionary) -> Vector2:
-	"""Per-texture scale correction — human_soldier.png is drawn at 2x the size of other unit sprites"""
+	"""Per-texture scale correction — human_soldier.png/human_scholar.png are drawn at 2x the size of other unit sprites"""
 	if unit.get("is_pet", false):
 		return Vector2(0.25, 0.25)
-	if unit.get("type", "peasant") == "soldier":
+	if unit.get("type", "peasant") in ["soldier", "scholar"]:
 		return Vector2(0.5, 0.5)
 	return Vector2.ONE
+
+func _unit_sprite_is_reversed(unit: Dictionary) -> bool:
+	"""Soldier/scholar artwork faces the opposite default direction from the peasant sprites."""
+	return unit.get("type", "peasant") in ["soldier", "scholar"]
 
 func _get_unit_portrait_path(race: String, gender: String) -> String:
 	"""Get the portrait path for a unit based on race and gender"""
@@ -3042,6 +3063,9 @@ func _auto_assign_units_to_building(building_node: Node2D, capacity_type: String
 				unit["living_quarters"] = building_id
 			elif capacity_type == "worker":
 				unit["job"] = building_id
+				# Peasants assigned to a research post automatically begin scholar training
+				if building_node.get_meta("building_type", "") == "research" and unit.get("type", "peasant") == "peasant":
+					_start_unit_training(unit, "scholar")
 				# Use cached building connections if available, otherwise calculate
 				if buildings_connections_cache.has(building_id):
 					unit["job_connections"] = buildings_connections_cache[building_id]
@@ -3558,7 +3582,7 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			var speed_multiplier = unit.get("speed_multiplier", 1.0)
 			var move_distance = movement_speed * speed_multiplier * delta
 			if direction.x != 0:
-				sprite.flip_h = direction.x > 0
+				sprite.flip_h = (direction.x > 0) != _unit_sprite_is_reversed(unit)
 			if current_pos.distance_to(target_pos) <= move_distance:
 				sprite.position = target_pos
 				unit["position"] = target_pos
@@ -3609,7 +3633,7 @@ func _process_unit_movement(unit: Dictionary, sprite: Node2D, delta: float):
 			
 			# Handle sprite flipping based on direction
 			if direction.x != 0:  # Only flip if there's horizontal movement
-				sprite.flip_h = direction.x > 0  # Flip when moving right
+				sprite.flip_h = (direction.x > 0) != _unit_sprite_is_reversed(unit)  # Flip when moving right (soldier/scholar art faces the other way)
 			
 			if current_pos.distance_to(target_pos) <= move_distance:
 				# Reached this waypoint
@@ -5527,6 +5551,15 @@ func get_army_units(player_id: int) -> Array:
 		result.append(unit)
 	return result
 
+func _get_unit_by_uid(player_id: int, uid: String) -> Dictionary:
+	"""Look up a unit dict by unique_id within a player's unit list."""
+	if not players_data.has(player_id) or uid == "":
+		return {}
+	for unit in players_data[player_id].get("units", []):
+		if unit.get("unique_id", "") == uid:
+			return unit
+	return {}
+
 func calculate_army_totals(player_id: int) -> Dictionary:
 	"""Sum unit count / hp pool / strength for a player's army using ARMY_UNIT_STATS."""
 	var totals = {"count": 0, "hp": 0, "atk": 0}
@@ -5690,6 +5723,21 @@ func _start_unit_training(unit: Dictionary, training_type: String) -> bool:
 	if unit.get("training") != null:
 		DebugConfig.dprint("wave", ["Game: Unit %s is already in training" % unit.get("name", "?")])
 		return false
+	
+	# Soldier training has a one-time gold cost, paid by the unit's owner
+	if training_type == "soldier":
+		var owner_player: int = unit.get("player_id", 1)
+		var resources: Dictionary = players_data.get(owner_player, {}).get("resources", {})
+		var gold: int = resources.get("gold", 0)
+		if gold < SOLDIER_TRAINING_COST:
+			DebugConfig.dprint("wave", ["Game: Not enough gold to train %s as a soldier (need %d, have %d)" % [unit.get("name", "?"), SOLDIER_TRAINING_COST, gold]])
+			if owner_player == 1 and is_instance_valid(notification_panel):
+				notification_panel.push("Not Enough Gold", "Training a soldier costs %d gold." % SOLDIER_TRAINING_COST, "⚔", Color(0.7, 0.3, 0.1))
+			return false
+		resources["gold"] = gold - SOLDIER_TRAINING_COST
+		players_data[owner_player]["resources"] = resources
+		if owner_player == 1 and is_instance_valid(resource_bar):
+			resource_bar.refresh()
 	
 	var def = TRAINING_DEFINITIONS[training_type]
 	unit["training"] = {
