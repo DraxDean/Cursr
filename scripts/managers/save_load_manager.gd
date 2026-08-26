@@ -143,6 +143,7 @@ func get_all_saves_info() -> Array:
 				"modified_time": FileAccess.get_modified_time(full_path),
 				"current_day": 0,
 				"population": 0,
+				"difficulty": "captain",
 				"save_name": file_name.trim_suffix(".save")
 			}
 			# Peek into the save for lightweight data
@@ -151,6 +152,7 @@ func get_all_saves_info() -> Array:
 				var data = file.get_var()
 				if typeof(data) == TYPE_DICTIONARY:
 					info["current_day"] = data.get("current_day", 0)
+					info["difficulty"] = data.get("difficulty", "captain")
 					var pd = data.get("players_data", {})
 					for pid in pd:
 						if str(pid) != "environment":

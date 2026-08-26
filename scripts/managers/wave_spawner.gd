@@ -5,9 +5,11 @@
 extends Node
 
 # --- Config ---
-const WAVE_INTERVAL: int = 28        # Days between waves (one "season")
+var WAVE_INTERVAL: int = 10           # Days between waves (set by difficulty, see game.gd)
 const SPAWN_CANDIDATE_POOL: int = 8  # Pick randomly from the N farthest valid tiles
 const ATTACK_INTERVAL: int = 10      # Days between marauder raids on player buildings
+const MIN_WAVE_ARMY_SIZE: int = 3    # Marauders in wave 1
+const MAX_WAVE_ARMY_SIZE: int = 10   # Marauders once army size scaling caps out
 
 # Atlas coords from world_gen — tiles we can build on
 const BUILDABLE_ATLAS = [
@@ -43,6 +45,11 @@ func setup(game_reference: Node):
 	game = game_reference
 	DebugConfig.dprint("wave", ["WaveSpawner: Ready. First wave on day %d." % next_wave_day])
 
+func set_wave_interval(interval: int) -> void:
+	"""Apply a new wave interval (called when difficulty is set/restored) and reschedule the next wave from now."""
+	WAVE_INTERVAL = interval
+	next_wave_day = interval
+
 # ----------------------------------------------------------------- tick ----
 
 func on_day_end(current_day: int):
@@ -67,9 +74,13 @@ func _spawn_wave(wave_num: int):
 
 	var barracks_node = _place_enemy_barracks(spawn_tile, enemy_player_id)
 	if is_instance_valid(barracks_node):
-		_spawn_marauder_units(barracks_node, enemy_player_id, 5)
+		_spawn_marauder_units(barracks_node, enemy_player_id, _get_wave_army_size(wave_num))
 	wave_spawned.emit(wave_num, enemy_player_id, spawn_tile)
 	DebugConfig.dprint("wave", ["WaveSpawner: Wave %d enemy (player %d) barracks placed at tile %s." % [wave_num, enemy_player_id, str(spawn_tile)]])
+
+func _get_wave_army_size(wave_num: int) -> int:
+	"""Marauder army size grows by 1 per wave, from MIN_WAVE_ARMY_SIZE up to MAX_WAVE_ARMY_SIZE."""
+	return clampi(MIN_WAVE_ARMY_SIZE + (wave_num - 1), MIN_WAVE_ARMY_SIZE, MAX_WAVE_ARMY_SIZE)
 
 # --------------------------------------------------------- player setup ----
 

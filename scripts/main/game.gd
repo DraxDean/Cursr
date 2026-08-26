@@ -25,6 +25,18 @@ const TRAINING_DEFINITIONS: Dictionary = {
 }
 const SOLDIER_TRAINING_COST: int = 20  # One-time gold cost to begin soldier training
 
+# Difficulty levels — currently only control the wave spawner's raid frequency
+const DIFFICULTY_LEVELS: Array = [
+	{"id": "settler", "label": "Settler", "wave_interval": 20},
+	{"id": "pioneer", "label": "Pioneer", "wave_interval": 15},
+	{"id": "captain", "label": "Captain", "wave_interval": 10},
+	{"id": "general", "label": "General", "wave_interval": 5},
+	{"id": "emperor", "label": "Emperor", "wave_interval": 1},
+]
+const DEFAULT_DIFFICULTY: String = "captain"
+
+var game_difficulty: String = DEFAULT_DIFFICULTY
+
 # Army reference guide — used to calculate aggregate army stats (hp pool, strength)
 # from unit roles instead of giving every unit its own combat fields.
 const ARMY_UNIT_STATS: Dictionary = {
@@ -1869,7 +1881,19 @@ func _trigger_game_over():
 func _get_wave_state_for_save() -> Dictionary:
 	if is_instance_valid(wave_spawner):
 		return {"wave_number": wave_spawner.wave_number, "next_wave_day": wave_spawner.next_wave_day}
-	return {"wave_number": 0, "next_wave_day": 28}
+	return {"wave_number": 0, "next_wave_day": 10}
+
+func get_difficulty_wave_interval(difficulty_id: String) -> int:
+	for d in DIFFICULTY_LEVELS:
+		if d["id"] == difficulty_id:
+			return d["wave_interval"]
+	return 10
+
+func apply_difficulty(difficulty_id: String) -> void:
+	"""Set the active difficulty and push its wave-spawner timing to the wave spawner."""
+	game_difficulty = difficulty_id
+	if is_instance_valid(wave_spawner):
+		wave_spawner.set_wave_interval(get_difficulty_wave_interval(difficulty_id))
 
 func _unhandled_input(event: InputEvent):
 	# Handle debug console toggle
@@ -2153,6 +2177,8 @@ func initialize_map():
 					# Don't create new units - they should already exist in the save file with assignments
 					# Sprite restoration will happen after buildings are restored
 					DebugConfig.dprint("general", ["Game: Restored player data for ", players_data.size(), " players"])
+				# Restore difficulty (sets wave spawner interval) before restoring its exact saved state
+				apply_difficulty(loaded_state.get("difficulty", DEFAULT_DIFFICULTY))
 				# Restore wave spawner state
 				if loaded_state.has("wave_state") and is_instance_valid(wave_spawner):
 					wave_spawner.wave_number = loaded_state["wave_state"].get("wave_number", 0)
@@ -4541,6 +4567,9 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	world_data = generated_world_data.duplicate()
 	current_save_path = ""
 	
+	# Apply the difficulty chosen during world creation (controls wave spawner timing)
+	apply_difficulty(generated_world_data.get("player_data", {}).get("difficulty", DEFAULT_DIFFICULTY))
+	
 	# Close world creation modal
 	ui_manager.close_world_creation_modal()
 	
@@ -5218,7 +5247,9 @@ func _on_end_day_pressed():
 			var snap := {}
 			for rk in ["food", "wood", "stone", "gold", "science"]:
 				snap[rk] = int(res.get(rk, 0))
-			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true, "resource_snapshot": snap})
+			# Snapshot of current army strength for the Military graph
+			var army_snap := calculate_army_totals(1)
+			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true, "resource_snapshot": snap, "army_snapshot": army_snap})
 		
 		# Process training progress for all units
 		_process_training_progress()
@@ -6165,6 +6196,7 @@ func _execute_save() -> bool:
 		"players_data": players_data,
 		"current_day": turn_manager.get_day(),
 		"wave_state": _get_wave_state_for_save(),
+		"difficulty": game_difficulty,
 		"current_save_path": current_save_path,
 		"log_entries": game_log.entries.duplicate() if is_instance_valid(game_log) else []
 	}

@@ -101,6 +101,10 @@ var generation_steps = [
 var town_names: Array = []
 var selected_town_name: String = ""
 
+# Variables for difficulty selection (naming step)
+var selected_difficulty: String = "captain"
+var difficulty_buttons: Array[Button] = []
+
 func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D):
 	game_node = game_ref
 	tilemap_layer = tilemap_ref
@@ -527,7 +531,7 @@ func _show_settlement_naming_ui():
 	
 	# Center it on screen
 	var center_panel = PanelContainer.new()
-	center_panel.custom_minimum_size = Vector2(400, 200)
+	center_panel.custom_minimum_size = Vector2(460, 300)
 	var screen_size = get_viewport().get_visible_rect().size
 	center_panel.position = (screen_size - center_panel.custom_minimum_size) / 2
 	
@@ -561,6 +565,39 @@ func _show_settlement_naming_ui():
 	
 	inner_vbox.add_child(button_hbox)
 	
+	# Difficulty selector
+	var diff_label = Label.new()
+	diff_label.text = "Difficulty:"
+	diff_label.add_theme_font_size_override("font_size", 16)
+	diff_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner_vbox.add_child(diff_label)
+	
+	var diff_row = HBoxContainer.new()
+	diff_row.add_theme_constant_override("separation", 6)
+	diff_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	difficulty_buttons.clear()
+	var diff_group := ButtonGroup.new()
+	for level in game_node.DIFFICULTY_LEVELS:
+		var diff_btn = Button.new()
+		diff_btn.text = level["label"]
+		diff_btn.custom_minimum_size = Vector2(80, 34)
+		diff_btn.toggle_mode = true
+		diff_btn.button_group = diff_group
+		diff_btn.set_meta("difficulty_id", level["id"])
+		diff_btn.button_pressed = (level["id"] == selected_difficulty)
+		diff_btn.modulate = Color(1.2, 1.2, 0.8) if level["id"] == selected_difficulty else Color.WHITE
+		diff_btn.pressed.connect(_on_difficulty_selected.bind(level["id"]))
+		diff_row.add_child(diff_btn)
+		difficulty_buttons.append(diff_btn)
+	inner_vbox.add_child(diff_row)
+	
+	var diff_hint = Label.new()
+	diff_hint.text = "Controls how often marauder raids appear"
+	diff_hint.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	diff_hint.add_theme_font_size_override("font_size", 11)
+	diff_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner_vbox.add_child(diff_hint)
+	
 	center_panel.add_child(inner_vbox)
 	naming_container.add_child(center_panel)
 	
@@ -569,6 +606,14 @@ func _show_settlement_naming_ui():
 	set_meta("settlement_name_input", input_field)
 	
 	DebugConfig.dprint("world_gen", ["WorldCreation: Settlement naming UI created"])
+
+func _on_difficulty_selected(difficulty_id: String):
+	"""Update the selected difficulty and refresh button highlighting"""
+	selected_difficulty = difficulty_id
+	for btn in difficulty_buttons:
+		if is_instance_valid(btn):
+			btn.modulate = Color(1.2, 1.2, 0.8) if btn.get_meta("difficulty_id", "") == difficulty_id else Color.WHITE
+	DebugConfig.dprint("world_gen", ["WorldCreation: Difficulty selected: ", selected_difficulty])
 
 func _on_reroll_settlement_name():
 	"""Pick a new random town name and update the input field"""
@@ -708,8 +753,9 @@ func _on_start_game_pressed():
 		if not world_data.has("player_data"):
 			world_data["player_data"] = {}
 		world_data["player_data"]["settlement_name"] = selected_town_name
+		world_data["player_data"]["difficulty"] = selected_difficulty
 		
-		DebugConfig.dprint("world_gen", ["WorldCreation: Settlement named: ", selected_town_name])
+		DebugConfig.dprint("world_gen", ["WorldCreation: Settlement named: ", selected_town_name, " — Difficulty: ", selected_difficulty])
 		
 		cleanup_ui()
 		game_node._finish_world_creation(world_data)

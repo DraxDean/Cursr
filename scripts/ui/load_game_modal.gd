@@ -133,7 +133,7 @@ func _build_save_row(info: Dictionary) -> Control:
 
 	# Day and population
 	var stats_lbl = Label.new()
-	stats_lbl.text = "Day %d  •  Population: %d" % [info["current_day"], info["population"]]
+	stats_lbl.text = "Day %d  •  Population: %d  •  %s" % [info["current_day"], info["population"], String(info.get("difficulty", "captain")).capitalize()]
 	stats_lbl.add_theme_color_override("font_color", Color.LIGHT_GRAY)
 	stats_lbl.add_theme_font_size_override("font_size", 12)
 	info_block.add_child(stats_lbl)
