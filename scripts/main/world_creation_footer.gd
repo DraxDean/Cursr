@@ -3,6 +3,7 @@ extends Control
 
 var back_button: Button
 var reset_camera_button: Button
+var quick_start_button: Button
 var reroll_button: Button
 var continue_button: Button
 var start_game_button: Button
@@ -10,6 +11,7 @@ var start_game_button: Button
 # Signals for the modal to connect to
 signal back_pressed
 signal reset_camera_pressed
+signal quick_start_pressed
 signal reroll_pressed
 signal continue_pressed
 signal start_game_pressed
@@ -39,8 +41,8 @@ func _setup_footer_container():
 	# Create content container - positioned over background
 	var content_container = VBoxContainer.new()
 	content_container.name = "ContentContainer"
-	content_container.position = Vector2(10, 5)  # Small padding from edges
-	content_container.size = Vector2(780, 50)    # Slightly smaller than footer
+	content_container.position = Vector2(10, 10)  # Equalize top margin with left/right padding
+	content_container.size = Vector2(780, 40)    # Slightly smaller than footer
 	content_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(content_container)
 	
@@ -62,6 +64,13 @@ func _setup_footer_container():
 	reset_camera_button.text = "Reset Camera"
 	reset_camera_button.pressed.connect(_on_reset_camera_pressed)
 	button_container.add_child(reset_camera_button)
+	
+	quick_start_button = Button.new()
+	quick_start_button.name = "QuickStartButton"
+	quick_start_button.text = "Quick Start"
+	quick_start_button.visible = false
+	quick_start_button.pressed.connect(_on_quick_start_pressed)
+	button_container.add_child(quick_start_button)
 	
 	reroll_button = Button.new()
 	reroll_button.name = "RerollButton"
@@ -97,6 +106,7 @@ func update_buttons(button_texts: Array):
 	# Hide all buttons first
 	if back_button: back_button.visible = false
 	if reset_camera_button: reset_camera_button.visible = false
+	if quick_start_button: quick_start_button.visible = false
 	if reroll_button: reroll_button.visible = false
 	if continue_button: continue_button.visible = false
 	if start_game_button: start_game_button.visible = false
@@ -138,6 +148,9 @@ func _on_back_pressed():
 
 func _on_reset_camera_pressed():
 	reset_camera_pressed.emit()
+
+func _on_quick_start_pressed():
+	quick_start_pressed.emit()
 
 func _on_reroll_pressed():
 	reroll_pressed.emit()

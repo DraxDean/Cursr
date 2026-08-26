@@ -32,7 +32,7 @@ var town_center_placed: bool = false
 var generation_steps = [
 	{
 		"title": "In the beginning...",
-		"description": "There was nothing but darkness and void.\nPress Continue to begin creation.",
+		"description": "There was nothing but darkness and void.",
 		"action": "_step_void"
 	},
 	{
@@ -146,6 +146,7 @@ func _create_world_creation_ui():
 	# Connect footer signals
 	footer_component.back_pressed.connect(_on_back_pressed)
 	footer_component.reset_camera_pressed.connect(_on_reset_camera_pressed)
+	footer_component.quick_start_pressed.connect(_on_quick_start_pressed)
 	footer_component.reroll_pressed.connect(_on_reroll_pressed)
 	footer_component.continue_pressed.connect(_on_continue_pressed)
 	footer_component.start_game_pressed.connect(_on_start_game_pressed)
@@ -266,6 +267,7 @@ func _show_current_step():
 	# Show/hide buttons based on step
 	if footer_component:
 		footer_component.reroll_button.visible = current_step > 0
+		footer_component.quick_start_button.visible = current_step == 0
 		# Check specific steps for custom button layouts
 		if current_step < generation_steps.size():
 			var step_action = generation_steps[current_step]["action"]
@@ -626,6 +628,16 @@ func _on_reset_camera_pressed():
 	else:
 		DebugConfig.dprint("world_gen", ["WorldCreation: Resetting camera view"])
 		_center_camera_on_map()
+
+func _on_quick_start_pressed():
+	"""Skip the step-by-step genesis narration and jump straight to race selection."""
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Quick Start pressed - skipping to race selection"])
+	var race_select_index = 10  # Race selection is at index 10
+	while current_step < race_select_index:
+		current_step += 1
+		if current_step < step_states.size():
+			step_states.resize(current_step)
+		_show_current_step()
 
 func _on_reroll_pressed():
 	DebugConfig.dprint("world_gen", ["WorldCreation: Rerolling step %d" % current_step])
