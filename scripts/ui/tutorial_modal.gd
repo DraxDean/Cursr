@@ -12,7 +12,7 @@ func _ready() -> void:
 	super._ready()
 	if get_viewport():
 		var vp = get_viewport().get_visible_rect().size
-		custom_minimum_size = Vector2(460, 380)
+		custom_minimum_size = Vector2(690, 570)
 		size = custom_minimum_size
 		position = Vector2((vp.x - size.x) / 2.0, (vp.y - size.y) / 2.0)
 
@@ -41,31 +41,51 @@ func refresh_content():
 	_page_index = clampi(_page_index, 0, pages.size() - 1)
 	var page: Dictionary = pages[_page_index]
 
+	# Extra breathing room around the page content, beyond the modal's base padding
+	var margin = MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	add_content_child(margin)
+
+	var body_vbox = VBoxContainer.new()
+	body_vbox.add_theme_constant_override("separation", 14)
+	margin.add_child(body_vbox)
+
 	var heading_lbl = Label.new()
 	heading_lbl.text = page.get("heading", "")
 	heading_lbl.add_theme_color_override("font_color", Color.CYAN)
 	heading_lbl.add_theme_font_size_override("font_size", 16)
-	add_content_child(heading_lbl)
+	body_vbox.add_child(heading_lbl)
 
-	add_content_child(HSeparator.new())
+	body_vbox.add_child(HSeparator.new())
 
-	# Image placeholder — reserved for step screenshots added later
+	# Step image — falls back to a placeholder icon until a page defines "image"
+	var image_path: String = page.get("image", "")
 	var image_box = PanelContainer.new()
-	image_box.custom_minimum_size = Vector2(0, 140)
+	image_box.custom_minimum_size = Vector2(0, 220)
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.12, 0.12, 0.16, 0.9)
 	style.set_border_width_all(1)
 	style.border_color = Color(0.4, 0.4, 0.45)
 	style.set_corner_radius_all(4)
 	image_box.add_theme_stylebox_override("panel", style)
-	var image_lbl = Label.new()
-	image_lbl.text = "🖼"
-	image_lbl.add_theme_font_size_override("font_size", 32)
-	image_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	image_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	image_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	image_box.add_child(image_lbl)
-	add_content_child(image_box)
+	if image_path != "" and ResourceLoader.exists(image_path):
+		var tex_rect = TextureRect.new()
+		tex_rect.texture = load(image_path)
+		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image_box.add_child(tex_rect)
+	else:
+		var image_lbl = Label.new()
+		image_lbl.text = "🖼"
+		image_lbl.add_theme_font_size_override("font_size", 32)
+		image_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		image_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		image_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		image_box.add_child(image_lbl)
+	body_vbox.add_child(image_box)
 
 	var body_lbl = Label.new()
 	body_lbl.text = page.get("body", "")
@@ -73,15 +93,15 @@ func refresh_content():
 	body_lbl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 	body_lbl.add_theme_font_size_override("font_size", 13)
 	body_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	add_content_child(body_lbl)
+	body_vbox.add_child(body_lbl)
 
-	add_content_child(HSeparator.new())
+	body_vbox.add_child(HSeparator.new())
 
 	# Navigation row — prev / page counter / next
 	var nav_row = HBoxContainer.new()
 	nav_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	nav_row.add_theme_constant_override("separation", 14)
-	add_content_child(nav_row)
+	body_vbox.add_child(nav_row)
 
 	var prev_btn = Button.new()
 	prev_btn.text = "◀ Previous"
@@ -102,8 +122,6 @@ func refresh_content():
 	next_btn.custom_minimum_size = Vector2(100, 30)
 	next_btn.pressed.connect(_on_next_pressed)
 	nav_row.add_child(next_btn)
-
-	fit_to_content()
 
 func _on_prev_pressed() -> void:
 	if _page_index > 0:

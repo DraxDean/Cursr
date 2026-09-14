@@ -11,12 +11,18 @@ const SAVE_PATH := "user://tutorials.json"
 const TUTORIALS: Array = [
 	{"id": "welcome", "icon": "👋", "title": "Welcome", "summary": "Start here — your goals and how to win.",
 		"pages": [
-			{"heading": "Welcome to Cursr", "body": "Placeholder: a quick tour of the game and what you're building toward."},
-			{"heading": "Victory Conditions", "body": "Placeholder: how a game is won or lost."},
+			{"heading": "Welcome to Cursr!", "body": ""},
+			{"heading": "How to Play", "body": "Grow your population and create a thriving city to fight off enemies! Click the End Day button to cycle a day."},
+			{"heading": "Win Condition: Day 100", "body": "Survive until day 100 to outlast the competition and settle permanently."},
+			{"heading": "Win Condition: Wonder", "body": "Research all tech to unlock the Wonder and stockpile resources to build this unique building, triggering a Wonder victory."},
+			{"heading": "Need Help?", "body": "If you ever get stuck, you can see all tutorials and information in the Encyclopedia. Good luck!", "image": "res://assets/tutorials/encyclopedia.JPG"},
 		]},
 	{"id": "first_building", "icon": "🏗", "title": "Building Your First Building", "summary": "Placing your first structure.",
 		"pages": [
-			{"heading": "Placing a Building", "body": "Placeholder: opening the build menu and placing a building on the map."},
+			{"heading": "Open the Build Menu", "body": "Click the Build button to bring up the construction list.", "image": "res://assets/tutorials/BuildButton.JPG"},
+			{"heading": "Choose a Building", "body": "Select the building you want to construct.", "image": "res://assets/tutorials/buildingmenu.JPG"},
+			{"heading": "Place It", "body": "Click to place and build your building.", "image": "res://assets/tutorials/placebuilding.JPG"},
+			{"heading": "View the Details", "body": "Click on your placed building to get the details!", "image": "res://assets/tutorials/buildingdetails.JPG"},
 		]},
 	{"id": "employment", "icon": "💼", "title": "Employment", "summary": "Getting villagers into jobs.",
 		"pages": [
