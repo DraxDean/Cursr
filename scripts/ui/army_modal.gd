@@ -48,11 +48,21 @@ func refresh_content():
 		for unit in combat_units:
 			list_vbox.add_child(_build_unit_row(unit))
 
-	# ── Right: aggregate totals ──
+	# ── Right: formation visual + aggregate totals ──
+	var right_col = VBoxContainer.new()
+	right_col.custom_minimum_size = Vector2(190, 0)
+	right_col.add_theme_constant_override("separation", 14)
+	main_row.add_child(right_col)
+
+	var formation_panel = VBoxContainer.new()
+	formation_panel.add_theme_constant_override("separation", 8)
+	right_col.add_child(formation_panel)
+
+	_build_formation_panel(formation_panel, game_ref.get_army_units(1))
+
 	var stats_panel = VBoxContainer.new()
-	stats_panel.custom_minimum_size = Vector2(150, 0)
 	stats_panel.add_theme_constant_override("separation", 8)
-	main_row.add_child(stats_panel)
+	right_col.add_child(stats_panel)
 
 	_build_stats_panel(stats_panel, combat_units)
 
@@ -78,12 +88,7 @@ func _build_unit_row(unit: Dictionary) -> Control:
 	role_lbl.text = game_ref.ARMY_UNIT_STATS[role]["label"]
 	role_lbl.custom_minimum_size = Vector2(95, 20)
 	role_lbl.add_theme_font_size_override("font_size", 11)
-	var role_color = Color.LIGHT_GRAY
-	if role == "soldier":
-		role_color = Color(0.4, 1.0, 0.4)
-	elif role == "soldier_training":
-		role_color = Color(1.0, 0.85, 0.3)
-	role_lbl.add_theme_color_override("font_color", role_color)
+	role_lbl.add_theme_color_override("font_color", FormationGrid.role_color(role))
 	row.add_child(role_lbl)
 
 	var toggle = CheckButton.new()
@@ -100,6 +105,24 @@ func _build_unit_row(unit: Dictionary) -> Control:
 func _on_unit_toggle(pressed: bool, unit: Dictionary):
 	unit["in_army"] = pressed
 	refresh_content()
+
+func _build_formation_panel(panel: VBoxContainer, army_units: Array):
+	# Visual formation of the army's unit sprites, laid out in rows of 5
+	var title = Label.new()
+	title.text = "Formation"
+	title.add_theme_color_override("font_color", Color.LIGHT_BLUE)
+	title.add_theme_font_size_override("font_size", 14)
+	panel.add_child(title)
+	panel.add_child(HSeparator.new())
+
+	if army_units.is_empty():
+		var empty_lbl = Label.new()
+		empty_lbl.text = "No units in the army."
+		empty_lbl.add_theme_color_override("font_color", Color.GRAY)
+		panel.add_child(empty_lbl)
+		return
+
+	panel.add_child(FormationGrid.build(army_units, game_ref, 5, 28))
 
 func _build_stats_panel(panel: VBoxContainer, units: Array):
 	var title = Label.new()

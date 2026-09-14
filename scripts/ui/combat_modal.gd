@@ -31,6 +31,8 @@ var _p_count_label: Label
 var _e_count_label: Label
 var _p_atk_label: Label
 var _e_atk_label: Label
+var _p_formation_box: CenterContainer
+var _e_formation_box: CenterContainer
 var _log: RichTextLabel
 var _attack_btn: Button
 var _raid_timer_lbl: Label
@@ -110,6 +112,7 @@ func _build_ui() -> void:
 	_p_hp_label = _p_panel.get_node("vbox/hp_lbl")
 	_p_count_label = _p_panel.get_node("vbox/count_lbl")
 	_p_atk_label = _p_panel.get_node("vbox/atk_lbl")
+	_p_formation_box = _p_panel.get_node("vbox/portrait_box")
 
 	var vs = Label.new()
 	vs.text = "VS"
@@ -123,6 +126,7 @@ func _build_ui() -> void:
 	_e_hp_label = _e_panel.get_node("vbox/hp_lbl")
 	_e_count_label = _e_panel.get_node("vbox/count_lbl")
 	_e_atk_label = _e_panel.get_node("vbox/atk_lbl")
+	_e_formation_box = _e_panel.get_node("vbox/portrait_box")
 
 	row.add_child(_p_panel)
 	row.add_child(vs)
@@ -190,12 +194,10 @@ func _make_fighter_panel(title: String, is_enemy: bool) -> PanelContainer:
 	name_lbl.add_theme_color_override("font_color", Color.WHITE if not is_enemy else Color(1.0, 0.5, 0.4))
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	# Portrait area
+	# Formation area — populated with the army's unit sprites in _refresh_formation()
 	var portrait_box = CenterContainer.new()
-	var portrait = ColorRect.new()
-	portrait.custom_minimum_size = Vector2(56, 56)
-	portrait.color = Color(0.22, 0.18, 0.28) if is_enemy else Color(0.18, 0.22, 0.28)
-	portrait_box.add_child(portrait)
+	portrait_box.name = "portrait_box"
+	portrait_box.custom_minimum_size = Vector2(56, 56)
 
 	var count_lbl = Label.new()
 	count_lbl.name = "count_lbl"
@@ -387,6 +389,16 @@ func _refresh_display() -> void:
 
 	_tint_bar(_p_bar, _p_current_hp, _p_max)
 	_tint_bar(_e_bar, _e_current_hp, _e_max)
+
+	_refresh_formation(_p_formation_box, _game.get_army_units(_player_id))
+	_refresh_formation(_e_formation_box, _game.get_army_units(_enemy_owner))
+
+func _refresh_formation(box: CenterContainer, army_units: Array) -> void:
+	"""Rebuild a fighter panel's formation grid from its current (post-casualty) roster."""
+	for child in box.get_children():
+		child.free()
+	if not army_units.is_empty():
+		box.add_child(FormationGrid.build(army_units, _game, 5, 20))
 
 func _tint_bar(bar: ProgressBar, hp: int, max_hp: int) -> void:
 	if max_hp <= 0:
