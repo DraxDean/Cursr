@@ -25,6 +25,19 @@ func refresh_content():
 	
 	var players_data = game_ref.players_data
 	
+	# Players live in a scroll area so long lists (e.g. many marauder waves) don't get clipped
+	var players_scroll = ScrollContainer.new()
+	players_scroll.custom_minimum_size = Vector2(0, 320)
+	players_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	players_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	players_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_content_child(players_scroll)
+	
+	var players_list = VBoxContainer.new()
+	players_list.add_theme_constant_override("separation", 5)
+	players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	players_scroll.add_child(players_list)
+	
 	# Display each player
 	for player_id in players_data:
 		var player_data = players_data[player_id]
@@ -32,7 +45,7 @@ func refresh_content():
 		# Create container for this player
 		var player_container = VBoxContainer.new()
 		player_container.add_theme_constant_override("separation", 5)
-		add_content_child(player_container)
+		players_list.add_child(player_container)
 		
 		# Player header
 		var header_container = HBoxContainer.new()
@@ -133,7 +146,7 @@ func refresh_content():
 		# Add separator between players
 		var separator = HSeparator.new()
 		separator.custom_minimum_size = Vector2(0, 10)
-		add_content_child(separator)
+		players_list.add_child(separator)
 	
 	# Fit the modal to content
 	fit_to_content()

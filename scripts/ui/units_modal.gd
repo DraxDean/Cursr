@@ -18,19 +18,17 @@ func refresh_content():
 	header_label.add_theme_font_size_override("font_size", 16)
 	add_content_child(header_label)
 	
-	# Separate pets from regular units
+	# Separate pets from regular units — only player 1's own units, not other
+	# players' (e.g. marauder camp) units
 	var all_units = []
 	var pets = []
-	for player_id in game_ref.players_data:
-		if str(player_id) == "environment":
-			continue
-		var player_data = game_ref.players_data[player_id]
-		if player_data.has("units"):
-			for unit in player_data["units"]:
-				if unit.get("is_pet", false):
-					pets.append(unit)
-				else:
-					all_units.append(unit)
+	var player_data = game_ref.players_data.get(1, {})
+	if player_data.has("units"):
+		for unit in player_data["units"]:
+			if unit.get("is_pet", false):
+				pets.append(unit)
+			else:
+				all_units.append(unit)
 	
 	# ── Pets section ─────────────────────────────────────────────────────────
 	var pets_header = Label.new()
