@@ -1056,6 +1056,42 @@ func _release_unit_housing(unit: Dictionary) -> void:
 		var occ: int = building_node.get_meta("living_occupancy", 0)
 		building_node.set_meta("living_occupancy", max(0, occ - 1))
 
+func _release_unit_job(unit: Dictionary) -> void:
+	"""Free the resource_jobs slot + occupancy count a dead/removed unit held, so its
+	workplace (or barracks station) can hire/train someone else instead of showing a
+	stale unit_assigned id forever."""
+	var job_name = unit.get("job", null)
+	if job_name == null or not is_instance_valid(map_objects_holder):
+		return
+	var uid: String = unit.get("unique_id", "")
+	var is_station: bool = job_name.ends_with("_station")
+	var building_name: String = job_name.substr(0, job_name.length() - len("_station")) if is_station else job_name
+	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
+	if not is_instance_valid(building_node):
+		return
+
+	var jobs: Array = building_node.get_meta("resource_jobs", [])
+	for job in jobs:
+		if job.get("unit_assigned") == uid:
+			job["unit_assigned"] = null
+			job["assigned_job_index"] = -1
+			# Farm jobs also need their tile's worker lock + display mirror released
+			if job.get("resource_type", "") == "farm":
+				var farm_node = map_objects_holder.get_node_or_null(NodePath(job.get("resource_id", "")))
+				if is_instance_valid(farm_node):
+					farm_node.set_meta("farm_worker_assigned", false)
+					var fm_jobs: Array = farm_node.get_meta("resource_jobs", [])
+					fm_jobs = fm_jobs.filter(func(j): return j.get("resource_type", "") != "farm_mirror")
+					farm_node.set_meta("resource_jobs", fm_jobs)
+			break
+	building_node.set_meta("resource_jobs", jobs)
+
+	var occ_key: String = "station_occupancy" if is_station else "worker_occupancy"
+	var occ: int = building_node.get_meta(occ_key, 0)
+	building_node.set_meta(occ_key, max(0, occ - 1))
+
+	building_jobs_updated.emit(building_node.name)
+
 func update_player_population(player_id: int):
 	# Recalculate housed/unhoused and working/unemployed populations
 	if not players_data.has(player_id):
@@ -2658,6 +2694,7 @@ func remove_event_units(player_id: int, count: int):
 			if is_instance_valid(clickable):
 				clickable.queue_free()
 		_release_unit_housing(unit)
+		_release_unit_job(unit)
 		player_units.erase(unit)
 		removed += 1
 		DebugConfig.dprint("general", ["Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id]])
@@ -5778,6 +5815,7 @@ func remove_unit_from_combat(unit: Dictionary) -> void:
 			sprite.queue_free()
 	unit_sprite_map.erase(uid)
 	_release_unit_housing(unit)
+	_release_unit_job(unit)
 	player_units.erase(unit)
 	players_data[player_id]["units"] = player_units
 	var pop = players_data[player_id].get("population", {})
