@@ -10,10 +10,14 @@ const LoadGameModalScript = preload("res://scripts/ui/load_game_modal.gd")
 @onready var continue_button: Button = $CenterContainer/VBoxContainer/ContinueButton
 @onready var new_game_button: Button = $CenterContainer/VBoxContainer/NewGameButton
 @onready var load_game_button: Button = $CenterContainer/VBoxContainer/LoadGameButton
+@onready var achievements_button: Button = $CenterContainer/VBoxContainer/AchievementsButton
+@onready var settings_button: Button = $CenterContainer/VBoxContainer/SettingsButton
 @onready var quit_button: Button = $CenterContainer/VBoxContainer/QuitButton
 @onready var version_label: Label = $VersionLabel
 
 var _load_modal: Control = null
+var _achievements_modal: Control = null
+var _settings_modal: Control = null
 
 func _ready():
 	# Ensure SaveLoadManager is ready (Autoloads initialize before scene _ready)
@@ -28,11 +32,15 @@ func _ready():
 	if not is_instance_valid(continue_button): push_error("Node not found: VBoxContainer/ContinueButton"); return
 	if not is_instance_valid(new_game_button): push_error("Node not found: VBoxContainer/NewGameButton"); return
 	if not is_instance_valid(load_game_button): push_error("Node not found: VBoxContainer/LoadGameButton"); return
+	if not is_instance_valid(achievements_button): push_error("Node not found: VBoxContainer/AchievementsButton"); return
+	if not is_instance_valid(settings_button): push_error("Node not found: VBoxContainer/SettingsButton"); return
 	if not is_instance_valid(quit_button): push_error("Node not found: VBoxContainer/QuitButton"); return
 
 	continue_button.pressed.connect(_on_continue_pressed)
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	load_game_button.pressed.connect(_on_load_game_pressed)
+	achievements_button.pressed.connect(_on_achievements_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 
 	# Enable/disable buttons based on save availability
@@ -106,6 +114,24 @@ func _on_load_modal_back():
 		_load_modal.queue_free()
 		_load_modal = null
 	$CenterContainer.visible = true
+
+
+func _on_achievements_pressed():
+	DebugConfig.dprint("ui", ["Main Menu: Opening achievements..."])
+	if not is_instance_valid(_achievements_modal):
+		var EncyclopediaModalScript = preload("res://scripts/ui/encyclopedia_modal.gd")
+		_achievements_modal = EncyclopediaModalScript.new()
+		add_child(_achievements_modal)
+	_achievements_modal.open_achievements_tab()
+
+
+func _on_settings_pressed():
+	DebugConfig.dprint("ui", ["Main Menu: Opening settings..."])
+	if not is_instance_valid(_settings_modal):
+		var SettingsModalScript = preload("res://scripts/ui/settings_modal.gd")
+		_settings_modal = SettingsModalScript.new(null)
+		add_child(_settings_modal)
+	_settings_modal.toggle()
 
 
 func _on_quit_pressed():

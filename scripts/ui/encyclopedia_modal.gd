@@ -2,8 +2,20 @@
 # In-game encyclopedia covering game mechanics, buildings, jobs, and world objects.
 extends "res://scripts/ui/info_modal.gd"
 
+const ACHIEVEMENTS_TAB: int = 5
+
+var _initial_tab: int = 0
+
 func _init():
 	super("encyclopedia", "? Encyclopedia", Vector2.ZERO)
+
+func open_achievements_tab() -> void:
+	"""Open (or refresh) the modal jumped straight to the Achievements tab."""
+	_initial_tab = ACHIEVEMENTS_TAB
+	if not is_open:
+		toggle()
+	else:
+		refresh_content()
 
 func _ready() -> void:
 	super._ready()
@@ -55,7 +67,8 @@ func refresh_content():
 		for i in pages.size():
 			pages[i]["scroll"].visible = (i == idx)
 
-	_show_page.call(0)
+	tab_bar.current_tab = _initial_tab
+	_show_page.call(_initial_tab)
 	tab_bar.tab_changed.connect(_show_page)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
