@@ -2,11 +2,15 @@
 # In-game encyclopedia covering game mechanics, buildings, jobs, and world objects.
 extends "res://scripts/ui/info_modal.gd"
 
-const ACHIEVEMENTS_TAB: int = 5
+const TUTORIALS_TAB: int = 0
+const ACHIEVEMENTS_TAB: int = 6
 
-var _initial_tab: int = 0
+var game_ref: Node = null
+var _initial_tab: int = TUTORIALS_TAB
+var _tutorial_modal: Control = null
 
-func _init():
+func _init(game_reference: Node = null):
+	game_ref = game_reference
 	super("encyclopedia", "? Encyclopedia", Vector2.ZERO)
 
 func open_achievements_tab() -> void:
@@ -16,6 +20,14 @@ func open_achievements_tab() -> void:
 		toggle()
 	else:
 		refresh_content()
+
+func show_tutorial(tutorial_id: String) -> void:
+	"""Open the paginated tutorial popup — used by both the Tutorials tab and notification card clicks."""
+	if not is_instance_valid(_tutorial_modal):
+		var TutorialModalScript = preload("res://scripts/ui/tutorial_modal.gd")
+		_tutorial_modal = TutorialModalScript.new()
+		add_child(_tutorial_modal)
+	_tutorial_modal.show_tutorial(tutorial_id)
 
 func _ready() -> void:
 	super._ready()
@@ -30,6 +42,7 @@ func refresh_content():
 
 	# Tab bar
 	var tab_bar = TabBar.new()
+	tab_bar.add_tab("📘 Tutorials")
 	tab_bar.add_tab("Basics")
 	tab_bar.add_tab("Jobs")
 	tab_bar.add_tab("Buildings")
@@ -43,7 +56,7 @@ func refresh_content():
 
 	# Content pages — one ScrollContainer per tab, only one visible at a time
 	var pages: Array = []
-	for _i in 6:
+	for _i in 7:
 		var scroll = ScrollContainer.new()
 		scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -55,12 +68,13 @@ func refresh_content():
 		add_content_child(scroll)
 		pages.append({"scroll": scroll, "vbox": vbox})
 
-	_populate_basics(pages[0]["vbox"])
-	_populate_jobs(pages[1]["vbox"])
-	_populate_buildings(pages[2]["vbox"])
-	_populate_world_objects(pages[3]["vbox"])
-	_populate_events(pages[4]["vbox"])
-	_populate_achievements(pages[5]["vbox"])
+	_populate_tutorials(pages[0]["vbox"])
+	_populate_basics(pages[1]["vbox"])
+	_populate_jobs(pages[2]["vbox"])
+	_populate_buildings(pages[3]["vbox"])
+	_populate_world_objects(pages[4]["vbox"])
+	_populate_events(pages[5]["vbox"])
+	_populate_achievements(pages[6]["vbox"])
 
 	# Show only the active tab's page
 	var _show_page = func(idx: int):
@@ -377,6 +391,69 @@ func _populate_events(v: VBoxContainer):
 				ch_lbl.add_theme_color_override("font_color", Color(0.75, 0.80, 0.95))
 				ch_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				col.add_child(ch_lbl)
+
+
+func _populate_tutorials(v: VBoxContainer) -> void:
+	var intro = Label.new()
+	intro.text = "Step-by-step guides. Click one to open it — each only sends a notification card the first time."
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intro.add_theme_font_size_override("font_size", 12)
+	intro.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+	v.add_child(intro)
+	v.add_child(HSeparator.new())
+
+	for tutorial in TutorialManager.TUTORIALS:
+		v.add_child(_build_tutorial_row(tutorial))
+
+func _build_tutorial_row(tutorial: Dictionary) -> Control:
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+
+	var btn = Button.new()
+	btn.text = "%s  %s" % [tutorial.get("icon", "📘"), tutorial.get("title", "Tutorial")]
+	btn.custom_minimum_size = Vector2(260, 32)
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.pressed.connect(_on_tutorial_pressed.bind(tutorial.get("id", "")))
+	row.add_child(btn)
+
+	var summary_lbl = Label.new()
+	summary_lbl.text = tutorial.get("summary", "")
+	summary_lbl.add_theme_font_size_override("font_size", 11)
+	summary_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	summary_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	summary_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(summary_lbl)
+
+	if TutorialManager.has_been_triggered(tutorial.get("id", "")):
+		var seen_lbl = Label.new()
+		seen_lbl.text = "✔ Seen"
+		seen_lbl.add_theme_font_size_override("font_size", 11)
+		seen_lbl.add_theme_color_override("font_color", Color(0.5, 0.9, 0.5))
+		seen_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(seen_lbl)
+
+	return row
+
+func _on_tutorial_pressed(tutorial_id: String) -> void:
+	show_tutorial(tutorial_id)
+	if not TutorialManager.has_been_triggered(tutorial_id):
+		TutorialManager.mark_triggered(tutorial_id)
+		_push_tutorial_notification(tutorial_id)
+	refresh_content()
+
+func _push_tutorial_notification(tutorial_id: String) -> void:
+	if not is_instance_valid(game_ref) or not is_instance_valid(game_ref.notification_panel):
+		return
+	var tutorial: Dictionary = TutorialManager.get_tutorial(tutorial_id)
+	if tutorial.is_empty():
+		return
+	game_ref.notification_panel.push(
+		tutorial.get("title", "Tutorial"),
+		tutorial.get("summary", ""),
+		tutorial.get("icon", "📘"),
+		Color(0.4, 0.75, 1.0),
+		{"action": "open_tutorial", "tutorial_id": tutorial_id}
+	)
 
 
 func _populate_achievements(v: VBoxContainer) -> void:

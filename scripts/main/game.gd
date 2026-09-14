@@ -5167,7 +5167,7 @@ func _setup_info_modals():
 	units_modal = UnitsModalScript.new(self, base_pos + modal_offset * 5)
 	science_modal = ScienceModalScript.new(self, base_pos + modal_offset * 6)
 	settings_modal = SettingsModalScript.new(self, base_pos + modal_offset * 7)
-	encyclopedia_modal = EncyclopediaModalScript.new()
+	encyclopedia_modal = EncyclopediaModalScript.new(self)
 	var LogModalScript = preload("res://scripts/ui/log_modal.gd")
 	log_modal = LogModalScript.new(game_log, self)
 	var GraphsModalScript = preload("res://scripts/ui/graphs_modal.gd")
@@ -5354,6 +5354,11 @@ func _on_notification_clicked(data: Dictionary):
 			var event_data: Dictionary = data.get("event_data", {})
 			if not event_data.is_empty() and is_instance_valid(world_event_modal):
 				world_event_modal.show_event(event_data, true)
+		"open_tutorial":
+			# Reopen the tutorial popup (owned by the encyclopedia modal) for this tutorial
+			var tutorial_id: String = data.get("tutorial_id", "")
+			if tutorial_id != "" and is_instance_valid(encyclopedia_modal):
+				encyclopedia_modal.show_tutorial(tutorial_id)
 		_:
 			# Generic: open turn events modal
 			if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
