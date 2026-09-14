@@ -11,6 +11,7 @@ const LoadGameModalScript = preload("res://scripts/ui/load_game_modal.gd")
 @onready var new_game_button: Button = $CenterContainer/VBoxContainer/NewGameButton
 @onready var load_game_button: Button = $CenterContainer/VBoxContainer/LoadGameButton
 @onready var quit_button: Button = $CenterContainer/VBoxContainer/QuitButton
+@onready var version_label: Label = $VersionLabel
 
 var _load_modal: Control = null
 
@@ -20,6 +21,8 @@ func _ready():
 	if SaveLoadManager == null:
 		push_error("SaveLoadManager Autoload not found!")
 		return
+
+	_show_version_label()
 
 	# Connect signals
 	if not is_instance_valid(continue_button): push_error("Node not found: VBoxContainer/ContinueButton"); return
@@ -41,6 +44,30 @@ func _ready():
 		continue_button.tooltip_text = "No saved games found."
 	if load_game_button.disabled:
 		load_game_button.tooltip_text = "No saved games found."
+
+
+func _show_version_label() -> void:
+	"""Version = v0.8.<commit count>, read from git so it advances with every commit."""
+	if not is_instance_valid(version_label):
+		return
+	var commit_count := _get_git_commit_count()
+	if commit_count < 0:
+		version_label.visible = false
+		return
+	version_label.text = "v0.8.%d" % commit_count
+
+
+func _get_git_commit_count() -> int:
+	"""Returns HEAD's commit count on this branch, or -1 if git isn't available (e.g. exported builds without a .git folder)."""
+	var project_path := ProjectSettings.globalize_path("res://")
+	var output := []
+	var exit_code := OS.execute("git", ["-C", project_path, "rev-list", "--count", "HEAD"], output, true)
+	if exit_code != 0 or output.is_empty():
+		return -1
+	var count_str: String = String(output[0]).strip_edges()
+	if not count_str.is_valid_int():
+		return -1
+	return count_str.to_int()
 
 
 func _on_continue_pressed():
