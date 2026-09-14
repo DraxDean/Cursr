@@ -1046,6 +1046,16 @@ func update_building_occupancy(building_node: Node2D, capacity_type: String, new
 	
 	return true
 
+func _release_unit_housing(unit: Dictionary) -> void:
+	"""Free the living_occupancy slot a dead/removed unit held, so the building can house someone else."""
+	var building_name = unit.get("living_quarters", null)
+	if building_name == null or not is_instance_valid(map_objects_holder):
+		return
+	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
+	if is_instance_valid(building_node):
+		var occ: int = building_node.get_meta("living_occupancy", 0)
+		building_node.set_meta("living_occupancy", max(0, occ - 1))
+
 func update_player_population(player_id: int):
 	# Recalculate housed/unhoused and working/unemployed populations
 	if not players_data.has(player_id):
@@ -1063,12 +1073,13 @@ func update_player_population(player_id: int):
 		if not unit.get("is_pet", false):
 			total_pop += 1
 
-	# Calculate housed population from actual building data
+	# Calculate housed population directly from units (living_quarters field is the source of
+	# truth, same as working below) — building living_occupancy meta isn't decremented when a
+	# housed unit dies, so summing it would over-count housing after combat/event deaths.
 	var total_housed = 0
-	if map_objects_holder:
-		for child in map_objects_holder.get_children():
-			if _is_building_node(child) and child.get_meta("owner_player", 1) == player_id:
-				total_housed += child.get_meta("living_occupancy", 0)
+	for unit in player_data.get("units", []):
+		if not unit.get("is_pet", false) and unit.get("living_quarters", null) != null:
+			total_housed += 1
 	
 	# Calculate working population directly from units (job field is the source of truth)
 	var total_working = 0
@@ -2646,6 +2657,7 @@ func remove_event_units(player_id: int, count: int):
 			var clickable = map_objects_holder.get_node_or_null(uid + "_clickable")
 			if is_instance_valid(clickable):
 				clickable.queue_free()
+		_release_unit_housing(unit)
 		player_units.erase(unit)
 		removed += 1
 		DebugConfig.dprint("general", ["Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id]])
@@ -5760,11 +5772,22 @@ func remove_unit_from_combat(unit: Dictionary) -> void:
 		if is_instance_valid(sprite):
 			sprite.queue_free()
 	unit_sprite_map.erase(uid)
+	_release_unit_housing(unit)
 	player_units.erase(unit)
 	players_data[player_id]["units"] = player_units
 	var pop = players_data[player_id].get("population", {})
 	pop["current"] = player_units.size()
 	players_data[player_id]["population"] = pop
+	# Recompute housing/employment and refresh the UI immediately — don't wait for End Day
+	update_player_population(player_id)
+	if is_instance_valid(resource_bar):
+		resource_bar.refresh()
+	if is_instance_valid(population_modal) and population_modal.is_open:
+		population_modal.refresh_content()
+	if is_instance_valid(units_modal) and units_modal.is_open:
+		units_modal.refresh_content()
+	if is_instance_valid(army_modal) and army_modal.is_open:
+		army_modal.refresh_content()
 	if is_instance_valid(game_log):
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
@@ -6149,6 +6172,8 @@ func _clear_and_draw_map():
 	tilemap_layer.clear()
 	if world_data.is_empty(): DebugConfig.dprint("world_gen", ["Game: No world data loaded to draw."]); return
 	for coords in world_data:
+		if typeof(coords) != TYPE_VECTOR2I:
+			continue  # Skip non-tile metadata keys (e.g. "starting_tile", "player_data")
 		var tile_info = world_data[coords]
 		if typeof(tile_info) == TYPE_DICTIONARY and tile_info.has("source_id") and tile_info.has("atlas_coords"):
 			tilemap_layer.set_cell(coords, tile_info["source_id"], tile_info["atlas_coords"])

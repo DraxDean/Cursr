@@ -36,6 +36,18 @@ var _e_formation_box: CenterContainer
 var _log: RichTextLabel
 var _attack_btn: Button
 var _raid_timer_lbl: Label
+var _reward_row: HBoxContainer
+
+# ─── Victory reward constants ──────────────────────────────────────────────────
+const REWARD_MIN: int = 150
+const REWARD_MAX: int = 250
+const REWARD_RESOURCES: Array = [
+	{"key": "gold",    "icon": "●",   "color": Color(0.85, 0.72, 0.1)},
+	{"key": "food",    "icon": "🍞",  "color": Color(1.0,  0.85, 0.2)},
+	{"key": "wood",    "icon": "🌲",  "color": Color(0.3,  0.85, 0.3)},
+	{"key": "stone",   "icon": "■",   "color": Color(0.65, 0.65, 0.65)},
+	{"key": "science", "icon": "🔬",  "color": Color(0.3,  0.9,  1.0)},
+]
 
 # ─── Panel style constants ─────────────────────────────────────────────────────
 const _STYLE_NORMAL := {"bg": Color(0.1, 0.1, 0.15, 0.95), "border": Color(0.45, 0.45, 0.6)}
@@ -439,9 +451,64 @@ func _finish(player_won: bool) -> void:
 		_log.text += "\n[color=#66FF99]⚔ Victory![/color] The marauder camp has been wiped out!"
 		if is_instance_valid(_enemy_building):
 			_game.remove_enemy_barracks_node(_enemy_building)
+		_show_victory_reward()
 	else:
 		var killed: int = _game.wipe_army(_player_id)
 		var extra: String = " %d remaining unit(s) fall with it." % killed if killed > 0 else ""
 		_log.text += "\n[color=#FF6666]☠ Defeated![/color] Your army has fallen in battle.%s\nThe Marauders remain..." % extra
 
+func _show_victory_reward() -> void:
+	"""Offer 3 random resource spoils of war (+150-250 each) — clicking one grants it."""
+	var pool: Array = REWARD_RESOURCES.duplicate()
+	pool.shuffle()
+	var picks: Array = pool.slice(0, 3)
 
+	var reward_lbl = Label.new()
+	reward_lbl.text = "🏆 Spoils of war — choose one:"
+	reward_lbl.add_theme_font_size_override("font_size", 13)
+	reward_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	reward_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_content_child(reward_lbl)
+
+	_reward_row = HBoxContainer.new()
+	_reward_row.add_theme_constant_override("separation", 10)
+	_reward_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	add_content_child(_reward_row)
+
+	for res in picks:
+		var amount: int = randi_range(REWARD_MIN, REWARD_MAX)
+		var btn = Button.new()
+		btn.text = "%s +%d %s" % [res["icon"], amount, res["key"].capitalize()]
+		btn.custom_minimum_size = Vector2(110, 40)
+		btn.add_theme_color_override("font_color", res["color"])
+		btn.pressed.connect(_on_reward_chosen.bind(res["key"], amount, btn))
+		_reward_row.add_child(btn)
+
+	fit_to_content()
+
+func _on_reward_chosen(resource_key: String, amount: int, chosen_btn: Button) -> void:
+	if not is_instance_valid(_reward_row):
+		return
+
+	if _game.players_data.has(_player_id):
+		var resources: Dictionary = _game.players_data[_player_id].get("resources", {})
+		resources[resource_key] = resources.get(resource_key, 0) + amount
+		_game.players_data[_player_id]["resources"] = resources
+
+	if is_instance_valid(_game.resource_bar):
+		_game.resource_bar.refresh()
+	if is_instance_valid(_game.resources_modal) and _game.resources_modal.is_open:
+		_game.resources_modal.refresh_content()
+
+	if is_instance_valid(_game.game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		var day: int = _game.turn_manager.get_day() if is_instance_valid(_game.turn_manager) else 0
+		_game.game_log.add(day, GL.Category.COMBAT,
+			"⚔ Spoils of war: +%d %s from the razed marauder camp." % [amount, resource_key.capitalize()])
+
+	# Lock in the choice — disable the rest, mark the pick
+	for child in _reward_row.get_children():
+		child.disabled = true
+	chosen_btn.text += "  ✔"
+
+	fit_to_content()
