@@ -5384,7 +5384,14 @@ func _on_end_day_pressed():
 				snap[rk] = int(res.get(rk, 0))
 			# Snapshot of current army strength for the Military graph
 			var army_snap := calculate_army_totals(1)
-			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true, "resource_snapshot": snap, "army_snapshot": army_snap})
+			# Snapshot of current population for the Population graph
+			var pop_snap := get_player_population_data(1)
+			var pop_snapshot := {
+				"total": int(pop_snap.get("total", 0)),
+				"working": int(pop_snap.get("working", 0)),
+				"unemployed": int(pop_snap.get("unemployed", 0))
+			}
+			game_log.add(day_before, GL.Category.INCOME, msg, {"bbcode": true, "resource_snapshot": snap, "army_snapshot": army_snap, "population_snapshot": pop_snapshot})
 		
 		# Process training progress for all units
 		_process_training_progress()

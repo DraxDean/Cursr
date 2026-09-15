@@ -33,6 +33,18 @@ const MIL_ICONS := {
 	"atk": "⚔",
 }
 
+const POP_KEYS   := ["total", "working", "unemployed"]
+const POP_COLORS := {
+	"total":      Color(0.4,  0.75, 1.0),
+	"working":    Color(0.35, 0.85, 0.4),
+	"unemployed": Color(0.7,  0.7,  0.7),
+}
+const POP_ICONS := {
+	"total":      "👥",
+	"working":    "⚒",
+	"unemployed": "○",
+}
+
 # ── Inner line-chart Control ─────────────────────────────────────────────────
 class LineChart extends Control:
 	var snapshots: Array = []
@@ -137,6 +149,7 @@ func refresh_content() -> void:
 	var tab_bar := TabBar.new()
 	tab_bar.add_tab("📈 Resources")
 	tab_bar.add_tab("⚔ Military")
+	tab_bar.add_tab("� Population")
 	tab_bar.add_tab("🔬 Science")
 	tab_bar.current_tab = _active_tab
 	tab_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -145,13 +158,15 @@ func refresh_content() -> void:
 
 	var resource_page := _build_resource_page()
 	var military_page := _build_military_page()
+	var population_page := _build_population_page()
 	var science_page  := _build_placeholder("Science tracking coming soon.")
 
 	add_content_child(resource_page)
 	add_content_child(military_page)
+	add_content_child(population_page)
 	add_content_child(science_page)
 
-	var pages := [resource_page, military_page, science_page]
+	var pages := [resource_page, military_page, population_page, science_page]
 	var _show := func(idx: int) -> void:
 		_active_tab = idx
 		for i in pages.size():
@@ -281,6 +296,66 @@ func _build_military_page() -> Control:
 		var lbl := Label.new()
 		lbl.text = MIL_ICONS[key] + " " + mil_labels.get(key, key.capitalize())
 		lbl.add_theme_color_override("font_color", MIL_COLORS[key])
+		lbl.add_theme_font_size_override("font_size", 11)
+
+		chip.add_child(swatch)
+		chip.add_child(lbl)
+		legend.add_child(chip)
+
+	return container
+
+func _build_population_page() -> Control:
+	var container := VBoxContainer.new()
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.size_flags_vertical   = Control.SIZE_EXPAND_FILL
+	container.add_theme_constant_override("separation", 8)
+
+	# Collect snapshots from INCOME log entries (population is snapshotted alongside resources each day)
+	var snapshots: Array = []
+	if is_instance_valid(_game_log):
+		var GL := GameLogScript
+		for e in _game_log.get_by_category(GL.Category.INCOME):
+			var snap: Dictionary = e.get("population_snapshot", {})
+			if not snap.is_empty():
+				snapshots.append({"day": e.get("day", 0), "data": snap})
+
+	if snapshots.is_empty():
+		var c := CenterContainer.new()
+		c.custom_minimum_size = Vector2(0, 340)
+		var lbl := Label.new()
+		lbl.text = "No data yet — end your first day to see the graph."
+		lbl.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+		c.add_child(lbl)
+		container.add_child(c)
+		return container
+
+	snapshots.sort_custom(func(a, b): return a["day"] < b["day"])
+
+	# Chart
+	var chart := LineChart.new()
+	chart.custom_minimum_size = Vector2(0, 340)
+	chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chart.size_flags_vertical   = Control.SIZE_EXPAND_FILL
+	chart.setup(snapshots, POP_COLORS, POP_KEYS)
+	container.add_child(chart)
+
+	# Legend
+	var legend := HBoxContainer.new()
+	legend.add_theme_constant_override("separation", 16)
+	container.add_child(legend)
+
+	var pop_labels := {"total": "Total Population", "working": "Working", "unemployed": "Unemployed"}
+	for key in POP_KEYS:
+		var chip := HBoxContainer.new()
+		chip.add_theme_constant_override("separation", 4)
+
+		var swatch := ColorRect.new()
+		swatch.color = POP_COLORS[key]
+		swatch.custom_minimum_size = Vector2(12, 12)
+
+		var lbl := Label.new()
+		lbl.text = POP_ICONS[key] + " " + pop_labels.get(key, key.capitalize())
+		lbl.add_theme_color_override("font_color", POP_COLORS[key])
 		lbl.add_theme_font_size_override("font_size", 11)
 
 		chip.add_child(swatch)

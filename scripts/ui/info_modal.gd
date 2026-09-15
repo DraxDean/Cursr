@@ -215,15 +215,16 @@ func fit_to_content():
 	"""Calculate and set modal size to fit its content"""
 	# Wait a frame for layout to update
 	await get_tree().process_frame
-	
-	# Get the size needed by content
-	var content_size = content_container.get_combined_minimum_size()
-	
-	# Calculate total size with header and padding
-	var header_height = 30
-	var padding = 20  # Top + bottom padding
-	var total_height = header_height + content_size.y + padding
-	var total_width = content_size.x + padding
+
+	# main_container (content_container's parent) already combines header + content + footer
+	# plus all their separations — using content_container alone under-counted the footer's
+	# reserved height and inter-section gaps, letting tall content spill past the background
+	var main_container = content_container.get_parent()
+	var needed_size: Vector2 = main_container.get_combined_minimum_size() if main_container else content_container.get_combined_minimum_size()
+
+	var padding = 20  # Left/right + top/bottom insets from the outer MarginContainer
+	var total_height = needed_size.y + padding
+	var total_width = needed_size.x + padding
 	
 	# Get viewport to constrain size
 	var viewport_size = get_viewport().get_visible_rect().size
