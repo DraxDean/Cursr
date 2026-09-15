@@ -95,6 +95,7 @@ var turn_event_manager: Node
 var notification_panel: Control
 var world_event_modal: Control
 var death_modal: Control
+var victory_modal: Control
 var active_combat_modal: Control  # Tracked so its raid timer can be refreshed on End Day
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
@@ -5292,6 +5293,11 @@ func _setup_info_modals():
 	var DeathModalScript = preload("res://scripts/ui/death_modal.gd")
 	death_modal = DeathModalScript.new(self)
 	ui_layer.add_child(death_modal)
+
+	# Victory modal — shown once Day 100 is reached, replacing that day's random world event
+	var VictoryModalScript = preload("res://scripts/ui/victory_modal.gd")
+	victory_modal = VictoryModalScript.new(self)
+	ui_layer.add_child(victory_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -5438,7 +5444,10 @@ func _on_end_day_pressed():
 		# settles so its notification card appears right as the roll lands
 		if is_instance_valid(dice_roll_widget):
 			await dice_roll_widget.roll_settled
-		_fire_random_world_event(todays_roll)
+		if turn_manager.get_day() == 100:
+			_fire_victory_event()
+		else:
+			_fire_random_world_event(todays_roll)
 
 		# Daily achievement checks
 		check_day_achievements()
@@ -5461,6 +5470,11 @@ func _on_notification_clicked(data: Dictionary):
 			var death_data: Dictionary = data.get("death_data", {})
 			if not death_data.is_empty() and is_instance_valid(death_modal):
 				death_modal.show_death(death_data)
+		"open_victory":
+			# Reopen the victory screen with the score it was fired with
+			var score: Dictionary = data.get("score", {})
+			if not score.is_empty() and is_instance_valid(victory_modal):
+				victory_modal.show_victory(score)
 		"open_tutorial":
 			# Reopen the tutorial popup (owned by the encyclopedia modal) for this tutorial
 			var tutorial_id: String = data.get("tutorial_id", "")
@@ -5949,6 +5963,54 @@ func tag_event_instance(event_data: Dictionary) -> Dictionary:
 	_event_instance_seq += 1
 	event_data["instance_id"] = "%s#%d" % [event_data.get("id", "event"), _event_instance_seq]
 	return event_data
+
+const VICTORY_UNIT_SCORE := {
+	"peasant": 5,
+	"soldier": 20,
+	"scholar": 20,
+	"merchant": 20
+}
+const VICTORY_BUILDING_SCORE := 15
+
+func calculate_victory_score(player_id: int = 1) -> Dictionary:
+	"""Quick end-game score: resources banked + units (trained specialists worth more) + buildings built."""
+	var player_data: Dictionary = players_data.get(player_id, {})
+
+	var resources: Dictionary = player_data.get("resources", {})
+	var resource_score: int = 0
+	for key in ["gold", "food", "wood", "stone", "science"]:
+		resource_score += int(resources.get(key, 0))
+
+	var unit_score: int = 0
+	for unit in player_data.get("units", []):
+		if unit.get("is_pet", false):
+			continue
+		unit_score += VICTORY_UNIT_SCORE.get(unit.get("type", "peasant"), 5)
+
+	var building_score: int = get_player_buildings(player_id).size() * VICTORY_BUILDING_SCORE
+
+	return {
+		"resources": resource_score,
+		"units": unit_score,
+		"buildings": building_score,
+		"total": resource_score + unit_score + building_score
+	}
+
+func _fire_victory_event() -> void:
+	"""Day 100 reached — show the one-time victory screen instead of a random world event."""
+	var score: Dictionary = calculate_victory_score(1)
+	if is_instance_valid(victory_modal):
+		victory_modal.show_victory(score)
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			"🏆 Victory!",
+			"You've survived 100 days. Click to view your score.",
+			"🏆",
+			Color(1.0, 0.85, 0.2),
+			{"action": "open_victory", "score": score}
+		)
+	if is_instance_valid(game_footer):
+		game_footer.set_end_day_blocked(true)
 
 func _fire_random_world_event(dice_roll: int = -1):
 	"""Fire the event matching the given d20 roll (see HumanEvents.get_tier_for_roll).
