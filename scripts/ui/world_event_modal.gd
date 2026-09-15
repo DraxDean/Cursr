@@ -176,8 +176,9 @@ func _on_choice_pressed(choice: Dictionary):
 		if event_key != "" and is_instance_valid(_game.notification_panel):
 			_game.notification_panel.mark_event_resolved(event_key)
 
-	# Replace choice buttons with resolved message
-	refresh_content()
+	# Close the modal immediately once a decision is made — the notification card stays
+	# put (now dismissable) so the player can still review it later without it blocking flow
+	close_modal()
 
 func _apply_effects(effects: Dictionary):
 	if effects.is_empty():

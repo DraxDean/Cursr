@@ -2,7 +2,10 @@
 # Random world events for the Human faction.
 # Each entry is a Dictionary with keys:
 #   id        - unique string identifier
-#   tier      - "S+", "S", "A", "B", "C", "D", or "F"
+#   tier      - "S+", "S", "A", "B", "C", "D", or "F" -- a SENTIMENT scale, not rarity:
+#               F = worst/most harmful ... S+ = best/most beneficial. Maps directly onto
+#               the 1-20 End Day dice roll (see get_tier_for_roll): low rolls are bad
+#               (red), the middle is neutral (grey), high rolls are good (gold).
 #   title     - short event name (shown in card + modal header)
 #   body      - flavour paragraph shown in the modal
 #   icon      - emoji / symbol for the notification card
@@ -15,34 +18,153 @@
 #   choices   - Array of {label, effects} -- at least one "OK/Accept" choice.
 #               Choice effects REPLACE base effects when non-null.
 #
-# Tier spawn weights (approximate %) -- higher tier = rarer:
-#   S+: 2   S: 5   A: 10   B: 15   C: 23   D: 25   F: 20
+# Tier selection weights (approximate %):
+#   F: 15   D: 15   C: 15   B: 10   A: 20   S: 15   S+: 10
 
 extends RefCounted
 
 const TIER_WEIGHTS: Dictionary = {
-	"S+": 2,
-	"S":  5,
-	"A":  10,
-	"B":  15,
-	"C":  23,
-	"D":  25,
-	"F":  20,
+	"S+": 10,
+	"S":  15,
+	"A":  20,
+	"B":  10,
+	"C":  15,
+	"D":  15,
+	"F":  15,
 }
 
 const EVENTS: Array = [
 
-	# F TIER
+	# F TIER -- catastrophic (roll 1-3, red)
 	{
-		"id": "event_human_f1", "tier": "F",
-		"title": "A Quiet Day",
-		"body": "The sun rose, the sun set. Nothing of note disturbed the settlement.",
-		"icon": "☁",
-		"effects": {"resources": {}},
-		"choices": [{"label": "Noted.", "effects": null}]
+		"id": "event_human_s1", "tier": "F",
+		"title": "The Great Sickness",
+		"body": "A virulent fever sweeps through the settlement. Despite healers' best efforts, many townsfolk succumb.",
+		"icon": "💀",
+		"effects": {"resources": {"gold": -60}, "pop_kill_pct": 20.0},
+		"choices": [
+			{"label": "Quarantine & Treat (Gold -60, ~20% Pop Loss)", "effects": null},
+			{"label": "Flee the District (~30% Pop Loss, save gold)", "effects": {"resources": {}, "pop_kill_pct": 30.0}}
+		]
 	},
 	{
-		"id": "event_human_f2", "tier": "F",
+		"id": "event_human_s4", "tier": "F",
+		"title": "Siege Aftermath",
+		"body": "A skirmish at the settlement's edge left buildings damaged and lives lost.",
+		"icon": "🛡",
+		"effects": {"resources": {"gold": -100, "food": -80, "wood": -100, "stone": -80}, "pop_kill_pct": 25.0},
+		"choices": [
+			{"label": "Rebuild (~25% Pop Loss, heavy resource cost)", "effects": null},
+			{"label": "Abandon the Outer Walls (~15% Pop Loss, less resource loss)", "effects": {"resources": {"gold": -40, "food": -40, "wood": -40}, "pop_kill_pct": 15.0}}
+		]
+	},
+	{
+		"id": "event_human_s5", "tier": "F",
+		"category": "military",
+		"title": "The War Party Descends",
+		"body": "A disciplined enemy war party has erected a fortified barracks on your doorstep. There is no sending them away.",
+		"icon": "⚔",
+		"effects": {"resources": {"gold": -80, "food": -60, "wood": -80, "stone": -60}, "spawn_wave": true},
+		"choices": [
+			{"label": "Fortify the Walls (resource cost, barracks spawns)", "effects": null},
+			{"label": "Arm the People (Gold -120, barracks spawns)", "effects": {"resources": {"gold": -120}, "spawn_wave": true}}
+		]
+	},
+	{
+		"id": "event_human_sp1", "tier": "F",
+		"title": "The Plague",
+		"body": "A devastating plague tears through every quarter of the settlement. There is no stopping it -- only managing the losses.",
+		"icon": "☣",
+		"effects": {"resources": {"gold": -150, "food": -200}, "pop_kill_pct": 30.0},
+		"choices": [
+			{"label": "Fight It With Everything (Gold -150, Food -200, ~30% Pop Loss)", "effects": null},
+			{"label": "Sacrifice the Outer Quarters (~40% Pop Loss, save resources)", "effects": {"resources": {}, "pop_kill_pct": 40.0}}
+		]
+	},
+	{
+		"id": "event_human_sp3", "tier": "F",
+		"title": "Dragon Sighting",
+		"body": "A young dragon circled the settlement for hours before landing outside the walls. Terror has gripped the town -- people are fleeing.",
+		"icon": "🐉",
+		"effects": {"resources": {"gold": -200, "food": -150, "wood": -150, "stone": -100}, "pop_kill_pct": 25.0},
+		"choices": [
+			{"label": "Offer Tribute (massive resource drain, ~25% Pop Loss)", "effects": null},
+			{"label": "Drive It Away (minor resource loss, ~30% Pop Loss)", "effects": {"resources": {"gold": -60, "food": -60, "wood": -60}, "pop_kill_pct": 30.0}}
+		]
+	},
+
+	# D TIER -- bad (roll 4-6, orange)
+	{
+		"id": "event_human_b3", "tier": "D",
+		"title": "Plague Scare",
+		"body": "A sickness spreads through the lower quarters. Several families flee before it can take hold.",
+		"icon": "☠",
+		"effects": {"resources": {"gold": -30}, "pop_kill": 2},
+		"choices": [
+			{"label": "Quarantine (-2 Villagers, Gold -30)", "effects": null},
+			{"label": "Ignore It", "effects": {"resources": {}, "pop_kill": 4}}
+		]
+	},
+	{
+		"id": "event_human_b5", "tier": "D",
+		"title": "Flood Warning",
+		"body": "Heavy rains upstream threaten to flood the lower farms.",
+		"icon": "🌊",
+		"effects": {"resources": {"food": -100, "wood": -40, "stone": -60}},
+		"choices": [
+			{"label": "Reinforce the Banks (Food -100, Wood -40, Stone -60)", "effects": null},
+			{"label": "Risk It", "effects": {"resources": {"food": -200}}}
+		]
+	},
+	{
+		"id": "event_human_a2", "tier": "D",
+		"title": "Crop Blight",
+		"body": "A mysterious blight sweeps through the farmlands. Entire fields are ruined. Families begin to leave.",
+		"icon": "🌿",
+		"effects": {"resources": {"food": -300}, "pop_kill_pct": 15.0},
+		"choices": [
+			{"label": "Ration Stores (Food -300, ~15% Pop Loss)", "effects": null},
+			{"label": "Buy Emergency Food (Gold -120, ~8% Pop Loss)", "effects": {"resources": {"gold": -120, "food": 150}, "pop_kill_pct": 8.0}}
+		]
+	},
+	{
+		"id": "event_human_a3", "tier": "D",
+		"title": "Earthquake Tremors",
+		"body": "The ground shook before dawn. Buildings cracked and the injured are many.",
+		"icon": "🌋",
+		"effects": {"resources": {"gold": -80, "wood": -100, "stone": -200}, "pop_kill_pct": 10.0},
+		"choices": [
+			{"label": "Begin Repairs (heavy resource cost, ~10% Pop Loss)", "effects": null},
+			{"label": "Prioritise Survivors (Gold -40, ~8% Pop Loss)", "effects": {"resources": {"gold": -40}, "pop_kill_pct": 8.0}}
+		]
+	},
+	{
+		"id": "event_human_a5", "tier": "D",
+		"title": "Bandit Ambush",
+		"body": "Bandits raided an outlying supply convoy. Resources were plundered and several settlers were lost.",
+		"icon": "⚔",
+		"effects": {"resources": {"gold": -120, "food": -80, "wood": -60}, "pop_kill_pct": 10.0},
+		"choices": [
+			{"label": "Accept the Losses (resource drain, ~10% Pop Loss)", "effects": null},
+			{"label": "Send a Punitive Party (recover resources, ~5% Pop Loss)", "effects": {"resources": {"gold": 40, "food": 40, "wood": 30}, "pop_kill_pct": 5.0}}
+		]
+	},
+	{
+		"id": "event_human_a9", "tier": "D",
+		"category": "military",
+		"title": "Marauder Scouts Spotted",
+		"body": "Riders report a large warband setting up camp on the outskirts. You may pay tribute to delay them.",
+		"icon": "🏕",
+		"effects": {"resources": {"gold": -150, "food": -100}},
+		"choices": [
+			{"label": "Pay Tribute (Gold -150, Food -100 -- they withdraw for now)", "effects": {"resources": {"gold": -150, "food": -100}}},
+			{"label": "Let Them Camp (a marauder barracks spawns on the map)", "effects": {"resources": {}, "spawn_wave": true}}
+		]
+	},
+
+	# C TIER -- unlucky (roll 7-9, yellow)
+	{
+		"id": "event_human_f2", "tier": "C",
 		"title": "Minor Street Squabble",
 		"body": "Two merchants argued outside the inn. A guard had to intervene. Productivity dropped slightly.",
 		"icon": "🗣",
@@ -50,36 +172,7 @@ const EVENTS: Array = [
 		"choices": [{"label": "Move Along (Gold -5)", "effects": null}]
 	},
 	{
-		"id": "event_human_f4", "tier": "F",
-		"title": "Idle Gossip",
-		"body": "Rumours spread through the tavern about a distant kingdom. Spirits are high.",
-		"icon": "💬",
-		"effects": {"resources": {"science": 2}},
-		"choices": [{"label": "Let Them Talk (Science +2)", "effects": null}]
-	},
-
-	# D TIER
-	{
-		"id": "event_human_d1", "tier": "D",
-		"title": "Timber Windfall",
-		"body": "A storm topples a section of the nearby forest. The felled trees are easy to collect.",
-		"icon": "🌲",
-		"effects": {"resources": {"wood": 120}},
-		"choices": [{"label": "Gather the Wood (Wood +120)", "effects": null}]
-	},
-	{
-		"id": "event_human_d2", "tier": "D",
-		"title": "Passing Trader",
-		"body": "A small caravan passes through and purchases surplus goods.",
-		"icon": "🛒",
-		"effects": {"resources": {"gold": 25, "food": -10}},
-		"choices": [
-			{"label": "Sell Surplus (Gold +25, Food -10)", "effects": null},
-			{"label": "Decline", "effects": {"resources": {}}}
-		]
-	},
-	{
-		"id": "event_human_d3", "tier": "D",
+		"id": "event_human_d3", "tier": "C",
 		"title": "Cracked Cobblestones",
 		"body": "The main road has cracked badly after recent rains.",
 		"icon": "🪨",
@@ -90,7 +183,7 @@ const EVENTS: Array = [
 		]
 	},
 	{
-		"id": "event_human_d4", "tier": "D",
+		"id": "event_human_d4", "tier": "C",
 		"title": "Bee Swarm in the Granary",
 		"body": "A large swarm of bees has taken residence in the upper granary.",
 		"icon": "🐝",
@@ -98,54 +191,6 @@ const EVENTS: Array = [
 		"choices": [
 			{"label": "Smoke Them Out (Gold +10, Food -30)", "effects": null},
 			{"label": "Leave Them Be", "effects": {"resources": {"food": -5}}}
-		]
-	},
-	{
-		"id": "event_human_d5", "tier": "D",
-		"title": "Stray Dog Adopted",
-		"body": "A friendly stray dog wandered into the marketplace and has decided to stay. It could use a new best friend.",
-		"icon": "🐕",
-		"effects": {"resources": {"food": -2}, "add_pet": "dog"},
-		"choices": [{"label": "Welcome the Pup (Food -2)", "effects": null}]
-	},
-	{
-		"id": "event_human_d6", "tier": "D",
-		"title": "Stray Cat Adopted",
-		"body": "A sleek cat has taken a liking to the granary and refuses to leave. Perhaps it's found a new home.",
-		"icon": "🐈",
-		"effects": {"resources": {"food": -2}, "add_pet": "cat"},
-		"choices": [{"label": "Welcome the Cat (Food -2)", "effects": null}]
-	},
-
-	# C TIER
-	{
-		"id": "event_human_c1", "tier": "C",
-		"title": "Bumper Harvest",
-		"body": "Favorable weather has blessed the fields. The harvest this season is plentiful.",
-		"icon": "🌾",
-		"effects": {"resources": {"food": 150}},
-		"choices": [{"label": "Celebrate! (Food +150)", "effects": null}]
-	},
-	{
-		"id": "event_human_c2", "tier": "C",
-		"title": "Wandering Scholar",
-		"body": "A learned scholar passes through, offering lectures to your townsfolk.",
-		"icon": "📚",
-		"effects": {"resources": {"gold": -20, "science": 60}},
-		"choices": [
-			{"label": "Invite Him In (Science +60, Gold -20)", "effects": null},
-			{"label": "Let Him Pass", "effects": {"resources": {"science": 10}}}
-		]
-	},
-	{
-		"id": "event_human_c3", "tier": "C",
-		"title": "Abandoned Mine",
-		"body": "Scouts report an abandoned mine shaft on the edge of your territory.",
-		"icon": "⛏",
-		"effects": {"resources": {"stone": 100}},
-		"choices": [
-			{"label": "Send Workers (Stone +100)", "effects": null},
-			{"label": "Too Dangerous", "effects": {"resources": {"science": 5}}}
 		]
 	},
 	{
@@ -159,8 +204,82 @@ const EVENTS: Array = [
 			{"label": "Salvage What Remains", "effects": {"resources": {"wood": -40}}}
 		]
 	},
+
+	# B TIER -- neutral (roll 10-11, grey)
 	{
-		"id": "event_human_c5", "tier": "C",
+		"id": "event_human_f1", "tier": "B",
+		"title": "A Quiet Day",
+		"body": "The sun rose, the sun set. Nothing of note disturbed the settlement.",
+		"icon": "☁",
+		"effects": {"resources": {}},
+		"choices": [{"label": "Noted.", "effects": null}]
+	},
+	{
+		"id": "event_human_d5", "tier": "B",
+		"title": "Stray Dog Adopted",
+		"body": "A friendly stray dog wandered into the marketplace and has decided to stay. It could use a new best friend.",
+		"icon": "🐕",
+		"effects": {"resources": {"food": -2}, "add_pet": "dog"},
+		"choices": [{"label": "Welcome the Pup (Food -2)", "effects": null}]
+	},
+	{
+		"id": "event_human_d6", "tier": "B",
+		"title": "Stray Cat Adopted",
+		"body": "A sleek cat has taken a liking to the granary and refuses to leave. Perhaps it's found a new home.",
+		"icon": "🐈",
+		"effects": {"resources": {"food": -2}, "add_pet": "cat"},
+		"choices": [{"label": "Welcome the Cat (Food -2)", "effects": null}]
+	},
+
+	# A TIER -- favourable (roll 12-15, light green)
+	{
+		"id": "event_human_f4", "tier": "A",
+		"title": "Idle Gossip",
+		"body": "Rumours spread through the tavern about a distant kingdom. Spirits are high.",
+		"icon": "💬",
+		"effects": {"resources": {"science": 2}},
+		"choices": [{"label": "Let Them Talk (Science +2)", "effects": null}]
+	},
+	{
+		"id": "event_human_d1", "tier": "A",
+		"title": "Timber Windfall",
+		"body": "A storm topples a section of the nearby forest. The felled trees are easy to collect.",
+		"icon": "🌲",
+		"effects": {"resources": {"wood": 120}},
+		"choices": [{"label": "Gather the Wood (Wood +120)", "effects": null}]
+	},
+	{
+		"id": "event_human_d2", "tier": "A",
+		"title": "Passing Trader",
+		"body": "A small caravan passes through and purchases surplus goods.",
+		"icon": "🛒",
+		"effects": {"resources": {"gold": 25, "food": -10}},
+		"choices": [
+			{"label": "Sell Surplus (Gold +25, Food -10)", "effects": null},
+			{"label": "Decline", "effects": {"resources": {}}}
+		]
+	},
+	{
+		"id": "event_human_c1", "tier": "A",
+		"title": "Bumper Harvest",
+		"body": "Favorable weather has blessed the fields. The harvest this season is plentiful.",
+		"icon": "🌾",
+		"effects": {"resources": {"food": 150}},
+		"choices": [{"label": "Celebrate! (Food +150)", "effects": null}]
+	},
+	{
+		"id": "event_human_c3", "tier": "A",
+		"title": "Abandoned Mine",
+		"body": "Scouts report an abandoned mine shaft on the edge of your territory.",
+		"icon": "⛏",
+		"effects": {"resources": {"stone": 100}},
+		"choices": [
+			{"label": "Send Workers (Stone +100)", "effects": null},
+			{"label": "Too Dangerous", "effects": {"resources": {"science": 5}}}
+		]
+	},
+	{
+		"id": "event_human_c5", "tier": "A",
 		"title": "Travelling Minstrels",
 		"body": "A troupe of colourful minstrels passes through, lifting spirits.",
 		"icon": "🎵",
@@ -170,10 +289,8 @@ const EVENTS: Array = [
 			{"label": "Send Them Onward", "effects": {"resources": {}}}
 		]
 	},
-
-	# B TIER -- flat small pop changes (3-5 units max)
 	{
-		"id": "event_human_b1", "tier": "B",
+		"id": "event_human_b1", "tier": "A",
 		"title": "The Merchant Arrives",
 		"body": "A traveling merchant sets up a stall near the town gate.",
 		"icon": "💰",
@@ -183,8 +300,21 @@ const EVENTS: Array = [
 			{"label": "Send Him Away", "effects": {"resources": {"food": 20}}}
 		]
 	},
+
+	# S TIER -- fortunate (roll 16-18, green)
 	{
-		"id": "event_human_b2", "tier": "B",
+		"id": "event_human_c2", "tier": "S",
+		"title": "Wandering Scholar",
+		"body": "A learned scholar passes through, offering lectures to your townsfolk.",
+		"icon": "📚",
+		"effects": {"resources": {"gold": -20, "science": 60}},
+		"choices": [
+			{"label": "Invite Him In (Science +60, Gold -20)", "effects": null},
+			{"label": "Let Him Pass", "effects": {"resources": {"science": 10}}}
+		]
+	},
+	{
+		"id": "event_human_b2", "tier": "S",
 		"title": "Wandering Settlers",
 		"body": "A group of wandering settlers asks to join your settlement. Extra hands mean extra mouths.",
 		"icon": "🏘",
@@ -195,18 +325,7 @@ const EVENTS: Array = [
 		]
 	},
 	{
-		"id": "event_human_b3", "tier": "B",
-		"title": "Plague Scare",
-		"body": "A sickness spreads through the lower quarters. Several families flee before it can take hold.",
-		"icon": "☠",
-		"effects": {"resources": {"gold": -30}, "pop_kill": 2},
-		"choices": [
-			{"label": "Quarantine (-2 Villagers, Gold -30)", "effects": null},
-			{"label": "Ignore It", "effects": {"resources": {}, "pop_kill": 4}}
-		]
-	},
-	{
-		"id": "event_human_b4", "tier": "B",
+		"id": "event_human_b4", "tier": "S",
 		"title": "Festival Season",
 		"body": "The townsfolk propose a festival. It costs some food and gold but families grow.",
 		"icon": "🎉",
@@ -217,20 +336,7 @@ const EVENTS: Array = [
 		]
 	},
 	{
-		"id": "event_human_b5", "tier": "B",
-		"title": "Flood Warning",
-		"body": "Heavy rains upstream threaten to flood the lower farms.",
-		"icon": "🌊",
-		"effects": {"resources": {"food": -100, "wood": -40, "stone": -60}},
-		"choices": [
-			{"label": "Reinforce the Banks (Food -100, Wood -40, Stone -60)", "effects": null},
-			{"label": "Risk It", "effects": {"resources": {"food": -200}}}
-		]
-	},
-
-	# A TIER -- percentage-based pop swings (~8-15%)
-	{
-		"id": "event_human_a1", "tier": "A",
+		"id": "event_human_a1", "tier": "S",
 		"title": "Noble's Patronage",
 		"body": "A wealthy noble wishes to invest in your settlement.",
 		"icon": "👑",
@@ -241,29 +347,7 @@ const EVENTS: Array = [
 		]
 	},
 	{
-		"id": "event_human_a2", "tier": "A",
-		"title": "Crop Blight",
-		"body": "A mysterious blight sweeps through the farmlands. Entire fields are ruined. Families begin to leave.",
-		"icon": "🌿",
-		"effects": {"resources": {"food": -300}, "pop_kill_pct": 15.0},
-		"choices": [
-			{"label": "Ration Stores (Food -300, ~15% Pop Loss)", "effects": null},
-			{"label": "Buy Emergency Food (Gold -120, ~8% Pop Loss)", "effects": {"resources": {"gold": -120, "food": 150}, "pop_kill_pct": 8.0}}
-		]
-	},
-	{
-		"id": "event_human_a3", "tier": "A",
-		"title": "Earthquake Tremors",
-		"body": "The ground shook before dawn. Buildings cracked and the injured are many.",
-		"icon": "🌋",
-		"effects": {"resources": {"gold": -80, "wood": -100, "stone": -200}, "pop_kill_pct": 10.0},
-		"choices": [
-			{"label": "Begin Repairs (heavy resource cost, ~10% Pop Loss)", "effects": null},
-			{"label": "Prioritise Survivors (Gold -40, ~8% Pop Loss)", "effects": {"resources": {"gold": -40}, "pop_kill_pct": 8.0}}
-		]
-	},
-	{
-		"id": "event_human_a4", "tier": "A",
+		"id": "event_human_a4", "tier": "S",
 		"title": "Foreign Dignitary",
 		"body": "An ambassador from a distant realm seeks an alliance. The exchange of knowledge is unparalleled.",
 		"icon": "🤝",
@@ -273,44 +357,10 @@ const EVENTS: Array = [
 			{"label": "Brief Meeting Only (Science +40, Gold -20)", "effects": {"resources": {"gold": -20, "science": 40}}}
 		]
 	},
-	{
-		"id": "event_human_a5", "tier": "A",
-		"title": "Bandit Ambush",
-		"body": "Bandits raided an outlying supply convoy. Resources were plundered and several settlers were lost.",
-		"icon": "⚔",
-		"effects": {"resources": {"gold": -120, "food": -80, "wood": -60}, "pop_kill_pct": 10.0},
-		"choices": [
-			{"label": "Accept the Losses (resource drain, ~10% Pop Loss)", "effects": null},
-			{"label": "Send a Punitive Party (recover resources, ~5% Pop Loss)", "effects": {"resources": {"gold": 40, "food": 40, "wood": 30}, "pop_kill_pct": 5.0}}
-		]
-	},
-	{
-		"id": "event_human_a9", "tier": "A",
-		"category": "military",
-		"title": "Marauder Scouts Spotted",
-		"body": "Riders report a large warband setting up camp on the outskirts. You may pay tribute to delay them.",
-		"icon": "🏕",
-		"effects": {"resources": {"gold": -150, "food": -100}},
-		"choices": [
-			{"label": "Pay Tribute (Gold -150, Food -100 -- they withdraw for now)", "effects": {"resources": {"gold": -150, "food": -100}}},
-			{"label": "Let Them Camp (a marauder barracks spawns on the map)", "effects": {"resources": {}, "spawn_wave": true}}
-		]
-	},
 
-	# S TIER -- percentage-based pop swings (~12-30%)
+	# S+ TIER -- blessed / best (roll 19-20, gold)
 	{
-		"id": "event_human_s1", "tier": "S",
-		"title": "The Great Sickness",
-		"body": "A virulent fever sweeps through the settlement. Despite healers' best efforts, many townsfolk succumb.",
-		"icon": "💀",
-		"effects": {"resources": {"gold": -60}, "pop_kill_pct": 20.0},
-		"choices": [
-			{"label": "Quarantine & Treat (Gold -60, ~20% Pop Loss)", "effects": null},
-			{"label": "Flee the District (~30% Pop Loss, save gold)", "effects": {"resources": {}, "pop_kill_pct": 30.0}}
-		]
-	},
-	{
-		"id": "event_human_s2", "tier": "S",
+		"id": "event_human_s2", "tier": "S+",
 		"title": "Mass Migration",
 		"body": "Word of your thriving settlement has spread. A great wave of hopeful settlers arrives at the gates.",
 		"icon": "🚶",
@@ -321,7 +371,7 @@ const EVENTS: Array = [
 		]
 	},
 	{
-		"id": "event_human_s3", "tier": "S",
+		"id": "event_human_s3", "tier": "S+",
 		"title": "City of Refuge",
 		"body": "A neighbouring settlement was destroyed. Its survivors came to you for shelter.",
 		"icon": "🏚",
@@ -332,42 +382,6 @@ const EVENTS: Array = [
 		]
 	},
 	{
-		"id": "event_human_s4", "tier": "S",
-		"title": "Siege Aftermath",
-		"body": "A skirmish at the settlement's edge left buildings damaged and lives lost.",
-		"icon": "🛡",
-		"effects": {"resources": {"gold": -100, "food": -80, "wood": -100, "stone": -80}, "pop_kill_pct": 25.0},
-		"choices": [
-			{"label": "Rebuild (~25% Pop Loss, heavy resource cost)", "effects": null},
-			{"label": "Abandon the Outer Walls (~15% Pop Loss, less resource loss)", "effects": {"resources": {"gold": -40, "food": -40, "wood": -40}, "pop_kill_pct": 15.0}}
-		]
-	},
-	{
-		"id": "event_human_s5", "tier": "S",
-		"category": "military",
-		"title": "The War Party Descends",
-		"body": "A disciplined enemy war party has erected a fortified barracks on your doorstep. There is no sending them away.",
-		"icon": "⚔",
-		"effects": {"resources": {"gold": -80, "food": -60, "wood": -80, "stone": -60}, "spawn_wave": true},
-		"choices": [
-			{"label": "Fortify the Walls (resource cost, barracks spawns)", "effects": null},
-			{"label": "Arm the People (Gold -120, barracks spawns)", "effects": {"resources": {"gold": -120}, "spawn_wave": true}}
-		]
-	},
-
-	# S+ TIER -- percentage-based pop swings (~25-40%)
-	{
-		"id": "event_human_sp1", "tier": "S+",
-		"title": "The Plague",
-		"body": "A devastating plague tears through every quarter of the settlement. There is no stopping it -- only managing the losses.",
-		"icon": "☣",
-		"effects": {"resources": {"gold": -150, "food": -200}, "pop_kill_pct": 30.0},
-		"choices": [
-			{"label": "Fight It With Everything (Gold -150, Food -200, ~30% Pop Loss)", "effects": null},
-			{"label": "Sacrifice the Outer Quarters (~40% Pop Loss, save resources)", "effects": {"resources": {}, "pop_kill_pct": 40.0}}
-		]
-	},
-	{
 		"id": "event_human_sp2", "tier": "S+",
 		"title": "Golden Age",
 		"body": "The stars align, the harvest is legendary, scholars flock to your halls, and a great lord pledges their fortune. A new era dawns.",
@@ -375,17 +389,6 @@ const EVENTS: Array = [
 		"effects": {"resources": {"gold": 400, "food": 400, "wood": 200, "stone": 200, "science": 200}, "pop_gain_pct": 35.0},
 		"choices": [
 			{"label": "Embrace the Golden Age (~35% Pop Gain, all resources surge)", "effects": null}
-		]
-	},
-	{
-		"id": "event_human_sp3", "tier": "S+",
-		"title": "Dragon Sighting",
-		"body": "A young dragon circled the settlement for hours before landing outside the walls. Terror has gripped the town -- people are fleeing.",
-		"icon": "🐉",
-		"effects": {"resources": {"gold": -200, "food": -150, "wood": -150, "stone": -100}, "pop_kill_pct": 25.0},
-		"choices": [
-			{"label": "Offer Tribute (massive resource drain, ~25% Pop Loss)", "effects": null},
-			{"label": "Drive It Away (minor resource loss, ~30% Pop Loss)", "effects": {"resources": {"gold": -60, "food": -60, "wood": -60}, "pop_kill_pct": 30.0}}
 		]
 	},
 	{
@@ -415,14 +418,15 @@ const EVENTS: Array = [
 # Helpers
 
 static func get_random_event(rng: RandomNumberGenerator = null) -> Dictionary:
-	"""Uniform random pick (legacy / debug). Use get_random_event_weighted for gameplay."""
+	"""Uniform random pick (legacy / debug). Use get_event_for_roll for gameplay."""
 	if rng == null:
 		rng = RandomNumberGenerator.new()
 		rng.randomize()
 	return EVENTS[rng.randi_range(0, EVENTS.size() - 1)].duplicate(true)
 
 static func get_random_event_weighted(rng: RandomNumberGenerator = null) -> Dictionary:
-	"""Weighted random pick -- rarer tiers appear far less often than common ones."""
+	"""Weighted random pick, ignoring the dice roll (legacy / debug only).
+	Rarer tiers appear far less often than common ones. Use get_event_for_roll for gameplay."""
 	if rng == null:
 		rng = RandomNumberGenerator.new()
 		rng.randomize()
@@ -437,6 +441,26 @@ static func get_random_event_weighted(rng: RandomNumberGenerator = null) -> Dict
 	var idx: int = pool[rng.randi_range(0, pool.size() - 1)]
 	return EVENTS[idx].duplicate(true)
 
+static func get_events_by_tier(tier: String) -> Array:
+	"""All events tagged with a given sentiment tier."""
+	var result: Array = []
+	for ev in EVENTS:
+		if ev.get("tier", "C") == tier:
+			result.append(ev)
+	return result
+
+static func get_event_for_roll(roll: int, rng: RandomNumberGenerator = null) -> Dictionary:
+	"""The End Day dice roll drives which tier fires — pick a random event from that tier
+	(see get_tier_for_roll for the roll-to-tier mapping)."""
+	if rng == null:
+		rng = RandomNumberGenerator.new()
+		rng.randomize()
+	var tier: String = get_tier_for_roll(roll)
+	var pool: Array = get_events_by_tier(tier)
+	if pool.is_empty():
+		return {}
+	return pool[rng.randi_range(0, pool.size() - 1)].duplicate(true)
+
 static func get_event_by_id(id: String) -> Dictionary:
 	for ev in EVENTS:
 		if ev["id"] == id:
@@ -446,33 +470,36 @@ static func get_event_by_id(id: String) -> Dictionary:
 static func get_tier_label(tier: String) -> String:
 	"""Human-readable tier label."""
 	match tier:
-		"S+": return "[S+] LEGENDARY"
-		"S":  return "[S] EPIC"
-		"A":  return "[A] MAJOR"
-		"B":  return "[B] NOTABLE"
-		"C":  return "[C] MODERATE"
-		"D":  return "[D] MINOR"
-		"F":  return "[F] TRIVIAL"
+		"S+": return "[S+] BLESSED"
+		"S":  return "[S] FORTUNATE"
+		"A":  return "[A] FAVOURABLE"
+		"B":  return "[B] NEUTRAL"
+		"C":  return "[C] UNLUCKY"
+		"D":  return "[D] BAD"
+		"F":  return "[F] CATASTROPHIC"
 		_:    return tier
 
 static func get_tier_color(tier: String) -> Color:
-	"""Shared tier color palette — used by the encyclopedia and the End Day dice roll."""
+	"""Shared tier color palette — used by the encyclopedia and the End Day dice roll.
+	Runs red (worst) -> orange -> yellow -> grey (neutral) -> green -> gold (best)."""
 	match tier:
-		"S+": return Color(0.85, 0.20, 0.85)
-		"S":  return Color(0.90, 0.20, 0.20)
-		"A":  return Color(0.90, 0.55, 0.10)
-		"B":  return Color(0.85, 0.80, 0.10)
-		"C":  return Color(0.30, 0.70, 0.95)
-		"D":  return Color(0.40, 0.80, 0.40)
-		_:    return Color(0.55, 0.55, 0.55)
+		"F":  return Color(0.90, 0.15, 0.15)   # red — catastrophic
+		"D":  return Color(0.90, 0.50, 0.10)   # orange — bad
+		"C":  return Color(0.90, 0.80, 0.15)   # yellow — unlucky
+		"B":  return Color(0.60, 0.60, 0.60)   # grey — neutral
+		"A":  return Color(0.55, 0.85, 0.45)   # light green — favourable
+		"S":  return Color(0.20, 0.75, 0.35)   # green — fortunate
+		"S+": return Color(1.00, 0.85, 0.20)   # gold — blessed / best
+		_:    return Color(0.60, 0.60, 0.60)
 
-# d20 ranges sized roughly proportional to TIER_WEIGHTS (out of 20): F4 D5 C4 B3 A2 S1 S+1.
-# Placeholder mapping — the actual day's event will drive this roll directly later.
+# d20 ranges: F1-3 (red) D4-6 (orange) C7-9 (yellow) B10-11 (grey, neutral middle)
+# A12-15 (light green) S16-18 (green) S+19-20 (gold, best). Placeholder mapping —
+# the actual day's event will drive this roll directly later.
 static func get_tier_for_roll(roll: int) -> String:
-	if roll >= 20: return "S+"
-	if roll >= 19: return "S"
-	if roll >= 17: return "A"
-	if roll >= 14: return "B"
-	if roll >= 10: return "C"
-	if roll >= 5:  return "D"
+	if roll >= 19: return "S+"
+	if roll >= 16: return "S"
+	if roll >= 12: return "A"
+	if roll >= 10: return "B"
+	if roll >= 7:  return "C"
+	if roll >= 4:  return "D"
 	return "F"

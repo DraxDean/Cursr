@@ -5298,12 +5298,13 @@ func _on_end_day_pressed():
 	# whatever event it reveals is resolved (see _fire_random_world_event)
 	if is_instance_valid(game_footer):
 		game_footer.set_end_day_blocked(true)
-	# Roll the day's dice (cosmetic for now — will drive event odds later), persisting the
+	# Roll the day's dice — this now determines which tier of event fires, persisting the
 	# result under the player's data so it survives save/load
+	var todays_roll: int = -1
 	if is_instance_valid(dice_roll_widget):
-		var rolled: int = dice_roll_widget.roll()
+		todays_roll = dice_roll_widget.roll()
 		if players_data.has(1):
-			players_data[1]["last_roll"] = rolled
+			players_data[1]["last_roll"] = todays_roll
 	# Play the day wipe transition
 	if is_instance_valid(day_transition):
 		day_transition.play()
@@ -5400,11 +5401,11 @@ func _on_end_day_pressed():
 				)
 			check_population_achievements()
 
-		# Fire a random world event last, each turn — delayed until the dice roll animation
+		# Fire the event this turn's dice roll landed on — delayed until the roll animation
 		# settles so its notification card appears right as the roll lands
 		if is_instance_valid(dice_roll_widget):
 			await dice_roll_widget.roll_settled
-		_fire_random_world_event()
+		_fire_random_world_event(todays_roll)
 
 		# Daily achievement checks
 		check_day_achievements()
@@ -5893,12 +5894,14 @@ func tag_event_instance(event_data: Dictionary) -> Dictionary:
 	event_data["instance_id"] = "%s#%d" % [event_data.get("id", "event"), _event_instance_seq]
 	return event_data
 
-func _fire_random_world_event():
-	"""Pick a weighted random human world event and show it as a notification + modal."""
+func _fire_random_world_event(dice_roll: int = -1):
+	"""Fire the event matching the given d20 roll (see HumanEvents.get_tier_for_roll).
+	With no roll given (debug/console calls), a fresh random roll is used instead."""
 	var HumanEvents = preload("res://data/events/events_human.gd")
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
-	var event_data: Dictionary = HumanEvents.get_random_event_weighted(rng)
+	var roll: int = dice_roll if dice_roll >= 1 and dice_roll <= 20 else rng.randi_range(1, 20)
+	var event_data: Dictionary = HumanEvents.get_event_for_roll(roll, rng)
 	if event_data.is_empty():
 		# Nothing to resolve — don't leave End Day blocked forever
 		if is_instance_valid(game_footer):
@@ -5907,16 +5910,8 @@ func _fire_random_world_event():
 	tag_event_instance(event_data)
 	var tier: String = event_data.get("tier", "C")
 	var tier_label: String = HumanEvents.get_tier_label(tier)
-	# Colour-code the card by tier significance
-	var card_color: Color
-	match tier:
-		"S+": card_color = Color(0.85, 0.20, 0.85)   # purple
-		"S":  card_color = Color(0.90, 0.20, 0.20)   # red
-		"A":  card_color = Color(0.90, 0.55, 0.10)   # orange
-		"B":  card_color = Color(0.85, 0.80, 0.10)   # gold
-		"C":  card_color = Color(0.30, 0.60, 0.90)   # blue
-		"D":  card_color = Color(0.40, 0.75, 0.40)   # green
-		_:    card_color = Color(0.55, 0.55, 0.55)   # grey  (F)
+	# Colour-code the card by tier sentiment (shared palette — see HumanEvents.get_tier_color)
+	var card_color: Color = HumanEvents.get_tier_color(tier)
 	if is_instance_valid(turn_event_manager):
 		turn_event_manager.push_event(event_data["title"], event_data["body"], event_data.get("icon", "📜"))
 	if is_instance_valid(notification_panel):

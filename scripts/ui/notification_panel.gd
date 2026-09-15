@@ -109,8 +109,8 @@ func _build_card(data: Dictionary) -> Control:
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 10)
 	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_top", 4)
-	margin.add_theme_constant_override("margin_bottom", 4)
+	margin.add_theme_constant_override("margin_top", 1)
+	margin.add_theme_constant_override("margin_bottom", 1)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(margin)
 
@@ -153,7 +153,7 @@ func _build_card(data: Dictionary) -> Control:
 	var dismiss = Button.new()
 	dismiss.text = "✕"
 	dismiss.flat = true
-	dismiss.custom_minimum_size = Vector2(26, CARD_H)
+	dismiss.custom_minimum_size = Vector2(26, 24)   # was forced to full CARD_H, overflowing the padding unevenly
 	dismiss.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	dismiss.add_theme_font_size_override("font_size", 11)
 	dismiss.pressed.connect(_try_dismiss_card.bind(card))
