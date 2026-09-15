@@ -171,7 +171,8 @@ var players_data: Dictionary = {
 			"working": 0,  # Number of people currently working
 			"unhoused": 10,  # total - housed
 			"unemployed": 10,  # total - working
-			"growth_accumulator": 0.0  # Fractional growth accumulation (adds 1 when >= 1.0)
+			"growth_accumulator": 0.0,  # Fractional growth accumulation (adds 1 when >= 1.0)
+			"birth_rate_modifier": 0.0  # Permanent +/- to the base 3.4%/day growth rate, set by world events
 		},
 		"technologies": {
 			# Tech levels; each key maps to current level (0 = not researched)
@@ -1169,9 +1170,12 @@ func apply_population_growth(player_id: int):
 	
 	var current_total = pop_data.get("total", 10)
 	var growth_accumulator = pop_data.get("growth_accumulator", 0.0)
-	
-	# Calculate growth: 3.4% of current population per turn (~1 new unit every 3 turns at pop 10)
-	var daily_growth = current_total * 0.034
+
+	# Base growth is 3.4% of current population per turn (~1 new unit every 3 turns at pop 10),
+	# nudged by birth_rate_modifier (permanently adjusted by world events) but never negative
+	var birth_rate_modifier: float = pop_data.get("birth_rate_modifier", 0.0)
+	var growth_rate: float = max(0.0, 0.034 + birth_rate_modifier)
+	var daily_growth = current_total * growth_rate
 	growth_accumulator += daily_growth
 	
 	# Convert accumulated growth to actual population increase, capped by free housing
@@ -1193,9 +1197,23 @@ func apply_population_growth(player_id: int):
 			)
 		# Queue notification to fire after the world event in _on_end_day_pressed
 		_pending_pop_growth += pop_to_add
-	
+
 	# Store updated accumulator
 	pop_data["growth_accumulator"] = growth_accumulator
+
+func adjust_birth_rate(player_id: int, delta: float) -> void:
+	"""Permanently shift a player's ongoing birth rate (e.g. -0.01 = -1.0 percentage points
+	off the base 3.4%/day growth rate). Used by world events instead of instant pop_kill for
+	anything short of a catastrophic (F tier) event."""
+	if not players_data.has(player_id):
+		return
+	var pop_data: Dictionary = players_data[player_id].get("population", {})
+	if pop_data.is_empty():
+		return
+	var current: float = pop_data.get("birth_rate_modifier", 0.0)
+	# Clamp so events can't compound into an absurd runaway rate over a long game
+	pop_data["birth_rate_modifier"] = clampf(current + delta, -0.03, 0.03)
+	players_data[player_id]["population"] = pop_data
 
 func _check_and_create_missing_sprites(player_id: int):
 	"""Check for units with both assignments but no sprites and create them"""

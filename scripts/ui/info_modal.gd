@@ -68,11 +68,20 @@ func _setup_ui(title: String):
 	background_panel.add_theme_stylebox_override("panel", style_box)
 	add_child(background_panel)
 	
-	# Main container - fill the control to show background
+	# Padding wrapper — VBoxContainer doesn't support margin_* theme constants (they were
+	# silently no-ops), so a real MarginContainer is needed to inset the header/content/footer
+	var padding = MarginContainer.new()
+	padding.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	padding.add_theme_constant_override("margin_left", 10)
+	padding.add_theme_constant_override("margin_right", 10)
+	padding.add_theme_constant_override("margin_top", 10)
+	padding.add_theme_constant_override("margin_bottom", 10)
+	add_child(padding)
+	
+	# Main container - fill the padded area
 	var main_container = VBoxContainer.new()
-	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main_container.add_theme_constant_override("separation", 10)
-	add_child(main_container)
+	padding.add_child(main_container)
 	
 	# Header container with title and close button (draggable area)
 	var header_container = HBoxContainer.new()
@@ -111,12 +120,6 @@ func _setup_ui(title: String):
 	footer_container.add_theme_constant_override("separation", 10)
 	footer_container.custom_minimum_size.y = 40
 	main_container.add_child(footer_container)
-	
-	# Add some padding
-	main_container.add_theme_constant_override("margin_left", 10)
-	main_container.add_theme_constant_override("margin_right", 10)
-	main_container.add_theme_constant_override("margin_top", 10)
-	main_container.add_theme_constant_override("margin_bottom", 10)
 
 func _gui_input(event):
 	if event is InputEventMouseButton:

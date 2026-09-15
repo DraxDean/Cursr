@@ -62,12 +62,24 @@ func refresh_content():
 	icon_row.add_theme_constant_override("separation", 12)
 	add_content_child(icon_row)
 
+	# Bordered badge around the icon, with its own internal padding
+	var icon_box = PanelContainer.new()
+	var icon_style = StyleBoxFlat.new()
+	icon_style.bg_color = Color(0.14, 0.14, 0.18, 0.9)
+	icon_style.set_border_width_all(1)
+	icon_style.border_color = Color(0.4, 0.4, 0.45)
+	icon_style.set_corner_radius_all(6)
+	icon_style.set_content_margin_all(8)
+	icon_box.add_theme_stylebox_override("panel", icon_style)
+	icon_row.add_child(icon_box)
+
 	var icon_lbl = Label.new()
 	icon_lbl.text = _event_data.get("icon", "⚠")
 	icon_lbl.add_theme_font_size_override("font_size", 36)
 	icon_lbl.custom_minimum_size = Vector2(48, 48)
+	icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	icon_row.add_child(icon_lbl)
+	icon_box.add_child(icon_lbl)
 
 	var body_lbl = Label.new()
 	body_lbl.text = _event_data.get("body", "")
@@ -76,40 +88,6 @@ func refresh_content():
 	body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	icon_row.add_child(body_lbl)
-
-	add_content_child(HSeparator.new())
-
-	# Effect summary — built dynamically so pct-based effects show real numbers
-	var base_effects = _event_data.get("effects", {})
-	var base_res = base_effects.get("resources", {})
-	var base_kill: int  = base_effects.get("pop_kill", 0)
-	var base_gain: int  = base_effects.get("pop_gain", 0)
-	var gain_pct: float = base_effects.get("pop_gain_pct", 0.0)
-	var kill_pct: float = base_effects.get("pop_kill_pct", 0.0)
-	var effect_parts: Array = []
-	for key in ["gold", "food", "wood", "stone", "science"]:
-		var val: int = base_res.get(key, 0)
-		if val != 0:
-			effect_parts.append("%s%d %s" % ["+" if val > 0 else "", val, key.capitalize()])
-	if gain_pct > 0.0:
-		var cur_pop: int = _game.players_data.get(1, {}).get("population", {}).get("total", 10) if is_instance_valid(_game) else 10
-		var est: int = max(1, int(ceil(cur_pop * gain_pct / 100.0)))
-		effect_parts.append("+~%d Villagers (~%.0f%%)" % [est, gain_pct])
-	elif base_gain > 0:
-		effect_parts.append("+%d Villagers" % base_gain)
-	if kill_pct > 0.0:
-		var cur_pop: int = _game.players_data.get(1, {}).get("population", {}).get("total", 10) if is_instance_valid(_game) else 10
-		var est: int = max(1, int(ceil(cur_pop * kill_pct / 100.0)))
-		effect_parts.append("-~%d Villagers (~%.0f%%)" % [est, kill_pct])
-	elif base_kill > 0:
-		effect_parts.append("-%d Villagers" % base_kill)
-
-	if not effect_parts.is_empty():
-		var eff_lbl = Label.new()
-		eff_lbl.text = "Effects: " + ", ".join(effect_parts)
-		eff_lbl.add_theme_font_size_override("font_size", 11)
-		eff_lbl.add_theme_color_override("font_color", Color(0.65, 0.90, 0.65))
-		add_content_child(eff_lbl)
 
 	add_content_child(HSeparator.new())
 
@@ -144,12 +122,10 @@ func _on_choice_pressed(choice: Dictionary):
 	if event_key != "":
 		_resolved_event_ids[event_key] = true
 
-	# Apply the chosen effects (exclusive: choice effects OR base effects)
+	# Apply this choice's own effects — nothing happens until a choice is made, so every
+	# choice must be self-contained (no falling back to a shared "base" effect)
 	var extra = choice.get("effects")
-	if extra != null and extra is Dictionary:
-		_apply_effects(extra)
-	else:
-		_apply_effects(_event_data.get("effects", {}))
+	_apply_effects(extra if extra != null and extra is Dictionary else {})
 
 	# Log the decision
 	if is_instance_valid(_game) and is_instance_valid(_game.game_log):
@@ -220,6 +196,10 @@ func _apply_effects(effects: Dictionary):
 		var current_pop: int = _game.players_data[player_id].get("population", {}).get("total", 1)
 		var extra_kill: int = max(1, int(ceil(current_pop * pop_kill_pct / 100.0)))
 		_game.remove_event_units(player_id, extra_kill)
+
+	var birth_rate_delta: float = effects.get("birth_rate_delta", 0.0)
+	if birth_rate_delta != 0.0 and _game.has_method("adjust_birth_rate"):
+		_game.adjust_birth_rate(player_id, birth_rate_delta)
 
 	if effects.get("spawn_wave", false):
 		_game.trigger_wave_from_event()

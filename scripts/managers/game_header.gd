@@ -46,7 +46,7 @@ func _setup_header_ui():
 	background.name = "HeaderBackground"
 	background.color = Color(0.2, 0.2, 0.2, 0.9)  # Dark semi-transparent
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	background.offset_bottom = -8   # Trims the visible bar to match the button row's real bottom padding
+	background.offset_bottom = -10   # Trims the visible bar to match the button row's real bottom padding
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 	
@@ -54,7 +54,7 @@ func _setup_header_ui():
 	var main_container = HBoxContainer.new()
 	main_container.name = "MainContainer"
 	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	main_container.offset_bottom = -8   # Padding at the bottom — buttons are flush-top, so this only
+	main_container.offset_bottom = -10   # Padding at the bottom — buttons are flush-top, so this only
 	main_container.add_theme_constant_override("separation", 0)  # bounds their container, doesn't move them
 	add_child(main_container)
 	

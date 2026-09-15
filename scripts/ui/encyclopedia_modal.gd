@@ -332,39 +332,7 @@ func _populate_events(v: VBoxContainer):
 			body_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			col.add_child(body_lbl)
 
-			# Effects summary
-			var base_fx: Dictionary = ev.get("effects", {})
-			var parts: Array = []
-			for key in ["gold", "food", "wood", "stone", "science"]:
-				var val: int = base_fx.get("resources", {}).get(key, 0)
-				if val != 0:
-					parts.append("%s%d %s" % ["+" if val > 0 else "", val, key.capitalize()])
-			var pop_max: int = base_fx.get("pop_max", 0)
-			if pop_max != 0:
-				parts.append("%s%d Pop Cap" % ["+" if pop_max > 0 else "", pop_max])
-			var pop_kill: int = base_fx.get("pop_kill", 0)
-			if pop_kill != 0:
-				parts.append("-%d Villagers" % pop_kill)
-			var pop_kill_pct: float = base_fx.get("pop_kill_pct", 0.0)
-			if pop_kill_pct > 0.0:
-				parts.append("-%.0f%% Pop" % pop_kill_pct)
-			var pop_gain: int = base_fx.get("pop_gain", 0)
-			if pop_gain != 0:
-				parts.append("+%d Villagers" % pop_gain)
-			var pop_gain_pct: float = base_fx.get("pop_gain_pct", 0.0)
-			if pop_gain_pct > 0.0:
-				parts.append("+%.0f%% Pop" % pop_gain_pct)
-			var add_pet: String = base_fx.get("add_pet", "")
-			if add_pet != "":
-				parts.append("+1 %s Companion" % add_pet.capitalize())
-			if not parts.is_empty():
-				var fx_lbl = Label.new()
-				fx_lbl.text = "Base effects: " + ", ".join(parts)
-				fx_lbl.add_theme_font_size_override("font_size", 10)
-				fx_lbl.add_theme_color_override("font_color", Color(0.55, 0.90, 0.55))
-				col.add_child(fx_lbl)
-
-			# Choices
+			# Choices — nothing happens until one is picked, so each choice is self-contained
 			var choices: Array = ev.get("choices", [])
 			for ch in choices:
 				var ch_parts: Array = []
@@ -377,8 +345,26 @@ func _populate_events(v: VBoxContainer):
 					var cpm: int = ch_fx.get("pop_max", 0)
 					if cpm != 0:
 						ch_parts.append("%s%d Pop Cap" % ["+" if cpm > 0 else "", cpm])
+					var ch_kill: int = ch_fx.get("pop_kill", 0)
+					if ch_kill != 0:
+						ch_parts.append("-%d Villagers" % ch_kill)
+					var ch_kill_pct: float = ch_fx.get("pop_kill_pct", 0.0)
+					if ch_kill_pct > 0.0:
+						ch_parts.append("-%.0f%% Pop" % ch_kill_pct)
+					var ch_gain: int = ch_fx.get("pop_gain", 0)
+					if ch_gain != 0:
+						ch_parts.append("+%d Villagers" % ch_gain)
+					var ch_gain_pct: float = ch_fx.get("pop_gain_pct", 0.0)
+					if ch_gain_pct > 0.0:
+						ch_parts.append("+%.0f%% Pop" % ch_gain_pct)
+					var ch_brd: float = ch_fx.get("birth_rate_delta", 0.0)
+					if ch_brd != 0.0:
+						ch_parts.append("%s%.1f%% Birth Rate" % ["+" if ch_brd > 0 else "", ch_brd * 100.0])
+					var ch_pet: String = ch_fx.get("add_pet", "")
+					if ch_pet != "":
+						ch_parts.append("+1 %s Companion" % ch_pet.capitalize())
 				var ch_lbl = Label.new()
-				var fx_text = (" → " + ", ".join(ch_parts)) if not ch_parts.is_empty() else " (base effects)"
+				var fx_text = (" → " + ", ".join(ch_parts)) if not ch_parts.is_empty() else " (no effect)"
 				ch_lbl.text = "  • " + ch.get("label", "?") + fx_text
 				ch_lbl.add_theme_font_size_override("font_size", 10)
 				ch_lbl.add_theme_color_override("font_color", Color(0.75, 0.80, 0.95))
