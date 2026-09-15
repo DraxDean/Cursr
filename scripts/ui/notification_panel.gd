@@ -9,9 +9,10 @@ extends Control
 const CARD_W   := 272
 const CARD_H   := 56
 const CARD_GAP := 5
-const FOOTER_H := 50   # Must match game_footer height
+const FOOTER_H := 50   # Fallback footer height, used only before a dice widget is linked
 
 var _cards: Array = []   # [{panel, data}]
+var _dice_widget: Control = null   # dice_roll_widget.gd — gives us real geometry to stack above
 
 # Emitted when the card BODY (not ✕) is clicked.
 # data may contain "action": "pan_to" | "open_event" and related keys.
@@ -24,10 +25,26 @@ func _init():
 func _ready():
 	_reanchor()
 
+func set_dice_widget(dice_widget: Control) -> void:
+	"""Link to the End Day dice widget so this panel stacks just above it, using its own gap."""
+	_dice_widget = dice_widget
+	_reanchor()
+	# The dice widget may still be settling its own position this frame — reanchor once more after
+	await get_tree().process_frame
+	_reanchor()
+
 func _reanchor():
 	if not get_viewport():
 		return
 	var vp: Vector2 = get_viewport().get_visible_rect().size
+
+	if is_instance_valid(_dice_widget):
+		# Sit directly above the dice widget, using the same gap it keeps from the footer
+		var gap: float = _dice_widget.get_gap() if _dice_widget.has_method("get_gap") else 10.0
+		position = Vector2(vp.x - CARD_W - 12, _dice_widget.position.y - gap)
+		return
+
+	# Fallback before the dice widget is linked yet (first frame only)
 	position = Vector2(vp.x - CARD_W - 12, vp.y - FOOTER_H)
 	size = Vector2(CARD_W, 1)
 
@@ -86,16 +103,21 @@ func _build_card(data: Dictionary) -> Control:
 	body_btn.gui_input.connect(_on_card_gui_input.bind(card))
 	card.add_child(body_btn)
 
-	# Content row (non-interactive, rendered above button)
+	# Content row (non-interactive, rendered above button) — wrapped in a MarginContainer
+	# since HBoxContainer doesn't support margin_* theme constants (they were silently no-ops)
+	var margin = MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_bottom", 4)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(margin)
+
 	var hbox = HBoxContainer.new()
-	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hbox.add_theme_constant_override("separation", 8)
-	hbox.add_theme_constant_override("margin_left", 10)
-	hbox.add_theme_constant_override("margin_right", 6)
-	hbox.add_theme_constant_override("margin_top", 4)
-	hbox.add_theme_constant_override("margin_bottom", 4)
 	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(hbox)
+	margin.add_child(hbox)
 
 	var icon_lbl = Label.new()
 	icon_lbl.text = data["icon"]

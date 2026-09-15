@@ -2,6 +2,8 @@
 # In-game encyclopedia covering game mechanics, buildings, jobs, and world objects.
 extends "res://scripts/ui/info_modal.gd"
 
+const HumanEvents = preload("res://data/events/events_human.gd")
+
 const TUTORIALS_TAB: int = 0
 const ACHIEVEMENTS_TAB: int = 6
 
@@ -242,14 +244,7 @@ func _populate_world_objects(v: VBoxContainer):
 
 
 func _tier_color(tier: String) -> Color:
-	match tier:
-		"S+": return Color(0.85, 0.20, 0.85)
-		"S":  return Color(0.90, 0.20, 0.20)
-		"A":  return Color(0.90, 0.55, 0.10)
-		"B":  return Color(0.85, 0.80, 0.10)
-		"C":  return Color(0.30, 0.70, 0.95)
-		"D":  return Color(0.40, 0.80, 0.40)
-		_:    return Color(0.55, 0.55, 0.55)
+	return HumanEvents.get_tier_color(tier)
 
 func _category_color(cat: String) -> Color:
 	match cat:
@@ -263,8 +258,6 @@ func _category_color(cat: String) -> Color:
 
 
 func _populate_events(v: VBoxContainer):
-	var HumanEvents = preload("res://data/events/events_human.gd")
-
 	# Group events by tier in display order
 	var tier_order: Array = ["S+", "S", "A", "B", "C", "D", "F"]
 	var grouped: Dictionary = {}

@@ -454,3 +454,25 @@ static func get_tier_label(tier: String) -> String:
 		"D":  return "[D] MINOR"
 		"F":  return "[F] TRIVIAL"
 		_:    return tier
+
+static func get_tier_color(tier: String) -> Color:
+	"""Shared tier color palette — used by the encyclopedia and the End Day dice roll."""
+	match tier:
+		"S+": return Color(0.85, 0.20, 0.85)
+		"S":  return Color(0.90, 0.20, 0.20)
+		"A":  return Color(0.90, 0.55, 0.10)
+		"B":  return Color(0.85, 0.80, 0.10)
+		"C":  return Color(0.30, 0.70, 0.95)
+		"D":  return Color(0.40, 0.80, 0.40)
+		_:    return Color(0.55, 0.55, 0.55)
+
+# d20 ranges sized roughly proportional to TIER_WEIGHTS (out of 20): F4 D5 C4 B3 A2 S1 S+1.
+# Placeholder mapping — the actual day's event will drive this roll directly later.
+static func get_tier_for_roll(roll: int) -> String:
+	if roll >= 20: return "S+"
+	if roll >= 19: return "S"
+	if roll >= 17: return "A"
+	if roll >= 14: return "B"
+	if roll >= 10: return "C"
+	if roll >= 5:  return "D"
+	return "F"

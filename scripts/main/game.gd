@@ -87,6 +87,7 @@ var encyclopedia_modal: Control
 var log_modal: Control
 var graphs_modal: Control
 var day_transition: Control
+var dice_roll_widget: Control
 var game_log: Node  # GameLog manager
 var game_over_modal: Control
 var turn_events_modal: Control
@@ -2311,6 +2312,11 @@ func initialize_map():
 		# Refresh resource bar with loaded data
 		if resource_bar:
 			resource_bar.refresh()
+		# Restore the dice widget to whatever it last rolled (new games keep the idle "20")
+		if is_instance_valid(dice_roll_widget):
+			var last_roll = players_data.get(1, {}).get("last_roll", null)
+			if last_roll != null:
+				dice_roll_widget.show_static(last_roll, true)
 		DebugConfig.dprint("general", ["Game: Map ready."])
 	else: DebugConfig.dprint("general", ["Game: Map initialization failed."])
 	DebugConfig.dprint("general", ["Game: --- Map Initialization Finished ---"])
@@ -4835,6 +4841,13 @@ func _setup_game_header():
 	# Setup game footer
 	_setup_game_footer()
 
+	# Anchor the dice widget to the footer's actual End Day button, then anchor the
+	# notification panel off the dice widget's real geometry
+	if is_instance_valid(dice_roll_widget) and is_instance_valid(game_footer):
+		dice_roll_widget.setup(game_footer)
+	if is_instance_valid(notification_panel) and is_instance_valid(dice_roll_widget):
+		notification_panel.set_dice_widget(dice_roll_widget)
+
 func _restore_buildings_with_proper_centering(buildings_data: Array):
 	# Restore buildings from save data
 	
@@ -5228,6 +5241,11 @@ func _setup_info_modals():
 	day_transition = DayTransitionScript.new()
 	ui_layer.add_child(day_transition)
 
+	# End Day dice roll — floats above the footer's End Day button
+	var DiceRollWidgetScript = preload("res://scripts/ui/dice_roll_widget.gd")
+	dice_roll_widget = DiceRollWidgetScript.new()
+	ui_layer.add_child(dice_roll_widget)
+
 	# Game over modal — full-screen overlay, added last so it renders on top
 	var GameOverModalScript = preload("res://scripts/ui/game_over_modal.gd")
 	game_over_modal = GameOverModalScript.new(self)
@@ -5276,6 +5294,16 @@ func _on_end_day_blocked_pressed():
 
 func _on_end_day_pressed():
 	DebugConfig.dprint("ui", ["Game: End day pressed"])
+	# Block End Day immediately — stays blocked through the roll animation and until
+	# whatever event it reveals is resolved (see _fire_random_world_event)
+	if is_instance_valid(game_footer):
+		game_footer.set_end_day_blocked(true)
+	# Roll the day's dice (cosmetic for now — will drive event odds later), persisting the
+	# result under the player's data so it survives save/load
+	if is_instance_valid(dice_roll_widget):
+		var rolled: int = dice_roll_widget.roll()
+		if players_data.has(1):
+			players_data[1]["last_roll"] = rolled
 	# Play the day wipe transition
 	if is_instance_valid(day_transition):
 		day_transition.play()
@@ -5372,7 +5400,10 @@ func _on_end_day_pressed():
 				)
 			check_population_achievements()
 
-		# Fire a random world event last, each turn
+		# Fire a random world event last, each turn — delayed until the dice roll animation
+		# settles so its notification card appears right as the roll lands
+		if is_instance_valid(dice_roll_widget):
+			await dice_roll_widget.roll_settled
 		_fire_random_world_event()
 
 		# Daily achievement checks
@@ -5869,6 +5900,9 @@ func _fire_random_world_event():
 	rng.randomize()
 	var event_data: Dictionary = HumanEvents.get_random_event_weighted(rng)
 	if event_data.is_empty():
+		# Nothing to resolve — don't leave End Day blocked forever
+		if is_instance_valid(game_footer):
+			game_footer.set_end_day_blocked(false)
 		return
 	tag_event_instance(event_data)
 	var tier: String = event_data.get("tier", "C")
