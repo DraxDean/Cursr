@@ -94,6 +94,7 @@ var turn_events_modal: Control
 var turn_event_manager: Node
 var notification_panel: Control
 var world_event_modal: Control
+var death_modal: Control
 var active_combat_modal: Control  # Tracked so its raid timer can be refreshed on End Day
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
@@ -2688,7 +2689,7 @@ func add_event_units(player_id: int, count: int):
 	pop["current"] = players_data[player_id]["units"].size()
 	players_data[player_id]["population"] = pop
 
-func remove_event_units(player_id: int, count: int):
+func remove_event_units(player_id: int, count: int, cause: String = "a world event"):
 	"""Remove `count` units from a player (prefer unassigned first), used by world events."""
 	if not players_data.has(player_id):
 		return
@@ -2719,6 +2720,8 @@ func remove_event_units(player_id: int, count: int):
 				clickable.queue_free()
 		_release_unit_housing(unit)
 		_release_unit_job(unit)
+		if player_id == 1:
+			_notify_unit_death(unit, cause)
 		player_units.erase(unit)
 		removed += 1
 		DebugConfig.dprint("general", ["Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id]])
@@ -5284,6 +5287,11 @@ func _setup_info_modals():
 	var WorldEventModalScript = preload("res://scripts/ui/world_event_modal.gd")
 	world_event_modal = WorldEventModalScript.new(self)
 	ui_layer.add_child(world_event_modal)
+
+	# Death modal — full detail popup for a fallen unit, opened from its notification card
+	var DeathModalScript = preload("res://scripts/ui/death_modal.gd")
+	death_modal = DeathModalScript.new(self)
+	ui_layer.add_child(death_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -5441,6 +5449,11 @@ func _on_notification_clicked(data: Dictionary):
 			var event_data: Dictionary = data.get("event_data", {})
 			if not event_data.is_empty() and is_instance_valid(world_event_modal):
 				world_event_modal.show_event(event_data, true)
+		"open_death":
+			# Show the death modal with the stored unit/cause data
+			var death_data: Dictionary = data.get("death_data", {})
+			if not death_data.is_empty() and is_instance_valid(death_modal):
+				death_modal.show_death(death_data)
 		"open_tutorial":
 			# Reopen the tutorial popup (owned by the encyclopedia modal) for this tutorial
 			var tutorial_id: String = data.get("tutorial_id", "")
@@ -5848,10 +5861,26 @@ func wipe_army(player_id: int) -> int:
 	Returns the number of units killed."""
 	var army_units: Array = get_army_units(player_id)
 	for unit in army_units:
-		remove_unit_from_combat(unit)
+		remove_unit_from_combat(unit, "a crushing defeat in battle")
 	return army_units.size()
 
-func remove_unit_from_combat(unit: Dictionary) -> void:
+func _notify_unit_death(unit: Dictionary, cause: String) -> void:
+	"""Push a notification card for a unit's death. Combat and catastrophic (F tier) world
+	events are the only ways a unit can die, so both routes call this with their own cause."""
+	if not is_instance_valid(notification_panel):
+		return
+	var uname: String = unit.get("name", "A unit")
+	var role: String = get_unit_army_role(unit)
+	var role_label: String = ARMY_UNIT_STATS.get(role, {}).get("label", "unit").to_lower()
+	notification_panel.push(
+		"☠ %s has fallen" % uname,
+		"%s, your %s has been killed by %s." % [uname, role_label, cause],
+		"☠",
+		Color(0.85, 0.2, 0.2),
+		{"action": "open_death", "death_data": {"unit": unit, "cause": cause, "role_label": role_label}}
+	)
+
+func remove_unit_from_combat(unit: Dictionary, cause: String = "combat") -> void:
 	"""Remove a player unit that was killed in combat."""
 	var player_id: int = unit.get("player_id", 1)
 	if not players_data.has(player_id):
@@ -5881,10 +5910,12 @@ func remove_unit_from_combat(unit: Dictionary) -> void:
 		units_modal.refresh_content()
 	if is_instance_valid(army_modal) and army_modal.is_open:
 		army_modal.refresh_content()
+	if player_id == 1:
+		_notify_unit_death(unit, cause)
 	if is_instance_valid(game_log):
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
-			GL.Category.COMBAT, "☠ %s fell in combat." % unit.get("name", "Unit"))
+			GL.Category.COMBAT, "☠ %s fell in combat (%s)." % [unit.get("name", "Unit"), cause])
 
 func _on_wave_spawned(wave_num: int, enemy_player_id: int, tile: Vector2i):
 	"""Push a red notification card that pans to the camp when clicked."""

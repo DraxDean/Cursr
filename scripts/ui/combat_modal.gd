@@ -297,7 +297,7 @@ func _resolve_roll(attacker_id: int, defender_id: int, attacker_name: String, de
 		if victim.is_empty():
 			return "🎲 [1] %s fumbles badly, but recovers without harm." % attacker_name
 		var vname: String = victim.get("name", "A unit")
-		_game.remove_unit_from_combat(victim)
+		_game.remove_unit_from_combat(victim, "a fumbled attack")
 		return "🎲 [1] 💀 [color=#FF6666]%s[/color] tripped and fell on their own sword, piercing them through the heart. How unfortunate." % vname
 
 	elif roll <= 9:
@@ -327,7 +327,7 @@ func _resolve_roll(attacker_id: int, defender_id: int, attacker_name: String, de
 		_flash(defender_panel)
 		var victims: Array = _pick_random_units(_game.get_army_units(defender_id), 2)
 		for v in victims:
-			_game.remove_unit_from_combat(v)
+			_game.remove_unit_from_combat(v, "%s's cleave attack" % attacker_name)
 		if victims.is_empty():
 			return "🎲 [%d] %s swings wide but finds no one left to strike!" % [roll, attacker_name]
 		var names: Array = []
@@ -340,7 +340,7 @@ func _resolve_roll(attacker_id: int, defender_id: int, attacker_name: String, de
 		_flash(defender_panel)
 		var victims: Array = _pick_random_units(_game.get_army_units(defender_id), 3)
 		for v in victims:
-			_game.remove_unit_from_combat(v)
+			_game.remove_unit_from_combat(v, "%s's dragon strike" % attacker_name)
 		if victims.is_empty():
 			return "🎲 [%d] %s strikes true but finds no one left standing!" % [roll, attacker_name]
 		var names: Array = []

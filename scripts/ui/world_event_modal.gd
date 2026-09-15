@@ -180,7 +180,7 @@ func _apply_effects(effects: Dictionary):
 
 	var pop_kill: int = effects.get("pop_kill", 0)
 	if pop_kill > 0:
-		_game.remove_event_units(player_id, pop_kill)
+		_game.remove_event_units(player_id, pop_kill, _event_data.get("title", "a world event"))
 
 	var pop_gain: int = effects.get("pop_gain", 0)
 	# pop_gain_pct: gain this % of current population (rounded up, minimum 1)
@@ -195,7 +195,7 @@ func _apply_effects(effects: Dictionary):
 	if pop_kill_pct > 0.0:
 		var current_pop: int = _game.players_data[player_id].get("population", {}).get("total", 1)
 		var extra_kill: int = max(1, int(ceil(current_pop * pop_kill_pct / 100.0)))
-		_game.remove_event_units(player_id, extra_kill)
+		_game.remove_event_units(player_id, extra_kill, _event_data.get("title", "a world event"))
 
 	var birth_rate_delta: float = effects.get("birth_rate_delta", 0.0)
 	if birth_rate_delta != 0.0 and _game.has_method("adjust_birth_rate"):
