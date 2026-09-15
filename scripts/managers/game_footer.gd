@@ -1,6 +1,10 @@
 # scripts/managers/game_footer.gd
 extends Control
 
+# Standardized button text style — shared with game_header.gd so both bars match exactly
+const BUTTON_FONT_SIZE: int = 14
+const BUTTON_FONT_COLOR: Color = Color(1, 1, 1, 1)
+
 # UI Components
 var build_button: Button
 var slow_button: Button
@@ -42,9 +46,7 @@ func _setup_footer():
 	background_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	var style_box = StyleBoxFlat.new()
-	style_box.bg_color = Color(0.2, 0.2, 0.2, 0.9)  # Dark gray semi-transparent
-	style_box.border_width_top = 2
-	style_box.border_color = Color(0.5, 0.5, 0.5, 1.0)
+	style_box.bg_color = Color(0.2, 0.2, 0.2, 0.9)  # Dark gray semi-transparent — matches the header
 	
 	background_panel.add_theme_stylebox_override("panel", style_box)
 	add_child(background_panel)
@@ -52,11 +54,10 @@ func _setup_footer():
 	# Main container to hold left and right sections
 	var main_container = HBoxContainer.new()
 	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	main_container.offset_top = 2   # Padding at the top, matching the button gap width
 	main_container.add_theme_constant_override("separation", 10)
 	main_container.add_theme_constant_override("margin_left", 10)
 	main_container.add_theme_constant_override("margin_right", 10)
-	main_container.add_theme_constant_override("margin_top", 10)
-	main_container.add_theme_constant_override("margin_bottom", 10)
 	add_child(main_container)
 	
 	# Left container for build button
@@ -71,6 +72,7 @@ func _setup_footer():
 	build_button.custom_minimum_size = Vector2(80, 30)
 	build_button.flat = false
 	build_button.pressed.connect(_on_build_pressed)
+	_apply_button_style(build_button)
 	left_container.add_child(build_button)
 	
 	# Spacer to push right controls to the right
@@ -91,6 +93,8 @@ func _setup_footer():
 	day_label.custom_minimum_size = Vector2(80, 30)
 	day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	day_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	day_label.add_theme_font_size_override("font_size", BUTTON_FONT_SIZE)
+	day_label.add_theme_color_override("font_color", BUTTON_FONT_COLOR)
 	right_container.add_child(day_label)
 	
 	# Speed control buttons container
@@ -105,6 +109,7 @@ func _setup_footer():
 	slow_button.flat = false
 	slow_button.tooltip_text = "Slow Down"
 	slow_button.pressed.connect(_on_slow_pressed)
+	_apply_button_style(slow_button)
 	speed_controls.add_child(slow_button)
 	
 	# Pause/Resume button
@@ -114,6 +119,7 @@ func _setup_footer():
 	pause_button.flat = false
 	pause_button.tooltip_text = "Pause"
 	pause_button.pressed.connect(_on_pause_pressed)
+	_apply_button_style(pause_button)
 	speed_controls.add_child(pause_button)
 	
 	# Speed up button
@@ -123,6 +129,7 @@ func _setup_footer():
 	speedup_button.flat = false
 	speedup_button.tooltip_text = "Speed Up"
 	speedup_button.pressed.connect(_on_speedup_pressed)
+	_apply_button_style(speedup_button)
 	speed_controls.add_child(speedup_button)
 	
 	# End day button
@@ -131,7 +138,13 @@ func _setup_footer():
 	end_day_button.custom_minimum_size = Vector2(100, 30)
 	end_day_button.flat = false
 	end_day_button.pressed.connect(_on_end_day_pressed)
+	_apply_button_style(end_day_button)
 	right_container.add_child(end_day_button)
+
+func _apply_button_style(button: Button) -> void:
+	"""Standardized text style, shared with game_header.gd so both bars match exactly."""
+	button.add_theme_font_size_override("font_size", BUTTON_FONT_SIZE)
+	button.add_theme_color_override("font_color", BUTTON_FONT_COLOR)
 
 func _on_build_pressed():
 	build_pressed.emit()

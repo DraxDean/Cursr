@@ -3,7 +3,7 @@
 # Shows housing, employment, then current amount + per-turn rate for every resource.
 extends Control
 
-const HEADER_HEIGHT := 60  # must match game_header.gd size.y
+const HEADER_HEIGHT := 52  # header's visible bar is 8px shorter than its Control size (60) now
 const V_PAD := 6           # vertical padding top and bottom
 const FONT_SIZE := 13
 const HEIGHT := FONT_SIZE + V_PAD * 2 + 4  # ~30px
