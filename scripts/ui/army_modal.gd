@@ -50,7 +50,7 @@ func refresh_content():
 
 	# ── Right: formation visual + aggregate totals ──
 	var right_col = VBoxContainer.new()
-	right_col.custom_minimum_size = Vector2(190, 0)
+	right_col.custom_minimum_size = Vector2(260, 0)
 	right_col.add_theme_constant_override("separation", 14)
 	main_row.add_child(right_col)
 
@@ -107,7 +107,7 @@ func _on_unit_toggle(pressed: bool, unit: Dictionary):
 	refresh_content()
 
 func _build_formation_panel(panel: VBoxContainer, army_units: Array):
-	# Visual formation of the army's unit sprites, laid out in rows of 5
+	# Visual formation of the army's unit sprites, staggered into centered ranks
 	var title = Label.new()
 	title.text = "Formation"
 	title.add_theme_color_override("font_color", Color.LIGHT_BLUE)
@@ -122,7 +122,12 @@ func _build_formation_panel(panel: VBoxContainer, army_units: Array):
 		panel.add_child(empty_lbl)
 		return
 
-	panel.add_child(FormationGrid.build(army_units, game_ref, 5, 28))
+	# Fixed-size viewport — only scrolls once the formation outgrows it (~250 units)
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(260, 200)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	scroll.add_child(FormationGrid.build_staggered(army_units, game_ref))
 
 func _build_stats_panel(panel: VBoxContainer, units: Array):
 	var title = Label.new()

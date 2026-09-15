@@ -209,7 +209,7 @@ func _make_fighter_panel(title: String, is_enemy: bool) -> PanelContainer:
 	# Formation area — populated with the army's unit sprites in _refresh_formation()
 	var portrait_box = CenterContainer.new()
 	portrait_box.name = "portrait_box"
-	portrait_box.custom_minimum_size = Vector2(56, 56)
+	portrait_box.custom_minimum_size = Vector2(130, 90)
 
 	var count_lbl = Label.new()
 	count_lbl.name = "count_lbl"
@@ -409,8 +409,13 @@ func _refresh_formation(box: CenterContainer, army_units: Array) -> void:
 	"""Rebuild a fighter panel's formation grid from its current (post-casualty) roster."""
 	for child in box.get_children():
 		child.free()
-	if not army_units.is_empty():
-		box.add_child(FormationGrid.build(army_units, _game, 5, 20))
+	if army_units.is_empty():
+		return
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(130, 90)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.add_child(FormationGrid.build_staggered(army_units, _game, 14, 9))
+	box.add_child(scroll)
 
 func _tint_bar(bar: ProgressBar, hp: int, max_hp: int) -> void:
 	if max_hp <= 0:
