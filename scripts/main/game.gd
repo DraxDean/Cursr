@@ -103,6 +103,8 @@ var world_event_modal: Control
 var death_modal: Control
 var victory_modal: Control
 var wonder_victory_triggered: bool = false  # Guards against re-firing if the modal is closed and reopened
+var game_over_triggered: bool = false  # Guards against showing the Game Over screen more than once
+var raid_choice_modal: Control
 var active_combat_modal: Control  # Tracked so its raid timer can be refreshed on End Day
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
@@ -418,6 +420,8 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_farm_tilled.png"  # Start with tilled state
 		"wonder":
 			return "res://assets/buildings/human_wonder.png"
+		"ruins":
+			return "res://assets/buildings/human_ruins.png"
 		_:
 			return "res://assets/buildings/human_towncentre-export.png"
 
@@ -464,7 +468,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill", "merchant", "wonder"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill", "merchant", "wonder", "ruins"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -472,7 +476,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "merchant", "house", "barracks", "farm", "wonder"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "merchant", "house", "barracks", "farm", "wonder", "ruins"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type
@@ -513,6 +517,21 @@ func remove_building_from_player(building_name: String, player_id: int):
 		if index >= 0:
 			buildings.remove_at(index)
 			DebugConfig.dprint("buildings", ["Game: Removed building ", building_name, " from player ", player_id, " buildings list"])
+
+func convert_building_to_ruins(building_node: Node2D) -> void:
+	"""Turn a destroyed building into inert ruins at the same spot instead of removing it.
+	Caller is responsible for stripping the old name from the owner's buildings list first."""
+	if not is_instance_valid(building_node):
+		return
+	building_node.name = "ruins" + str(_get_next_building_id("ruins"))
+	building_node.set_meta("building_type", "ruins")
+	building_node.set_meta("living_occupancy", 0)
+	building_node.set_meta("worker_occupancy", 0)
+	building_node.set_meta("resource_jobs", [])
+
+	var ruins_texture_path = _get_building_texture_path("ruins")
+	if building_node.has_node("Sprite2D") and ResourceLoader.exists(ruins_texture_path):
+		building_node.get_node("Sprite2D").texture = load(ruins_texture_path)
 
 func debug_print_all_buildings():
 	# Debug function to print all buildings and their status
@@ -1128,6 +1147,7 @@ func update_player_population(player_id: int):
 
 	var player_data = players_data[player_id]
 	var pop_data = player_data.get("population", {})
+	var previous_total: int = pop_data.get("total", 0)
 	
 	# Clean up unit sprites that lost assignments
 	_cleanup_unassigned_unit_sprites(player_id)
@@ -1160,6 +1180,12 @@ func update_player_population(player_id: int):
 	pop_data["unemployed"] = total_pop - total_working
 	
 	DebugConfig.dprint("population", ["DEBUG: Population update - Total: ", total_pop, " | Housed: ", total_housed, " (unhoused: ", pop_data["unhoused"], ") | Working: ", total_working, " (unemployed: ", pop_data["unemployed"], ")"])
+
+	# Loss condition: the player's whole (non-pet) population has been wiped out.
+	# Guarded by is_in_world_creation and the >0→0 transition so a fresh game with no
+	# units spawned yet never falsely triggers this.
+	if player_id == 1 and not is_in_world_creation and previous_total > 0 and total_pop == 0:
+		_trigger_game_over("Your entire population has perished.")
 	
 	player_data["population"] = pop_data
 	
@@ -1990,10 +2016,14 @@ func _check_town_centre_game_over(player_id: int, demolished_building_name: Stri
 	DebugConfig.dprint("buildings", ["Game: Player ", player_id, " has no town centres remaining — GAME OVER"])
 	_trigger_game_over()
 
-func _trigger_game_over():
-	"""Show the game over screen. Call this for any loss condition (town centre destroyed, forfeit, etc.)."""
+func _trigger_game_over(reason: String = "Your last Town Centre has fallen."):
+	"""Show the game over screen. Call this for any loss condition (town centre destroyed,
+	population wiped out, forfeit, etc.). Only ever shows once per session."""
+	if game_over_triggered:
+		return
+	game_over_triggered = true
 	if is_instance_valid(game_over_modal):
-		game_over_modal.show_game_over()
+		game_over_modal.show_game_over(reason, calculate_victory_score(1))
 
 func _get_wave_state_for_save() -> Dictionary:
 	if is_instance_valid(wave_spawner):
@@ -5007,9 +5037,9 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
 			
-			# Add building to player's buildings list
+			# Add building to player's buildings list (ruins are inert debris, not owned buildings)
 			var owner_player = setup_data.get("owner_player", 1)
-			if players_data.has(owner_player):
+			if players_data.has(owner_player) and building_type != "ruins":
 				players_data[owner_player]["buildings"].append(building_name)
 				if building_type == "town_center":
 					players_data[owner_player]["town_centre_position"] = tile_center_pos
@@ -5322,6 +5352,11 @@ func _setup_info_modals():
 	var VictoryModalScript = preload("res://scripts/ui/victory_modal.gd")
 	victory_modal = VictoryModalScript.new(self)
 	ui_layer.add_child(victory_modal)
+
+	# Raid choice modal — unskippable fight-or-flee choice when a marauder camp's timer is up
+	var RaidChoiceModalScript = preload("res://scripts/ui/raid_choice_modal.gd")
+	raid_choice_modal = RaidChoiceModalScript.new(self)
+	ui_layer.add_child(raid_choice_modal)
 	
 	# Connect modal close signals (optional)
 	players_modal.modal_closed.connect(_on_modal_closed)
@@ -5440,9 +5475,10 @@ func _on_end_day_pressed():
 		if resource_bar:
 			resource_bar.refresh()
 
-		# Tick wave spawner — may trigger a new enemy wave
+		# Tick wave spawner — may trigger a new enemy wave, and awaits any raid choice the
+		# player is presented with so it fully resolves before today's world event fires
 		if is_instance_valid(wave_spawner):
-			wave_spawner.on_day_end(turn_manager.get_day())
+			await wave_spawner.on_day_end(turn_manager.get_day())
 
 		# Keep an open combat modal's raid countdown in sync with the new day
 		if is_instance_valid(active_combat_modal) and active_combat_modal.visible:
@@ -5505,6 +5541,10 @@ func _on_notification_clicked(data: Dictionary):
 			var tutorial_id: String = data.get("tutorial_id", "")
 			if tutorial_id != "" and is_instance_valid(encyclopedia_modal):
 				encyclopedia_modal.show_tutorial(tutorial_id)
+		"open_raid_choice":
+			# Reopen the still-unresolved raid choice modal (it keeps its own state)
+			if is_instance_valid(raid_choice_modal) and not raid_choice_modal.is_open:
+				raid_choice_modal.toggle()
 		_:
 			# Generic: open turn events modal
 			if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
@@ -5881,6 +5921,24 @@ func _open_combat_modal(enemy_building: Node2D) -> void:
 	modal.modal_closed.connect(func(_type): modal.queue_free())
 	active_combat_modal = modal
 	modal.start_combat(1, enemy_building)
+
+func begin_raid_combat(barracks_node: Node2D, building_count_on_loss: int) -> void:
+	"""Open the combat modal as a forced raid response, and wait until the player closes it
+	(win or lose) so the raid choice modal (and End Day) doesn't unblock prematurely."""
+	if calculate_army_totals(1)["count"] == 0:
+		if is_instance_valid(notification_panel):
+			notification_panel.push("No Army", "You have no army to defend with — the raid succeeds unopposed!", "⚔", Color(0.7, 0.3, 0.1))
+		if is_instance_valid(wave_spawner):
+			wave_spawner.resolve_raid_by_destruction(barracks_node, building_count_on_loss)
+		return
+
+	var CombatModalScript = preload("res://scripts/ui/combat_modal.gd")
+	var modal = CombatModalScript.new(self)
+	ui_layer.add_child(modal)
+	modal.modal_closed.connect(func(_type): modal.queue_free())
+	active_combat_modal = modal
+	modal.start_combat(1, barracks_node, true, building_count_on_loss)
+	await modal.modal_closed
 
 func remove_enemy_barracks_node(building_node: Node2D) -> void:
 	"""Remove an enemy barracks from the map and player data after combat victory."""

@@ -161,14 +161,20 @@ func _build_card(data: Dictionary) -> Control:
 	hbox.add_child(dismiss)
 
 	# Event cards must be resolved before they can be dismissed
-	var is_event_card: bool = data.get("action", "") == "open_event"
-	if is_event_card:
+	var card_action: String = data.get("action", "")
+	var is_event_card: bool = card_action == "open_event"
+	var is_raid_card: bool = card_action == "open_raid_choice"
+	if is_event_card or is_raid_card:
 		dismiss.disabled = true
 		dismiss.modulate.a = 0.0  # Invisible but keeps its layout space — structure stays intact
 		dismiss.tooltip_text = "Resolve this event first."
 		# Tag for later lookup (per-firing instance id, falling back to the static event id)
-		var event_data: Dictionary = data.get("event_data", {})
-		var event_id: String = event_data.get("instance_id", event_data.get("id", ""))
+		var event_id: String = ""
+		if is_event_card:
+			var event_data: Dictionary = data.get("event_data", {})
+			event_id = event_data.get("instance_id", event_data.get("id", ""))
+		else:
+			event_id = data.get("raid_id", "")
 		if event_id != "":
 			card.set_meta("event_id", event_id)
 			card.set_meta("dismiss_button", dismiss)

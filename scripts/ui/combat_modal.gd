@@ -19,6 +19,8 @@ var _e_atk: int = 0
 var _e_count: int = 0
 
 var _combat_over: bool = false
+var _is_raid: bool = false          # True when this fight is a forced raid response
+var _raid_building_count: int = 1   # Buildings destroyed on loss, if _is_raid
 
 # ─── UI refs ──────────────────────────────────────────────────────────────────
 var _p_panel: PanelContainer
@@ -59,10 +61,14 @@ func _init(game: Node) -> void:
 	super._init("combat", "⚔ Combat", Vector2(160, 130))
 
 # ─── Public entry point ───────────────────────────────────────────────────────
-func start_combat(player_id: int, enemy_building: Node2D) -> void:
-	"""Pit a player's whole army against an enemy camp's whole army (pooled hp/strength)."""
+func start_combat(player_id: int, enemy_building: Node2D, is_raid: bool = false, raid_building_count: int = 1) -> void:
+	"""Pit a player's whole army against an enemy camp's whole army (pooled hp/strength).
+	When `is_raid` is true, this is a forced raid response: losing also destroys
+	`raid_building_count` nearest buildings (see wave_spawner.resolve_raid_by_destruction)."""
 	_player_id = player_id
 	_enemy_building = enemy_building
+	_is_raid = is_raid
+	_raid_building_count = raid_building_count
 	_enemy_owner = enemy_building.get_meta("owner_player", -1) if is_instance_valid(enemy_building) else -1
 	_combat_over = false
 
@@ -461,6 +467,9 @@ func _finish(player_won: bool) -> void:
 		var killed: int = _game.wipe_army(_player_id)
 		var extra: String = " %d remaining unit(s) fall with it." % killed if killed > 0 else ""
 		_log.text += "\n[color=#FF6666]☠ Defeated![/color] Your army has fallen in battle.%s\nThe Marauders remain..." % extra
+		if _is_raid and is_instance_valid(_game.wave_spawner) and is_instance_valid(_enemy_building):
+			_game.wave_spawner.resolve_raid_by_destruction(_enemy_building, _raid_building_count)
+			_log.text += "\n[color=#FF6666]🔥 With no one left to defend, the marauders raze your settlement![/color]"
 
 func _show_victory_reward() -> void:
 	"""Offer 3 random resource spoils of war (+150-250 each) — clicking one grants it."""

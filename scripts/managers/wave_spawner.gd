@@ -7,7 +7,7 @@ extends Node
 # --- Config ---
 var WAVE_INTERVAL: int = 10           # Days between waves (set by difficulty, see game.gd)
 const SPAWN_CANDIDATE_POOL: int = 8  # Pick randomly from the N farthest valid tiles
-const ATTACK_INTERVAL: int = 10      # Days between marauder raids on player buildings
+const ATTACK_INTERVAL: int = 5       # Days between marauder raids on player buildings
 const MIN_WAVE_ARMY_SIZE: int = 3    # Marauders in wave 1
 const MAX_WAVE_ARMY_SIZE: int = 10   # Marauders once army size scaling caps out
 
@@ -57,7 +57,7 @@ func on_day_end(current_day: int):
 		wave_number += 1
 		next_wave_day += WAVE_INTERVAL
 		_spawn_wave(wave_number)
-	_process_marauder_attacks(current_day)
+	await _process_marauder_attacks(current_day)
 
 # --------------------------------------------------------------- spawn -----
 
@@ -276,10 +276,17 @@ func _spawn_marauder_units(barracks_node: Node2D, owner_player_id: int, count: i
 
 # --------------------------------------------------------- raid attacks ----
 
+const RAID_MIN_BUILDINGS: int = 1
+const RAID_MAX_BUILDINGS: int = 3
+
 func _process_marauder_attacks(current_day: int) -> void:
-	"""Check every enemy barracks and raid a player building once its timer is up."""
+	"""Check every enemy barracks and, once its timer is up, present the player with an
+	unskippable raid choice instead of destroying buildings automatically."""
 	if not is_instance_valid(game.map_objects_holder):
 		return
+	# Snapshot which camps are due first — resolving one raid (e.g. a won fight) can free
+	# other nodes, so we don't want to mutate the list we're iterating.
+	var due_barracks: Array = []
 	for child in game.map_objects_holder.get_children():
 		if not game._is_building_node(child):
 			continue
@@ -293,8 +300,49 @@ func _process_marauder_attacks(current_day: int) -> void:
 		var next_attack_day: int = get_or_init_attack_day(child)
 		if current_day < next_attack_day:
 			continue
-		_launch_attack(child, current_day)
+		due_barracks.append(child)
 		child.set_meta("next_attack_day", current_day + ATTACK_INTERVAL)
+
+	for barracks in due_barracks:
+		if not is_instance_valid(barracks):
+			continue  # e.g. destroyed by an earlier raid resolved the same day
+		await _present_raid_choice(barracks)
+
+func _present_raid_choice(barracks_node: Node2D) -> bool:
+	"""Show the unskippable fight-or-flee modal and block End Day until it's resolved.
+	Returns false if there was nothing to raid (the player has no buildings left at all)."""
+	var count: int = randi_range(RAID_MIN_BUILDINGS, RAID_MAX_BUILDINGS)
+	var targets: Array = _find_nearest_target_buildings(barracks_node, count)
+	if targets.is_empty():
+		return false
+
+	# Unique id for this raid firing, so its notification card can be tagged uncloseable
+	# and re-enabled once (and only once) this specific raid is resolved
+	var raid_id: String = "raid_%d_%d" % [barracks_node.get_instance_id(), game.turn_manager.get_day() if is_instance_valid(game.turn_manager) else 0]
+
+	# Log this as a proper turn event / notification card (like a world event) so the
+	# raid is always discoverable even if the choice modal itself goes unnoticed
+	if is_instance_valid(game.turn_event_manager):
+		game.turn_event_manager.push_event("Marauders Raid!", "A marauder camp is closing in on your settlement. Choose how to respond.", "🔥")
+	if is_instance_valid(game.notification_panel):
+		game.notification_panel.push(
+			"Marauders Raid!",
+			"Click to choose how to respond.",
+			"🔥",
+			Color(0.85, 0.18, 0.10),
+			{"action": "open_raid_choice", "raid_id": raid_id}
+		)
+
+	if is_instance_valid(game.game_footer):
+		game.game_footer.set_end_day_blocked(true)
+	if is_instance_valid(game.raid_choice_modal):
+		game.raid_choice_modal.show_choice(barracks_node, targets.size())
+		await game.raid_choice_modal.resolved
+	if is_instance_valid(game.notification_panel):
+		game.notification_panel.mark_event_resolved(raid_id)
+	if is_instance_valid(game.game_footer):
+		game.game_footer.set_end_day_blocked(false)
+	return true
 
 # ------------------------------------------------------------------ misc ---
 
@@ -307,33 +355,75 @@ func get_or_init_attack_day(barracks_node: Node2D) -> int:
 		barracks_node.set_meta("next_attack_day", next_attack_day)
 	return next_attack_day
 
-func _find_nearest_target_building(barracks_node: Node2D) -> Node2D:
-	"""Find the nearest player-1 building that isn't a town centre."""
-	var nearest: Node2D = null
-	var nearest_dist: float = INF
+func _find_nearest_target_buildings(barracks_node: Node2D, count: int) -> Array:
+	"""Nearest `count` player-1 buildings that aren't already ruins (the town centre is a
+	valid, if risky, target now — losing it is what triggers the Game Over screen)."""
+	var candidates: Array = []
 	for child in game.map_objects_holder.get_children():
 		if not game._is_building_node(child):
 			continue
 		if child.get_meta("owner_player", 1) != 1:
 			continue  # Only raid the human player's buildings
-		if child.get_meta("building_type", "") == "town_center":
-			continue  # Town centre is protected
-		var dist: float = barracks_node.position.distance_to(child.position)
-		if dist < nearest_dist:
-			nearest_dist = dist
-			nearest = child
-	return nearest
+		if child.get_meta("building_type", "") == "ruins":
+			continue  # Nothing left to destroy
+		candidates.append(child)
+	candidates.sort_custom(func(a, b): return barracks_node.position.distance_to(a.position) < barracks_node.position.distance_to(b.position))
+	return candidates.slice(0, mini(count, candidates.size()))
 
-func _launch_attack(barracks_node: Node2D, current_day: int) -> void:
-	"""Raid the nearest player building: destroy it and kill every unit working there."""
-	var target: Node2D = _find_nearest_target_building(barracks_node)
-	if not is_instance_valid(target):
-		return  # Nothing left to raid but the town centre
+func resolve_raid_by_destruction(barracks_node: Node2D, count: int) -> void:
+	"""Destroy up to `count` nearest player buildings and kill anyone working/living inside.
+	Called either directly (player chose to let the raid happen) or after a lost defensive fight."""
+	var targets: Array = _find_nearest_target_buildings(barracks_node, count)
+	if targets.is_empty():
+		return
 
+	var current_day: int = game.turn_manager.get_day() if is_instance_valid(game.turn_manager) else 0
+	var destroyed_labels: Array = []
+	var total_killed: int = 0
+	var last_pos: Vector2 = targets[0].position
+	for target in targets:
+		last_pos = target.position
+		var result: Dictionary = _destroy_single_building(target)
+		destroyed_labels.append(result["label"])
+		total_killed += result["killed"]
+		if game.game_over_triggered:
+			break  # Town centre just fell — no point razing the rest, the run is over
+
+	var body: String
+	if destroyed_labels.size() == 1:
+		body = "The %s was razed." % destroyed_labels[0]
+	else:
+		body = "%d buildings were razed: %s." % [destroyed_labels.size(), ", ".join(destroyed_labels)]
+	if total_killed > 0:
+		body += " %d %s lost." % [total_killed, "unit was" if total_killed == 1 else "units were"]
+
+	if is_instance_valid(game.resource_bar):
+		game.resource_bar.refresh()
+
+	if is_instance_valid(game.game_log):
+		var GL = preload("res://scripts/managers/game_log.gd")
+		game.game_log.add(current_day, GL.Category.COMBAT, "⚔ Marauders raided your settlement! %s" % body)
+
+	if is_instance_valid(game.turn_event_manager):
+		game.turn_event_manager.push_event("Marauders Raid!", body, "🔥")
+
+	if is_instance_valid(game.notification_panel):
+		game.notification_panel.push(
+			"Marauders Raid!",
+			body,
+			"🔥",
+			Color(0.85, 0.18, 0.10),
+			{"action": "pan_to", "world_pos": last_pos}
+		)
+
+	DebugConfig.dprint("wave", ["WaveSpawner: Marauders razed %d building(s), killing %d units." % [destroyed_labels.size(), total_killed]])
+
+func _destroy_single_building(target: Node2D) -> Dictionary:
+	"""Kill everyone working/living in `target`, strip it from its owner, and turn it to ruins.
+	Returns {label, killed} for the caller to fold into a combined raid summary."""
 	var building_name: String = target.name
 	var building_type: String = target.get_meta("building_type", "unknown")
 	var target_owner: int = target.get_meta("owner_player", 1)
-	var target_pos: Vector2 = target.position
 
 	var killed_count: int = 0
 	if game.players_data.has(target_owner):
@@ -358,34 +448,13 @@ func _launch_attack(barracks_node: Node2D, current_day: int) -> void:
 		game.players_data[target_owner]["units"] = survivors
 
 	game.remove_building_from_player(building_name, target_owner)
-	target.queue_free()
+	game.convert_building_to_ruins(target)
 
 	if game.players_data.has(target_owner):
 		game.update_player_population(target_owner)
-	if is_instance_valid(game.resource_bar):
-		game.resource_bar.refresh()
 
-	var type_label: String = building_type.capitalize().replace("_", " ")
-	var body: String
-	if killed_count > 0:
-		body = "The %s was razed. %d %s lost." % [type_label, killed_count, "unit was" if killed_count == 1 else "units were"]
-	else:
-		body = "The %s was razed to the ground." % type_label
+	# Losing the town centre this way is a loss condition, same as demolishing it manually
+	if building_type == "town_center":
+		game._check_town_centre_game_over(target_owner, building_name)
 
-	if is_instance_valid(game.game_log):
-		var GL = preload("res://scripts/managers/game_log.gd")
-		game.game_log.add(current_day, GL.Category.COMBAT, "⚔ Marauders raided and destroyed %s! %s" % [building_name, body])
-
-	if is_instance_valid(game.turn_event_manager):
-		game.turn_event_manager.push_event("Marauders Raid!", body, "🔥")
-
-	if is_instance_valid(game.notification_panel):
-		game.notification_panel.push(
-			"Marauders Raid!",
-			body,
-			"🔥",
-			Color(0.85, 0.18, 0.10),
-			{"action": "pan_to", "world_pos": target_pos}
-		)
-
-	DebugConfig.dprint("wave", ["WaveSpawner: Marauders razed %s (%s), killing %d units." % [building_name, building_type, killed_count]])
+	return {"label": building_type.capitalize().replace("_", " "), "killed": killed_count}

@@ -228,6 +228,8 @@ func _process_command(command: String):
 			_cmd_demo_achievement()
 		"10k":
 			_cmd_give_test_resources()
+		"raid":
+			_cmd_force_raid()
 		_:
 			add_debug_message("Unknown command: " + full_cmd + ". Type 'help' for commands.")
 
@@ -255,6 +257,7 @@ func _show_help():
 	add_debug_message("the path / cipher - Fire the secret encoded legendary event")
 	add_debug_message("demo achievement - Unlock the demo achievement for testing")
 	add_debug_message("10k - Give player 1 +10,000 of every resource (testing)")
+	add_debug_message("raid - Force an immediate raid choice from an existing enemy barracks (testing)")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -727,6 +730,35 @@ func _cmd_give_test_resources():
 	if is_instance_valid(game.resource_bar):
 		game.resource_bar.refresh()
 	add_debug_message("💰 Gave player 1 +10,000 gold/food/wood/stone/science.")
+
+func _cmd_force_raid():
+	"""Force an immediate raid choice from an existing enemy barracks, for testing."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game) or not is_instance_valid(game.wave_spawner):
+		add_debug_message("ERROR: wave_spawner not found.")
+		return
+	if not is_instance_valid(game.map_objects_holder):
+		add_debug_message("ERROR: map_objects_holder not found.")
+		return
+	var barracks: Node2D = null
+	for child in game.map_objects_holder.get_children():
+		if not game._is_building_node(child):
+			continue
+		if child.get_meta("building_type", "") != "barracks":
+			continue
+		var owner_player = child.get_meta("owner_player", 1)
+		if game.players_data.get(owner_player, {}).get("faction", "") != "enemy":
+			continue
+		barracks = child
+		break
+	if not is_instance_valid(barracks):
+		add_debug_message("No enemy barracks found. Use 'wave' first to spawn one.")
+		return
+	var triggered: bool = await game.wave_spawner._present_raid_choice(barracks)
+	if triggered:
+		add_debug_message("🔥 Forced a raid choice from %s." % barracks.name)
+	else:
+		add_debug_message("Nothing to raid — the Town Centre is your only building and it's protected. Build a house or other structure first.")
 
 func _input(event: InputEvent):
 	if is_open:

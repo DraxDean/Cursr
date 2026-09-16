@@ -1737,6 +1737,8 @@ func _get_building_production() -> String:
 		"merchant":
 			var gold_production = worker_occupancy * 5  # +5 gold per trader (untrained)
 			return "+" + str(gold_production) + " Gold/day (" + str(worker_occupancy) + " traders)"
+		"ruins":
+			return "No production (ruins)"
 		_:
 			return "Unknown"
 
