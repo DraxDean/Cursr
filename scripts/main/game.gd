@@ -43,6 +43,10 @@ const DEFAULT_DIFFICULTY: String = "captain"
 
 const TechTree = preload("res://scripts/managers/tech_tree.gd")
 
+# Large (64×64) buildings that span 3 tiles — anchor tile plus the two tiles above it,
+# meeting at the sprite's "upside-down triangle" centre point (same math as the starting town centre).
+const MULTI_TILE_BUILDINGS: Array = ["town_center", "wonder"]
+
 var game_difficulty: String = DEFAULT_DIFFICULTY
 
 # Army reference guide — used to calculate aggregate army stats (hp pool, strength)
@@ -98,6 +102,7 @@ var notification_panel: Control
 var world_event_modal: Control
 var death_modal: Control
 var victory_modal: Control
+var wonder_victory_triggered: bool = false  # Guards against re-firing if the modal is closed and reopened
 var active_combat_modal: Control  # Tracked so its raid timer can be refreshed on End Day
 var modal_positions: Dictionary = {}  # Track modal positions to prevent overlap
 
@@ -208,6 +213,21 @@ var wave_spawner: Node
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
 
 
+func _get_building_footprint_tiles(tile_coords: Vector2i, building_type: String) -> Array:
+	"""Tiles occupied by this building — 3 tiles (anchor + the two tiles above) for large 64×64 buildings"""
+	if building_type in MULTI_TILE_BUILDINGS:
+		return [tile_coords, Vector2i(tile_coords.x - 1, tile_coords.y - 1), Vector2i(tile_coords.x, tile_coords.y - 1)]
+	return [tile_coords]
+
+func _get_building_anchor_world_pos(tile_coords: Vector2i, building_type: String) -> Vector2:
+	"""World position for the building sprite — large buildings sit at the triangle meeting point
+	between the two tiles above the anchor tile (same math as the starting town centre placement)"""
+	if building_type in MULTI_TILE_BUILDINGS:
+		var tile_above_left = tilemap_layer.map_to_local(Vector2i(tile_coords.x - 1, tile_coords.y - 1))
+		var tile_above_right = tilemap_layer.map_to_local(Vector2i(tile_coords.x, tile_coords.y - 1))
+		return (tile_above_left + tile_above_right) / 2.0
+	return tilemap_layer.map_to_local(tile_coords)
+
 func _update_building_preview(_mouse_pos: Vector2):
 	# Convert screen position to world position
 	var world_pos = camera.get_global_mouse_position()
@@ -215,9 +235,8 @@ func _update_building_preview(_mouse_pos: Vector2):
 	var tile_coords = tilemap_layer.local_to_map(world_pos)
 	
 	if building_preview_sprite and building_preview_sprite.texture:
-		# Position at tile center (sprite centering handled by building script)
-		var tile_center_pos = tilemap_layer.map_to_local(tile_coords)
-		building_preview_sprite.position = tile_center_pos
+		# Large buildings preview at the triangle meeting point; others at tile center
+		building_preview_sprite.position = _get_building_anchor_world_pos(tile_coords, building_to_place)
 		
 		# Check if placement is valid and update sprite tint
 		var can_place = _can_place_building_at_tile(tile_coords)
@@ -227,17 +246,19 @@ func _update_building_preview(_mouse_pos: Vector2):
 			building_preview_sprite.modulate = Color(1.0, 0.7, 0.7, 0.7)  # Red tint
 
 func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
-	# Check if tile is within map bounds
+	# Check every tile in this building's footprint is within map bounds
 	var used_rect = tilemap_layer.get_used_rect()
-	if not used_rect.has_point(tile_coords):
-		return false
+	var footprint = _get_building_footprint_tiles(tile_coords, building_to_place)
+	for tile in footprint:
+		if not used_rect.has_point(tile):
+			return false
 	
-	# Check if there's already a building at this location
+	# Check if there's already a building on any footprint tile
 	if map_objects_holder:
 		for child in map_objects_holder.get_children():
 			if _is_building_node(child):
 				var building_tile = tilemap_layer.local_to_map(child.position)
-				if building_tile == tile_coords:
+				if building_tile in footprint:
 					return false
 	
 	# Additional checks could be added here (terrain type, resources, etc.)
@@ -271,8 +292,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		var building_scene = preload("res://scenes/objects/building.tscn").instantiate()
 		building_scene.name = building_name
 		
-		# Position it at tile center (building script will handle sprite centering)
-		var world_pos = tilemap_layer.map_to_local(tile_coords)
+		# Position it at tile center — large buildings (Wonder, Town Center) anchor at the
+		# triangle meeting point instead, matching their 3-tile footprint
+		var world_pos = _get_building_anchor_world_pos(tile_coords, building_type)
 		building_scene.position = world_pos
 		building_scene.z_index = 5  # Above terrain but below UI
 		
@@ -366,6 +388,9 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		# Check building and workforce achievements
 		check_building_achievements()
 		check_workforce_achievements()
+
+		if building_type == "wonder":
+			_fire_wonder_victory_event()
 	else:
 		DebugConfig.dprint("buildings", ["Warning: Could not find building texture: ", building_texture_path])
 
@@ -391,6 +416,8 @@ func _get_building_texture_path(building_type: String) -> String:
 			return "res://assets/buildings/human_farmhouse.png"
 		"farm":
 			return "res://assets/buildings/human_farm_tilled.png"  # Start with tilled state
+		"wonder":
+			return "res://assets/buildings/human_wonder.png"
 		_:
 			return "res://assets/buildings/human_towncentre-export.png"
 
@@ -437,7 +464,7 @@ func _get_next_building_id(building_type: String) -> int:
 
 func _is_building_node(node: Node) -> bool:
 	# Check if node is a building by looking for common building types in the name
-	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill", "merchant"]
+	var building_types = ["house", "fishing_hut", "town_center", "barracks", "farm", "farmhouse", "stoneworker", "lumberjack", "research", "lumber_mill", "merchant", "wonder"]
 	for building_type in building_types:
 		if node.name.begins_with(building_type):
 			return true
@@ -445,7 +472,7 @@ func _is_building_node(node: Node) -> bool:
 
 func _extract_building_type_from_name(building_name: String) -> String:
 	# Extract building type from name (e.g., "house1" -> "house")
-	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "merchant", "house", "barracks", "farm"]  # Order matters - check longer names first
+	var building_types = ["fishing_hut", "town_center", "lumber_mill", "lumberjack", "stoneworker", "farmhouse", "research", "merchant", "house", "barracks", "farm", "wonder"]  # Order matters - check longer names first
 	for building_type in building_types:
 		if building_name.begins_with(building_type):
 			return building_type
@@ -769,7 +796,8 @@ func _deduct_building_cost(player_id: int, building_type: String):
 		"town_center": {"wood": 30, "stone": 25, "gold": 15},
 		"farmhouse": {"wood": 15},
 		"farm": {"wood": 10},
-		"lumber_mill": {"wood": 20, "stone": 10}
+		"lumber_mill": {"wood": 20, "stone": 10},
+		"wonder": {"wood": 10000, "stone": 10000, "gold": 10000}
 	}
 	
 	var costs = building_costs.get(building_type, {})
@@ -5467,10 +5495,11 @@ func _on_notification_clicked(data: Dictionary):
 			if not death_data.is_empty() and is_instance_valid(death_modal):
 				death_modal.show_death(death_data)
 		"open_victory":
-			# Reopen the victory screen with the score it was fired with
+			# Reopen the victory screen with the score/type it was fired with
 			var score: Dictionary = data.get("score", {})
+			var victory_type: String = data.get("victory_type", "survival")
 			if not score.is_empty() and is_instance_valid(victory_modal):
-				victory_modal.show_victory(score)
+				victory_modal.show_victory(score, victory_type)
 		"open_tutorial":
 			# Reopen the tutorial popup (owned by the encyclopedia modal) for this tutorial
 			var tutorial_id: String = data.get("tutorial_id", "")
@@ -6011,14 +6040,31 @@ func _fire_victory_event() -> void:
 	"""Day 100 reached — show the one-time victory screen instead of a random world event."""
 	var score: Dictionary = calculate_victory_score(1)
 	if is_instance_valid(victory_modal):
-		victory_modal.show_victory(score)
+		victory_modal.show_victory(score, "survival")
 	if is_instance_valid(notification_panel):
 		notification_panel.push(
 			"🏆 Victory!",
 			"You've survived 100 days. Click to view your score.",
 			"🏆",
 			Color(1.0, 0.85, 0.2),
-			{"action": "open_victory", "score": score}
+			{"action": "open_victory", "score": score, "victory_type": "survival"}
+		)
+
+func _fire_wonder_victory_event() -> void:
+	"""The Wonder was built — show the one-time Wonder Victory screen (same framework as Day 100)."""
+	if wonder_victory_triggered:
+		return
+	wonder_victory_triggered = true
+	var score: Dictionary = calculate_victory_score(1)
+	if is_instance_valid(victory_modal):
+		victory_modal.show_victory(score, "wonder")
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			"🏛️ Wonder Victory!",
+			"You've completed the Wonder! Click to view your score.",
+			"🏛️",
+			Color(1.0, 0.85, 0.2),
+			{"action": "open_victory", "score": score, "victory_type": "wonder"}
 		)
 	if is_instance_valid(game_footer):
 		game_footer.set_end_day_blocked(true)

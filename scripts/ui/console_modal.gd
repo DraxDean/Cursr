@@ -226,6 +226,8 @@ func _process_command(command: String):
 			_cmd_fire_secret_event()
 		"demo achievement":
 			_cmd_demo_achievement()
+		"10k":
+			_cmd_give_test_resources()
 		_:
 			add_debug_message("Unknown command: " + full_cmd + ". Type 'help' for commands.")
 
@@ -252,6 +254,7 @@ func _show_help():
 	add_debug_message("fake notification - Push a test notification card")
 	add_debug_message("the path / cipher - Fire the secret encoded legendary event")
 	add_debug_message("demo achievement - Unlock the demo achievement for testing")
+	add_debug_message("10k - Give player 1 +10,000 of every resource (testing)")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -710,6 +713,20 @@ func _cmd_demo_achievement():
 	AchievementManager._unlocked.erase("demo_achievement")
 	game._try_unlock_achievement("demo_achievement")
 	add_debug_message("🏆 Demo achievement triggered.")
+
+func _cmd_give_test_resources():
+	"""Give player 1 +10,000 of every resource, for testing expensive things like the Wonder."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game) or not game.players_data.has(1):
+		add_debug_message("ERROR: game node / player 1 not found.")
+		return
+	var resources = game.players_data[1].get("resources", {})
+	for key in ["gold", "food", "wood", "stone", "science"]:
+		resources[key] = resources.get(key, 0) + 10000
+	game.players_data[1]["resources"] = resources
+	if is_instance_valid(game.resource_bar):
+		game.resource_bar.refresh()
+	add_debug_message("💰 Gave player 1 +10,000 gold/food/wood/stone/science.")
 
 func _input(event: InputEvent):
 	if is_open:

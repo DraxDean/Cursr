@@ -26,7 +26,8 @@ var buildings_data = [
 	{"type": "merchant", "name": "Merchant", "icon": "res://assets/buildings/human_merchant1.png"},
 	{"type": "town_center", "name": "Town Center", "icon": "res://assets/buildings/human_towncentre-export.png"},
 	{"type": "farmhouse", "name": "Farmhouse", "icon": "res://assets/buildings/human_farmhouse.png"},
-	{"type": "farm", "name": "Farm", "icon": "res://assets/buildings/human_farm_tilled.png"}
+	{"type": "farm", "name": "Farm", "icon": "res://assets/buildings/human_farm_tilled.png"},
+	{"type": "wonder", "name": "Wonder", "icon": "res://assets/buildings/human_wonder.png"}
 ]
 
 func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
@@ -220,6 +221,11 @@ func _create_building_button(building_data: Dictionary):
 		building_button.icon = texture
 		building_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
+	var locked = _is_building_locked(building_data["type"])
+	building_button.disabled = locked
+	if locked:
+		building_button.tooltip_text = "Locked — requires the Wonder Construction technology"
+		button_container.modulate = Color(0.45, 0.45, 0.45)
 	building_button.pressed.connect(_on_building_selected.bind(building_data))
 	button_container.add_child(building_button)
 	
@@ -231,7 +237,17 @@ func _create_building_button(building_data: Dictionary):
 	name_label.add_theme_font_size_override("font_size", 11)
 	button_container.add_child(name_label)
 
+func _is_building_locked(btype: String) -> bool:
+	"""Wonder stays greyed out/unselectable until the wonder_unlock tech is researched"""
+	if btype != "wonder":
+		return false
+	if not game_ref or not game_ref.has_method("get_tech_level"):
+		return true
+	return game_ref.get_tech_level(1, "wonder_unlock") < 1
+
 func _on_building_selected(building_data: Dictionary):
+	if _is_building_locked(building_data["type"]):
+		return
 	selected_building = building_data["type"]
 	selected_building_name = building_data["name"]
 	
@@ -241,7 +257,7 @@ func _on_building_selected(building_data: Dictionary):
 			var button = child.get_child(0)
 			if button.name == selected_building:
 				button.modulate = Color.CYAN
-			else:
+			elif not _is_building_locked(str(button.name)):
 				button.modulate = Color.WHITE
 	
 	# Refresh details panel
@@ -260,7 +276,8 @@ func _get_building_costs(btype: String) -> Dictionary:
 		"merchant": {"Wood": 20, "Stone": 10, "Labor": 120},
 		"town_center": {"Wood": 30, "Stone": 25, "Gold": 15, "Labor": 300},
 		"farmhouse": {"Wood": 15},
-		"farm": {"Wood": 10}
+		"farm": {"Wood": 10},
+		"wonder": {"Wood": 10000, "Stone": 10000, "Gold": 10000}
 	}
 	
 	return costs.get(btype, {"Wood": 10, "Labor": 100})
@@ -276,7 +293,8 @@ func _get_building_description(btype: String) -> String:
 		"merchant": "Trades goods for profit. +5 gold per trader, +10 once trained as a merchant.",
 		"town_center": "Administrative center. Provides science production.",
 		"farmhouse": "Agricultural center. Manages nearby food production.",
-		"farm": "Food production field. Managed by farmhouse."
+		"farm": "Food production field. Managed by farmhouse.",
+		"wonder": "A magnificent monument to your civilization. Requires every technology researched."
 	}
 	
 	return descriptions.get(btype, "")

@@ -1,9 +1,15 @@
 # scripts/ui/victory_modal.gd
-# Victory screen shown once the player reaches Day 100 — replaces that day's random world event.
+# Victory screen shown on Day 100 (Survival) or when the Wonder is built (Wonder Victory).
 extends "res://scripts/ui/info_modal.gd"
 
 var _game: Node
 var _score: Dictionary = {}
+var _victory_type: String = "survival"
+
+const VICTORY_COPY := {
+	"survival": {"title": "🏆 Victory!", "body": "Your settlement has survived 100 days! Here's how you did:"},
+	"wonder": {"title": "🏛️ Wonder Victory!", "body": "You've completed the Wonder! Here's how you did:"},
+}
 
 func _init(game_reference: Node):
 	_game = game_reference
@@ -17,8 +23,9 @@ func _ready() -> void:
 		size = custom_minimum_size
 		position = Vector2((vp.x - size.x) / 2.0, (vp.y - size.y) / 2.0)
 
-func show_victory(score: Dictionary) -> void:
+func show_victory(score: Dictionary, victory_type: String = "survival") -> void:
 	_score = score
+	_victory_type = victory_type
 	if not is_open:
 		toggle()
 	else:
@@ -29,8 +36,12 @@ func refresh_content():
 	if close_button:
 		close_button.visible = true
 
+	var copy: Dictionary = VICTORY_COPY.get(_victory_type, VICTORY_COPY["survival"])
+	if title_label:
+		title_label.text = copy["title"]
+
 	var body_lbl = Label.new()
-	body_lbl.text = "Your settlement has survived 100 days! Here's how you did:"
+	body_lbl.text = copy["body"]
 	body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body_lbl.add_theme_color_override("font_color", Color(0.88, 0.85, 0.80))
 	add_content_child(body_lbl)
