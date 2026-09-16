@@ -41,6 +41,8 @@ const DIFFICULTY_LEVELS: Array = [
 ]
 const DEFAULT_DIFFICULTY: String = "captain"
 
+const TechTree = preload("res://scripts/managers/tech_tree.gd")
+
 var game_difficulty: String = DEFAULT_DIFFICULTY
 
 # Army reference guide — used to calculate aggregate army stats (hp pool, strength)
@@ -176,13 +178,7 @@ var players_data: Dictionary = {
 			"growth_accumulator": 0.0,  # Fractional growth accumulation (adds 1 when >= 1.0)
 			"birth_rate_modifier": 0.0  # Permanent +/- to the base 3.4%/day growth rate, set by world events
 		},
-		"technologies": {
-			# Tech levels; each key maps to current level (0 = not researched)
-			"work_ethic": 0,
-			"fishing_bonus": 0,
-			"woodcutting_bonus": 0,
-			"stoneworking_bonus": 0
-		}
+		"technologies": TechTree.default_technologies()  # Tech levels; each key maps to current level (0 = not researched)
 	},
 	"environment": {
 		"name": "Environment",
@@ -611,33 +607,32 @@ func calculate_resource_rates(player_id: int) -> Dictionary:
 	return rates
 
 func _apply_tech_bonuses_to_rates(player_id: int, rates: Dictionary):
-	"""Apply researched technology bonuses to the already-calculated base rates"""
+	"""Apply researched technology bonuses to the already-calculated base rates.
+	"all"-target techs (Work Ethic) run first so resource-specific techs (Crafts, etc.)
+	stack multiplicatively on top of the already-boosted rate, same as before."""
 	if not players_data.has(player_id):
 		return
 	var techs = players_data[player_id].get("technologies", {})
-	
-	# Work Ethic: +5% to ALL resource production per level
-	var work_ethic_level = techs.get("work_ethic", 0)
-	if work_ethic_level > 0:
-		var global_mult = work_ethic_level * 0.05
+
+	for tech in TechTree.TECHS:
+		if tech.get("bonus_target", "none") != "all":
+			continue
+		var level = techs.get(tech["id"], 0)
+		if level <= 0:
+			continue
+		var mult = 1.0 + level * tech["bonus_percent"]
 		for key in rates:
-			rates[key] = int(rates[key] * (1.0 + global_mult))
-	
-	# Fishing Bonus: +5% food per level (on top of work ethic)
-	var fishing_level = techs.get("fishing_bonus", 0)
-	if fishing_level > 0 and rates.has("food"):
-		rates["food"] = int(rates["food"] * (1.0 + fishing_level * 0.05))
-	
-	# Woodcutting Bonus: +5% wood per level
-	var woodcutting_level = techs.get("woodcutting_bonus", 0)
-	if woodcutting_level > 0 and rates.has("wood"):
-		rates["wood"] = int(rates["wood"] * (1.0 + woodcutting_level * 0.05))
-	
-	# Stoneworking Bonus: +5% stone per level
-	var stoneworking_level = techs.get("stoneworking_bonus", 0)
-	if stoneworking_level > 0 and rates.has("stone"):
-		rates["stone"] = int(rates["stone"] * (1.0 + stoneworking_level * 0.05))
-	
+			rates[key] = int(rates[key] * mult)
+
+	for tech in TechTree.TECHS:
+		var target = tech.get("bonus_target", "none")
+		if target == "all" or target == "none" or target == "hp" or target == "atk":
+			continue
+		var level = techs.get(tech["id"], 0)
+		if level <= 0 or not rates.has(target):
+			continue
+		rates[target] = int(rates[target] * (1.0 + level * tech["bonus_percent"]))
+
 	# Persist the bonus-adjusted rates back
 	players_data[player_id]["resource_rates"] = rates
 
@@ -651,36 +646,33 @@ func get_tech_cost(current_level: int) -> int:
 	"""Cost to advance from current_level to current_level+1. Doubles each level: 50,100,200…"""
 	return 50 * int(pow(2, current_level))
 
-func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool:
+func research_tech(player_id: int, tech_id: String, max_level: int = -1) -> bool:
 	"""Attempt to purchase the next level of a technology. Returns true on success."""
 	if not players_data.has(player_id):
 		return false
-	var player_data = players_data[player_id]
-	
-	# Ensure technologies dict exists (backward compat with old saves)
-	if not player_data.has("technologies"):
-		player_data["technologies"] = {
-			"work_ethic": 0, "fishing_bonus": 0,
-			"woodcutting_bonus": 0, "stoneworking_bonus": 0
-		}
-	
-	var current_level = player_data["technologies"].get(tech_id, 0)
-	if current_level >= max_level:
-		DebugConfig.dprint("general", ["Tech %s already at max level %d" % [tech_id, max_level]])
+	var tech_def = TechTree.get_tech(tech_id)
+	if tech_def.is_empty():
 		return false
-	
-	# Check prerequisites: fishing/woodcutting/stoneworking require work_ethic >= 1
-	var prereqs = {
-		"fishing_bonus": "work_ethic",
-		"woodcutting_bonus": "work_ethic",
-		"stoneworking_bonus": "work_ethic"
-	}
-	if prereqs.has(tech_id):
-		var req = prereqs[tech_id]
-		if player_data["technologies"].get(req, 0) < 1:
-			DebugConfig.dprint("general", ["Tech %s requires %s level 1+" % [tech_id, req]])
-			return false
-	
+	var player_data = players_data[player_id]
+
+	# Ensure technologies dict exists (and covers every known tech) — backward compat with old saves
+	if not player_data.has("technologies"):
+		player_data["technologies"] = TechTree.default_technologies()
+	else:
+		for id in TechTree.default_technologies():
+			if not player_data["technologies"].has(id):
+				player_data["technologies"][id] = 0
+
+	var effective_max = max_level if max_level > 0 else tech_def.get("max_level", 10)
+	var current_level = player_data["technologies"].get(tech_id, 0)
+	if current_level >= effective_max:
+		DebugConfig.dprint("general", ["Tech %s already at max level %d" % [tech_id, effective_max]])
+		return false
+
+	if not TechTree.prereq_met(player_data["technologies"], tech_id):
+		DebugConfig.dprint("general", ["Tech %s prerequisites not met" % tech_id])
+		return false
+
 	var cost = get_tech_cost(current_level)
 	var resources = player_data.get("resources", {})
 	var current_science = resources.get("science", 0)
@@ -703,8 +695,13 @@ func research_tech(player_id: int, tech_id: String, max_level: int = 10) -> bool
 		var GL = preload("res://scripts/managers/game_log.gd")
 		game_log.add(turn_manager.get_day() if is_instance_valid(turn_manager) else 0,
 			GL.Category.RESEARCH,
-			"Researched %s to level %d (cost %d science)." % [tech_id.capitalize().replace("_", " "), current_level + 1, cost])
+			"Researched %s to level %d (cost %d science)." % [tech_def["name"], current_level + 1, cost])
 	check_research_achievements()
+
+	# Science was just spent and rates changed — push both to the always-visible resource bar
+	if is_instance_valid(resource_bar):
+		resource_bar.refresh()
+
 	return true
 
 func get_resource_rates(player_id: int) -> Dictionary:
@@ -1642,14 +1639,13 @@ func _migrate_players_data_structure():
 				var pop_data = player_data["population"]
 				if not pop_data.has("growth_accumulator"):
 					pop_data["growth_accumulator"] = 0.0
-			# Ensure technologies dict exists for old saves
+			# Ensure technologies dict exists (and covers every known tech) for old saves
 			if not player_data.has("technologies"):
-				player_data["technologies"] = {
-					"work_ethic": 0,
-					"fishing_bonus": 0,
-					"woodcutting_bonus": 0,
-					"stoneworking_bonus": 0
-				}
+				player_data["technologies"] = TechTree.default_technologies()
+			else:
+				for tech_id in TechTree.default_technologies():
+					if not player_data["technologies"].has(tech_id):
+						player_data["technologies"][tech_id] = 0
 			# Ensure training fields exist on each unit for old saves
 			for unit in player_data.get("units", []):
 				if not unit.has("specialties"):
@@ -5826,7 +5822,22 @@ func calculate_army_totals(player_id: int) -> Dictionary:
 		totals["count"] += 1
 		totals["hp"] += stats["hp"]
 		totals["atk"] += stats["atk"]
+	_apply_tech_bonuses_to_army_totals(player_id, totals)
 	return totals
+
+func _apply_tech_bonuses_to_army_totals(player_id: int, totals: Dictionary):
+	"""Apply researched Military tech bonuses (HP Pool / Battle Power trees) to army totals"""
+	if not players_data.has(player_id):
+		return
+	var techs = players_data[player_id].get("technologies", {})
+	for tech in TechTree.TECHS:
+		var target = tech.get("bonus_target", "none")
+		if target != "hp" and target != "atk":
+			continue
+		var level = techs.get(tech["id"], 0)
+		if level <= 0 or not totals.has(target):
+			continue
+		totals[target] = int(totals[target] * (1.0 + level * tech["bonus_percent"]))
 
 func _open_combat_modal(enemy_building: Node2D) -> void:
 	"""Open the combat modal when the player clicks an enemy barracks."""
