@@ -7,7 +7,7 @@ const WORLD_CREATION_SCENE_PATH = "res://scenes/main/world_creation_scene.tscn"
 const LoadGameModalScript = preload("res://scripts/ui/load_game_modal.gd")
 const AnnouncementsModalScript = preload("res://scripts/ui/announcements_modal.gd")
 const AnnouncementsData = preload("res://data/announcements/announcements.gd")
-const ANNOUNCEMENT_PREVIEW_LENGTH = 20
+const ANNOUNCEMENT_TITLE_MAX_LENGTH = 18
 const RoadmapModalScript = preload("res://scripts/ui/roadmap_modal.gd")
 const RoadmapData = preload("res://data/roadmap/roadmap.gd")
 
@@ -87,6 +87,38 @@ func _get_git_commit_count() -> int:
 	return count_str.to_int()
 
 
+func _style_list_button(btn: Button) -> void:
+	"""Gives Announcements/Roadmap list entries rounded, single-line pill styling."""
+	btn.clip_text = true
+	btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_CHAR
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.16, 0.16, 0.18, 0.9)
+	normal.corner_radius_top_left = 10
+	normal.corner_radius_top_right = 10
+	normal.corner_radius_bottom_left = 10
+	normal.corner_radius_bottom_right = 10
+	normal.content_margin_left = 10
+	normal.content_margin_right = 10
+
+	var hover := normal.duplicate()
+	hover.bg_color = Color(0.24, 0.24, 0.28, 0.95)
+
+	var pressed := normal.duplicate()
+	pressed.bg_color = Color(0.10, 0.10, 0.12, 0.95)
+
+	var focus := normal.duplicate()
+	focus.border_width_left = 1
+	focus.border_width_right = 1
+	focus.border_width_top = 1
+	focus.border_width_bottom = 1
+	focus.border_color = Color(0.6, 0.6, 0.6, 0.8)
+
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("focus", focus)
+
+
 func _on_continue_pressed():
 	DebugConfig.dprint("ui", ["Main Menu: Continuing from last save..."])
 	var most_recent_save = SaveLoadManager.get_most_recent_save()
@@ -150,21 +182,27 @@ func _populate_announcements() -> void:
 		child.queue_free()
 	for entry in AnnouncementsData.ANNOUNCEMENTS:
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(0, 64)
+		btn.custom_minimum_size = Vector2(0, 36)
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.text = "%s\n%s\n%s" % [
-			entry.get("date", ""),
-			entry.get("title", ""),
-			_truncate_preview(entry.get("content", "")),
+		btn.text = "%s — %s" % [
+			_strip_year(entry.get("date", "")),
+			_truncate_title(entry.get("title", "")),
 		]
 		btn.pressed.connect(_on_announcement_pressed.bind(entry))
+		_style_list_button(btn)
 		announcements_list.add_child(btn)
 
 
-func _truncate_preview(text: String) -> String:
-	if text.length() <= ANNOUNCEMENT_PREVIEW_LENGTH:
+func _strip_year(date_str: String) -> String:
+	var regex := RegEx.new()
+	regex.compile("^\\d{4}-")
+	return regex.sub(date_str, "", true)
+
+
+func _truncate_title(text: String) -> String:
+	if text.length() <= ANNOUNCEMENT_TITLE_MAX_LENGTH:
 		return text
-	return text.substr(0, ANNOUNCEMENT_PREVIEW_LENGTH) + "..."
+	return text.substr(0, ANNOUNCEMENT_TITLE_MAX_LENGTH) + "-"
 
 
 func _on_announcement_pressed(data: Dictionary) -> void:
@@ -190,11 +228,12 @@ func _populate_roadmap() -> void:
 		child.queue_free()
 	for entry in RoadmapData.MILESTONES:
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(0, 48)
+		btn.custom_minimum_size = Vector2(0, 36)
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		var status_label: String = "✅ Completed" if entry.get("status", "") == "completed" else "🔭 Planned"
-		btn.text = "%s — %s\n%s" % [entry.get("version", ""), entry.get("title", ""), status_label]
+		var icon: String = "✅" if entry.get("status", "") == "completed" else "🔭"
+		btn.text = "%s %s — %s" % [icon, entry.get("version", ""), entry.get("title", "")]
 		btn.pressed.connect(_on_roadmap_pressed.bind(entry))
+		_style_list_button(btn)
 		roadmap_list.add_child(btn)
 
 
