@@ -1,6 +1,21 @@
-[gd_scene load_steps=2 format=3 uid="uid://mum5lufhtls8"]
+[gd_scene load_steps=4 format=3 uid="uid://mum5lufhtls8"]
 
 [ext_resource type="Script" uid="uid://dymwskp0radr4" path="res://scripts/main/main_menu.gd" id="1_xhf6x"]
+
+[sub_resource type="SystemFont" id="SystemFont_title"]
+font_names = PackedStringArray("Old English Text MT", "Blackletter686 BT", "UnifrakturMaguntia", "Cambria", "Garamond", "Palatino Linotype")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_announcements"]
+bg_color = Color(0, 0, 0, 0.55)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.5, 0.5, 0.5, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -19,32 +34,159 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+[node name="MainVBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="TitleBlock" type="VBoxContainer" parent="CenterContainer/MainVBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/MainVBoxContainer/TitleBlock"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("SystemFont_title")
+theme_override_font_sizes/font_size = 64
+text = "Cursr"
+horizontal_alignment = 1
+
+[node name="AuthorRow" type="HBoxContainer" parent="CenterContainer/MainVBoxContainer/TitleBlock"]
 layout_mode = 2
 
-[node name="ContinueButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="Spacer" type="Control" parent="CenterContainer/MainVBoxContainer/TitleBlock/AuthorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.1
+
+[node name="AuthorLabel" type="Label" parent="CenterContainer/MainVBoxContainer/TitleBlock/AuthorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.9
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 16
+text = "by Drax Lindgren"
+horizontal_alignment = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/MainVBoxContainer"]
+layout_mode = 2
+
+[node name="ContinueButton" type="Button" parent="CenterContainer/MainVBoxContainer/VBoxContainer"]
 layout_mode = 2
 text = "Continue"
 
-[node name="NewGameButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="NewGameButton" type="Button" parent="CenterContainer/MainVBoxContainer/VBoxContainer"]
 layout_mode = 2
 text = "New Game"
 
-[node name="LoadGameButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="LoadGameButton" type="Button" parent="CenterContainer/MainVBoxContainer/VBoxContainer"]
 layout_mode = 2
 text = "Load Game"
 
-[node name="AchievementsButton" type="Button" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
-text = "Achievements"
+[node name="RoadmapPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 20.0
+offset_top = -170.0
+offset_right = 280.0
+offset_bottom = 170.0
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_announcements")
 
-[node name="SettingsButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="RoadmapPanel"]
 layout_mode = 2
-text = "Settings"
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
 
-[node name="QuitButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="RoadmapPanel/MarginContainer"]
 layout_mode = 2
-text = "Quit"
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="RoadmapPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Roadmap"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="RoadmapPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="RoadmapPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RoadmapList" type="VBoxContainer" parent="RoadmapPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="TopRightContainer" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -84.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 44.0
+grow_horizontal = 0
+theme_override_constants/separation = 8
+
+[node name="AchievementsButton" type="Button" parent="TopRightContainer"]
+layout_mode = 2
+tooltip_text = "Achievements"
+text = "🏆"
+
+[node name="SettingsButton" type="Button" parent="TopRightContainer"]
+layout_mode = 2
+tooltip_text = "Settings"
+text = "⚙"
+
+[node name="AnnouncementsPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -170.0
+offset_right = -20.0
+offset_bottom = 170.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_announcements")
+
+[node name="MarginContainer" type="MarginContainer" parent="AnnouncementsPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="AnnouncementsPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="AnnouncementsPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Announcements"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="AnnouncementsPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="AnnouncementsPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="AnnouncementsList" type="VBoxContainer" parent="AnnouncementsPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
 
 [node name="VersionLabel" type="Label" parent="."]
 layout_mode = 1
