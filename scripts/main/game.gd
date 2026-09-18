@@ -1301,6 +1301,9 @@ func _check_and_create_missing_sprites(player_id: int):
 					unit["path_index"] = 0
 					unit["movement_cycle_step"] = 0
 					unit["work_timer"] = 0.0
+					if old_job != job:
+						# Job changed (e.g. into/out of a farm) — refresh sprite to match (farmer vs. peasant)
+						_update_unit_sprite_texture(unit)
 					unit["previous_job"] = job
 				
 				# Always ensure job_connections are available
@@ -1325,6 +1328,10 @@ func _check_and_create_missing_sprites(player_id: int):
 					unit["current_path"] = []
 					unit["path_index"] = 0
 					unit["work_timer"] = 0.0
+				# Job was dropped (e.g. a farm job released) — revert sprite back to peasant
+				if unit.get("previous_job", job) != job:
+					_update_unit_sprite_texture(unit)
+					unit["previous_job"] = job
 
 func _cleanup_unassigned_unit_sprites(player_id: int):
 	"""Remove sprites for units that lost housing or work assignments"""
@@ -2505,7 +2512,8 @@ func _create_initial_units():
 					"sprite_id": "",
 					# Training system
 					"specialties": [],
-					"training": null
+					"training": null,
+					"peasant_sprite_variant": 1 + (randi() % 2)
 				}
 				
 				if not players_data[player_id].has("units"):
@@ -2661,7 +2669,7 @@ func _spawn_unit(unit_data: Dictionary):
 		unit_sprite.scale = _get_unit_sprite_scale(unit_data)
 		
 	# Load appropriate texture based on race and type
-		var texture_path = _get_pet_sprite_path(unit_data.get("pet_type", "cat")) if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"), unit_data.get("type", "peasant"))
+		var texture_path = _get_pet_sprite_path(unit_data.get("pet_type", "cat")) if unit_data.get("is_pet", false) else _get_unit_sprite_path(unit_data.get("race", "human"), unit_data.get("gender", "male"), unit_data.get("type", "peasant"), unit_data)
 		if ResourceLoader.exists(texture_path):
 			unit_sprite.texture = load(texture_path)
 		else:
@@ -2727,7 +2735,8 @@ func add_event_units(player_id: int, count: int):
 			"speed_multiplier": randf_range(0.85, 1.15),
 			"sprite_id": uid,
 			"specialties": [],
-			"training": null
+			"training": null,
+			"peasant_sprite_variant": 1 + (randi() % 2)
 		}
 		players_data[player_id]["units"].append(unit_data)
 		# Build sprite directly (bypass _create_unit_sprite_and_start_cycle which forces idle state)
@@ -2805,7 +2814,7 @@ func _spawn_event_unit_sprite(unit: Dictionary):
 	unit_sprite.centered = true
 	unit_sprite.scale = _get_unit_sprite_scale(unit)
 
-	var texture_path = _get_pet_sprite_path(unit.get("pet_type", "cat")) if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+	var texture_path = _get_pet_sprite_path(unit.get("pet_type", "cat")) if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"), unit)
 	if ResourceLoader.exists(texture_path):
 		unit_sprite.texture = load(texture_path)
 	else:
@@ -2955,27 +2964,51 @@ func _generate_random_name(race: String, gender: String = "male") -> String:
 	
 	return random_given + " " + random_surname
 
-func _get_unit_sprite_path(race: String, gender: String, type: String = "peasant") -> String:
-	"""Get the sprite path for a unit based on race, gender, and type"""
+func _get_unit_sprite_path(race: String, gender: String, type: String = "peasant", unit: Dictionary = {}) -> String:
+	"""Get the sprite path for a unit based on race, gender, and type. Pass `unit` so peasants
+	working a farm job resolve to the farmer sprite, and so the persisted peasant_sprite_variant
+	field (1 or 2) picks between the two available peasant sprites for that gender."""
 	if type == "soldier":
 		return "res://assets/units/human_soldier.png"
 	if type == "scholar":
 		return "res://assets/units/human_scholar.png"
 	if type == "merchant":
 		return "res://assets/units/human_merchant.png"
+	if type == "marauder":
+		return "res://assets/units/human_marauder.png"
 	var gender_prefix = "female" if gender.to_lower() == "female" else "male"
 	var race_prefix = race.to_lower()
+	if not unit.is_empty() and _unit_is_working_farm(unit):
+		return "res://assets/units/%s_farmer.png" % race_prefix
+	if unit.get("peasant_sprite_variant", 1) == 2:
+		return "res://assets/units/%s_peasant_%s_2.png" % [race_prefix, gender_prefix]
 	return "res://assets/units/%s_%s_peasant_side.png" % [race_prefix, gender_prefix]
+
+func _unit_is_working_farm(unit: Dictionary) -> bool:
+	"""True if this unit's current job is at a farmhouse (used to swap in the farmer sprite)."""
+	var job = unit.get("job", null)
+	if job == null or not is_instance_valid(map_objects_holder):
+		return false
+	var job_str: String = str(job)
+	if job_str.ends_with("_station"):
+		return false
+	var building_node = map_objects_holder.get_node_or_null(NodePath(job_str))
+	if not is_instance_valid(building_node):
+		return false
+	return building_node.get_meta("building_type", "") == "farmhouse"
 
 func _get_pet_sprite_path(pet_type: String) -> String:
 	"""Get the sprite path for the player's companion based on chosen pet type"""
 	return "res://assets/units/dog_1.png" if pet_type == "dog" else "res://assets/units/wilson.png"
 
 func _get_unit_sprite_scale(unit: Dictionary) -> Vector2:
-	"""Per-texture scale correction — human_soldier.png/human_scholar.png/human_merchant.png are drawn at 2x the size of other unit sprites"""
+	"""Per-texture scale correction — human_soldier/scholar/merchant/marauder.png, human_farmer.png,
+	and the 2nd peasant sprite variants are all drawn at 32px (2x the 16px other unit sprites)"""
 	if unit.get("is_pet", false):
 		return Vector2(0.25, 0.25)
-	if unit.get("type", "peasant") in ["soldier", "scholar", "merchant"]:
+	if unit.get("type", "peasant") in ["soldier", "scholar", "merchant", "marauder"]:
+		return Vector2(0.5, 0.5)
+	if _unit_is_working_farm(unit) or unit.get("peasant_sprite_variant", 1) == 2:
 		return Vector2(0.5, 0.5)
 	return Vector2.ONE
 
@@ -3422,7 +3455,7 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 		unit_sprite.scale = _get_unit_sprite_scale(unit)
 		
 		# Load texture based on unit's race and gender
-		var texture_path = _get_pet_sprite_path(unit.get("pet_type", "cat")) if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+		var texture_path = _get_pet_sprite_path(unit.get("pet_type", "cat")) if unit.get("is_pet", false) else _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"), unit)
 		if ResourceLoader.exists(texture_path):
 			var texture = load(texture_path)
 			unit_sprite.texture = texture
@@ -3662,7 +3695,8 @@ func _create_initial_units_from_population():
 				"work_timer": randf_range(0.0, 3.0),  # Stagger start times
 				"wander_wait_time": randf_range(1.0, 4.0),
 				"movement_speed": 25.0,
-				"speed_multiplier": randf_range(0.85, 1.15)  # 85% to 115% speed variation
+				"speed_multiplier": randf_range(0.85, 1.15),  # 85% to 115% speed variation
+				"peasant_sprite_variant": 1 + (randi() % 2)
 			}
 			
 			DebugConfig.dprint("population", ["Game: Created unit %s with name '%s' for player %d" % [unit_data["unique_id"], unit_data["name"], player_id]])
@@ -4519,6 +4553,16 @@ func _register_farm_with_nearby_farmhouse(farm_node: Node2D) -> void:
 	building_jobs_updated.emit(best_farmhouse.name)
 	DebugConfig.dprint("jobs", ["Game: Registered farm %s with farmhouse %s (%d tiles)" % [farm_node.name, best_farmhouse.name, tile_path.size()]])
 
+func _refresh_farmer_sprites() -> void:
+	"""Re-sync every peasant's sprite texture so those working a farm job show the farmer look
+	and everyone else shows their normal peasant sprite."""
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		for unit in players_data[player_id].get("units", []):
+			if unit.get("is_pet", false) or unit.get("type", "peasant") != "peasant":
+				continue
+			_update_unit_sprite_texture(unit)
 
 func _process_farm_states() -> void:
 	"""Called each end-of-day. Advances farm tile states and harvests grown farms with workers."""
@@ -5417,6 +5461,11 @@ func _on_end_day_pressed():
 		# Process farm state cycle and harvest grown farms
 		_process_farm_states()
 		
+		# Job-assignment code doesn't reliably flip peasant sprites to/from the farmer look
+		# (previous_job gets synced to the new job before the change would be detected), so
+		# re-sync everyone's texture once per day instead.
+		_refresh_farmer_sprites()
+		
 		# Log resource income for the day that just ended
 		if is_instance_valid(game_log):
 			var rates = get_resource_rates(1)
@@ -6256,7 +6305,7 @@ func _update_unit_sprite_texture(unit: Dictionary) -> void:
 		sprite = map_objects_holder.get_node_or_null(uid)
 	if not is_instance_valid(sprite):
 		return
-	var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+	var texture_path = _get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"), unit)
 	if ResourceLoader.exists(texture_path):
 		sprite.texture = load(texture_path)
 		sprite.scale = _get_unit_sprite_scale(unit)

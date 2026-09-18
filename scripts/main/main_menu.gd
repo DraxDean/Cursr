@@ -59,6 +59,8 @@ func _ready():
 	
 	if continue_button.disabled:
 		continue_button.tooltip_text = "No saved games found."
+	else:
+		_update_continue_button_label()
 	if load_game_button.disabled:
 		load_game_button.tooltip_text = "No saved games found."
 
@@ -85,6 +87,28 @@ func _get_git_commit_count() -> int:
 	if not count_str.is_valid_int():
 		return -1
 	return count_str.to_int()
+
+
+func _update_continue_button_label() -> void:
+	var most_recent_save = SaveLoadManager.get_most_recent_save()
+	var town_name = _get_save_town_name(most_recent_save)
+	continue_button.text = "Continue (%s)" % town_name if not town_name.is_empty() else "Continue"
+
+
+func _get_save_town_name(file_path: String) -> String:
+	"""Peeks at a save file's Town Centre building to read its display name, without a full load."""
+	if file_path.is_empty() or not FileAccess.file_exists(file_path):
+		return ""
+	var file = FileAccess.open(file_path, FileAccess.READ)
+	if not is_instance_valid(file) or FileAccess.get_open_error() != OK:
+		return ""
+	var data = file.get_var()
+	if typeof(data) != TYPE_DICTIONARY:
+		return ""
+	for building_info in data.get("buildings_data", []):
+		if building_info.get("building_type", "") == "town_center":
+			return String(building_info.get("display_name", ""))
+	return ""
 
 
 func _style_list_button(btn: Button) -> void:

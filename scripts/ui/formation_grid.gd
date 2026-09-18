@@ -38,7 +38,7 @@ static func build_icon(unit: Dictionary, game_ref: Node, icon_size: int = 28) ->
 	icon.custom_minimum_size = Vector2(icon_size, icon_size)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var texture_path: String = game_ref._get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+	var texture_path: String = game_ref._get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"), unit)
 	if ResourceLoader.exists(texture_path):
 		icon.texture = load(texture_path)
 	if game_ref._unit_sprite_is_reversed(unit):
@@ -54,7 +54,7 @@ static func build_plain_icon(unit: Dictionary, game_ref: Node, icon_size: int = 
 	icon.custom_minimum_size = Vector2(icon_size, icon_size)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var texture_path: String = game_ref._get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"))
+	var texture_path: String = game_ref._get_unit_sprite_path(unit.get("race", "human"), unit.get("gender", "male"), unit.get("type", "peasant"), unit)
 	if ResourceLoader.exists(texture_path):
 		icon.texture = load(texture_path)
 	if game_ref._unit_sprite_is_reversed(unit):

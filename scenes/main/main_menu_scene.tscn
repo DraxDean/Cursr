@@ -71,14 +71,17 @@ layout_mode = 2
 
 [node name="ContinueButton" type="Button" parent="CenterContainer/MainVBoxContainer/VBoxContainer"]
 layout_mode = 2
+custom_minimum_size = Vector2(280, 0)
 text = "Continue"
 
 [node name="NewGameButton" type="Button" parent="CenterContainer/MainVBoxContainer/VBoxContainer"]
 layout_mode = 2
+custom_minimum_size = Vector2(280, 0)
 text = "New Game"
 
 [node name="LoadGameButton" type="Button" parent="CenterContainer/MainVBoxContainer/VBoxContainer"]
 layout_mode = 2
+custom_minimum_size = Vector2(280, 0)
 text = "Load Game"
 
 [node name="RoadmapPanel" type="PanelContainer" parent="."]
