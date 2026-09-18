@@ -22,9 +22,8 @@ func _ready() -> void:
 
 func show_death(death_data: Dictionary):
 	_death_data = death_data
-	var unit: Dictionary = death_data.get("unit", {})
 	if title_label:
-		title_label.text = "☠ %s" % unit.get("name", "Unit Lost")
+		title_label.text = "☠ %s" % death_data.get("name", "Unit Lost")
 	if not is_open:
 		toggle()
 	else:
@@ -35,12 +34,11 @@ func refresh_content():
 	if _death_data.is_empty():
 		return
 
-	var unit: Dictionary = _death_data.get("unit", {})
 	var cause: String = _death_data.get("cause", "unknown causes")
-	var role_label: String = _death_data.get("role_label", "unit")
-	var uname: String = unit.get("name", "A unit")
-	var race: String = unit.get("race", "human")
-	var gender: String = unit.get("gender", "male")
+	var job_title: String = _death_data.get("job_title", "Villager")
+	var uname: String = _death_data.get("name", "A unit")
+	var race: String = _death_data.get("race", "human")
+	var gender: String = _death_data.get("gender", "male")
 
 	var main_row = HBoxContainer.new()
 	main_row.add_theme_constant_override("separation", 12)
@@ -69,7 +67,7 @@ func refresh_content():
 	info_col.add_child(name_lbl)
 
 	var role_lbl = Label.new()
-	role_lbl.text = "%s %s" % [race.capitalize(), role_label.capitalize()]
+	role_lbl.text = "%s %s" % [race.capitalize(), job_title]
 	role_lbl.add_theme_font_size_override("font_size", 13)
 	role_lbl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
 	info_col.add_child(role_lbl)
@@ -77,7 +75,7 @@ func refresh_content():
 	add_content_child(HSeparator.new())
 
 	var body_lbl = Label.new()
-	body_lbl.text = "%s, your %s, has been killed by %s." % [uname, role_label, cause]
+	body_lbl.text = "%s, your %s, has been killed by %s." % [uname, job_title, cause]
 	body_lbl.add_theme_font_size_override("font_size", 13)
 	body_lbl.add_theme_color_override("font_color", Color(0.88, 0.85, 0.80))
 	body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

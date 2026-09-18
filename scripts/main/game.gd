@@ -101,7 +101,11 @@ var turn_event_manager: Node
 var notification_panel: Control
 var world_event_modal: Control
 var death_modal: Control
+var mass_death_modal: Control
 var victory_modal: Control
+var _death_batch_active: bool = false
+var _death_batch: Array = []  # Accumulated {name, job_title, cause, race, gender} entries while a batch kill is in progress
+const MASS_DEATH_THRESHOLD := 5  # More than this many deaths in one batch shows a single "Mass Death" card instead of individual ones
 var wonder_victory_triggered: bool = false  # Guards against re-firing if the modal is closed and reopened
 var game_over_triggered: bool = false  # Guards against showing the Game Over screen more than once
 var raid_choice_modal: Control
@@ -2770,6 +2774,7 @@ func remove_event_units(player_id: int, count: int, cause: String = "a world eve
 			assigned.append(u)
 	var removal_order: Array = unassigned + assigned
 	var removed: int = 0
+	_begin_death_batch()
 	for unit in removal_order:
 		if removed >= count:
 			break
@@ -2789,6 +2794,7 @@ func remove_event_units(player_id: int, count: int, cause: String = "a world eve
 		player_units.erase(unit)
 		removed += 1
 		DebugConfig.dprint("general", ["Game: Event removed unit %s (%s) for player %d" % [uid, unit.get("name", "?"), player_id]])
+	_end_death_batch()
 	players_data[player_id]["units"] = player_units
 	# Recalculate current from actual array size
 	var pop = players_data[player_id].get("population", {})
@@ -5392,6 +5398,11 @@ func _setup_info_modals():
 	death_modal = DeathModalScript.new(self)
 	ui_layer.add_child(death_modal)
 
+	# Mass death modal — aggregated casualty list, opened from the "Mass Death" notification card
+	var MassDeathModalScript = preload("res://scripts/ui/mass_death_modal.gd")
+	mass_death_modal = MassDeathModalScript.new()
+	ui_layer.add_child(mass_death_modal)
+
 	# Victory modal — shown once Day 100 is reached, replacing that day's random world event
 	var VictoryModalScript = preload("res://scripts/ui/victory_modal.gd")
 	victory_modal = VictoryModalScript.new(self)
@@ -5579,6 +5590,11 @@ func _on_notification_clicked(data: Dictionary):
 			var death_data: Dictionary = data.get("death_data", {})
 			if not death_data.is_empty() and is_instance_valid(death_modal):
 				death_modal.show_death(death_data)
+		"open_mass_death":
+			# Show the mass death modal with the stored batch of deaths
+			var mass_death_data: Dictionary = data.get("mass_death_data", {})
+			if not mass_death_data.is_empty() and is_instance_valid(mass_death_modal):
+				mass_death_modal.show_mass_death(mass_death_data)
 		"open_victory":
 			# Reopen the victory screen with the score/type it was fired with
 			var score: Dictionary = data.get("score", {})
@@ -6028,24 +6044,107 @@ func wipe_army(player_id: int) -> int:
 	"""Kill every unit currently counted in a player's army (used when an army loses a battle).
 	Returns the number of units killed."""
 	var army_units: Array = get_army_units(player_id)
+	_begin_death_batch()
 	for unit in army_units:
 		remove_unit_from_combat(unit, "a crushing defeat in battle")
+	_end_death_batch()
 	return army_units.size()
 
+func _get_unit_job_title(unit: Dictionary) -> String:
+	"""Human-readable occupation for death notifications — trained types win outright,
+	otherwise resolves to the building type of the unit's current job (Farmer, Lumberjack, etc.)."""
+	var unit_type: String = unit.get("type", "peasant")
+	if unit_type == "soldier":
+		return "Soldier"
+	if unit_type == "scholar":
+		return "Scholar"
+	if unit_type == "merchant":
+		return "Merchant"
+	if unit_type == "marauder":
+		return "Marauder"
+	var job = unit.get("job", null)
+	if job == null:
+		return "Villager"
+	var job_str: String = str(job)
+	if job_str.ends_with("_station"):
+		return "Soldier in Training"
+	if not is_instance_valid(map_objects_holder):
+		return "Villager"
+	var building_node = map_objects_holder.get_node_or_null(NodePath(job_str))
+	if not is_instance_valid(building_node):
+		return "Villager"
+	var job_titles := {
+		"farmhouse": "Farmer",
+		"farm": "Farmer",
+		"lumberjack": "Lumberjack",
+		"lumber_mill": "Lumberjack",
+		"stoneworker": "Stoneworker",
+		"fishing_hut": "Fisherman",
+		"research": "Researcher",
+		"merchant": "Trader",
+		"town_center": "Villager",
+	}
+	return job_titles.get(building_node.get_meta("building_type", ""), "Villager")
+
+func _begin_death_batch() -> void:
+	"""Start accumulating deaths instead of notifying immediately — call _end_death_batch()
+	once the killing is done to flush them as individual cards or one aggregated Mass Death card."""
+	_death_batch_active = true
+	_death_batch = []
+
+func _end_death_batch() -> void:
+	"""Flush the accumulated batch: individual death cards if MASS_DEATH_THRESHOLD or fewer died,
+	otherwise a single aggregated Mass Death card."""
+	_death_batch_active = false
+	var batch: Array = _death_batch
+	_death_batch = []
+	if batch.is_empty():
+		return
+	if batch.size() > MASS_DEATH_THRESHOLD:
+		_notify_mass_death(batch)
+	else:
+		for entry in batch:
+			_push_death_notification(entry)
+
 func _notify_unit_death(unit: Dictionary, cause: String) -> void:
-	"""Push a notification card for a unit's death. Combat and catastrophic (F tier) world
-	events are the only ways a unit can die, so both routes call this with their own cause."""
+	"""Record a unit's death. Combat and catastrophic (F tier) world events are the only ways a
+	unit can die, so both routes call this with their own cause. Batched into a single "Mass
+	Death" card instead of individual ones when _death_batch_active and enough units die together."""
 	if not is_instance_valid(notification_panel):
 		return
-	var uname: String = unit.get("name", "A unit")
-	var role: String = get_unit_army_role(unit)
-	var role_label: String = ARMY_UNIT_STATS.get(role, {}).get("label", "unit").to_lower()
+	var entry: Dictionary = {
+		"name": unit.get("name", "A unit"),
+		"job_title": _get_unit_job_title(unit),
+		"cause": cause,
+		"race": unit.get("race", "human"),
+		"gender": unit.get("gender", "male"),
+	}
+	if _death_batch_active:
+		_death_batch.append(entry)
+		return
+	_push_death_notification(entry)
+
+func _push_death_notification(entry: Dictionary) -> void:
+	"""Push a single unit's death notification card (see _notify_unit_death)."""
+	var uname: String = entry.get("name", "A unit")
+	var job_title: String = entry.get("job_title", "Villager")
 	notification_panel.push(
 		"☠ %s has fallen" % uname,
-		"%s, your %s has been killed by %s." % [uname, role_label, cause],
+		"%s, your %s, has been killed by %s." % [uname, job_title, entry.get("cause", "unknown causes")],
 		"☠",
 		Color(0.85, 0.2, 0.2),
-		{"action": "open_death", "death_data": {"unit": unit, "cause": cause, "role_label": role_label}}
+		{"action": "open_death", "death_data": entry}
+	)
+
+func _notify_mass_death(batch: Array) -> void:
+	"""Push a single aggregated notification card for a batch of MASS_DEATH_THRESHOLD+ deaths."""
+	var count: int = batch.size()
+	notification_panel.push(
+		"☠ Mass Death: %d" % count,
+		"%d villagers have perished. Click for details." % count,
+		"☠",
+		Color(0.85, 0.2, 0.2),
+		{"action": "open_mass_death", "mass_death_data": {"deaths": batch}}
 	)
 
 func remove_unit_from_combat(unit: Dictionary, cause: String = "combat") -> void:
