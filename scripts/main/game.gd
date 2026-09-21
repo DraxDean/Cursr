@@ -267,7 +267,13 @@ func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
 				if building_tile in footprint:
 					return false
 	
-	# Additional checks could be added here (terrain type, resources, etc.)
+	# Farms need open grassland to take root — desert sand won't grow crops.
+	if building_to_place == "farm":
+		for tile in footprint:
+			var tile_info: Dictionary = world_data.get(tile, {})
+			if tile_info.get("atlas_coords") != WorldGenerator.GRASS_COORDS:
+				return false
+	
 	return true
 
 func _try_place_building(_mouse_pos: Vector2):
