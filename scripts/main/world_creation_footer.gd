@@ -52,16 +52,20 @@ func _setup_footer_container():
 	button_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	button_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	
-	# Create buttons
+	# Create buttons — Back/Continue are arrows (also driven by the </> keys, see
+	# world_creation_modal.gd's _unhandled_input) since they now step between phases
+	# instead of leaving world creation entirely.
 	back_button = Button.new()
 	back_button.name = "BackButton"
-	back_button.text = "Back to Menu"
+	back_button.text = "◀"
+	back_button.tooltip_text = "Back"
 	back_button.pressed.connect(_on_back_pressed)
 	button_container.add_child(back_button)
 	
 	reset_camera_button = Button.new()
 	reset_camera_button.name = "ResetCameraButton" 
-	reset_camera_button.text = "Reset Camera"
+	reset_camera_button.text = "Reset"
+	reset_camera_button.visible = false  # Only shown during town-center placement now
 	reset_camera_button.pressed.connect(_on_reset_camera_pressed)
 	button_container.add_child(reset_camera_button)
 	
@@ -80,7 +84,8 @@ func _setup_footer_container():
 	
 	continue_button = Button.new()
 	continue_button.name = "ContinueButton"
-	continue_button.text = "Continue"
+	continue_button.text = "▶"
+	continue_button.tooltip_text = "Continue"
 	continue_button.pressed.connect(_on_continue_pressed)
 	button_container.add_child(continue_button)
 	
@@ -117,24 +122,14 @@ func update_buttons(button_texts: Array):
 		match text:
 			"Back":
 				if back_button:
-					back_button.text = "Back"
 					back_button.visible = true
 			"Reset":
 				if reset_camera_button:
-					reset_camera_button.text = "Reset"
-					reset_camera_button.visible = true
-			"Reset Camera":
-				if reset_camera_button: 
-					reset_camera_button.text = "Reset Camera"
 					reset_camera_button.visible = true
 			"Reroll":
 				if reroll_button: reroll_button.visible = true
-			"Continue":
+			"Continue", "Next":
 				if continue_button: continue_button.visible = true
-			"Next":
-				if continue_button:
-					continue_button.text = "Next"
-					continue_button.visible = true
 			"Start Game":
 				if start_game_button: start_game_button.visible = true
 			"Begin Game":

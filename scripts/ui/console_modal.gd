@@ -230,6 +230,8 @@ func _process_command(command: String):
 			_cmd_give_test_resources()
 		"raid":
 			_cmd_force_raid()
+		"gameover", "game over", "die":
+			_cmd_trigger_game_over()
 		_:
 			add_debug_message("Unknown command: " + full_cmd + ". Type 'help' for commands.")
 
@@ -258,6 +260,7 @@ func _show_help():
 	add_debug_message("demo achievement - Unlock the demo achievement for testing")
 	add_debug_message("10k - Give player 1 +10,000 of every resource (testing)")
 	add_debug_message("raid - Force an immediate raid choice from an existing enemy barracks (testing)")
+	add_debug_message("gameover / game over / die - Trigger the Game Over screen, badge, and End Day lock (testing)")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -579,6 +582,19 @@ func _cmd_forfeit():
 	else:
 		# Fallback: go straight to main menu
 		get_tree().change_scene_to_file("res://scenes/main/main_menu_scene.tscn")
+
+func _cmd_trigger_game_over():
+	"""Trigger the real Game Over flow (modal + undismissable badge + End Day lock) for
+	testing, without forfeiting/changing scene like the ff/forfeit command does."""
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game) or not game.has_method("_trigger_game_over"):
+		add_debug_message("ERROR: game node or _trigger_game_over not found.")
+		return
+	if game.game_over_triggered:
+		add_debug_message("Game Over was already triggered this session.")
+		return
+	game._trigger_game_over("Console-triggered Game Over (testing).")
+	add_debug_message("💀 Game Over triggered.")
 
 func _cmd_spawn_wave():
 	"""Force-spawn the next enemy wave immediately."""

@@ -164,20 +164,26 @@ func _build_card(data: Dictionary) -> Control:
 	var card_action: String = data.get("action", "")
 	var is_event_card: bool = card_action == "open_event"
 	var is_raid_card: bool = card_action == "open_raid_choice"
-	if is_event_card or is_raid_card:
+	# Game Over badge: permanently locked (never resolved — the run is over, only
+	# "Return to Main Menu" gets rid of it, which happens via scene change anyway)
+	var is_game_over_card: bool = card_action == "open_game_over"
+	if is_event_card or is_raid_card or is_game_over_card:
 		dismiss.disabled = true
 		dismiss.modulate.a = 0.0  # Invisible but keeps its layout space — structure stays intact
-		dismiss.tooltip_text = "Resolve this event first."
-		# Tag for later lookup (per-firing instance id, falling back to the static event id)
-		var event_id: String = ""
-		if is_event_card:
-			var event_data: Dictionary = data.get("event_data", {})
-			event_id = event_data.get("instance_id", event_data.get("id", ""))
-		else:
-			event_id = data.get("raid_id", "")
-		if event_id != "":
-			card.set_meta("event_id", event_id)
-			card.set_meta("dismiss_button", dismiss)
+		dismiss.tooltip_text = "The game has ended." if is_game_over_card else "Resolve this event first."
+		# Tag the dismiss button unconditionally so _try_dismiss_card's lock check (and the
+		# right-click shortcut) always honors it, even when there's no event_id to key off of.
+		card.set_meta("dismiss_button", dismiss)
+		if not is_game_over_card:
+			# Tag for later lookup (per-firing instance id, falling back to the static event id)
+			var event_id: String = ""
+			if is_event_card:
+				var event_data: Dictionary = data.get("event_data", {})
+				event_id = event_data.get("instance_id", event_data.get("id", ""))
+			else:
+				event_id = data.get("raid_id", "")
+			if event_id != "":
+				card.set_meta("event_id", event_id)
 	else:
 		dismiss.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 

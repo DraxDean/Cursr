@@ -24,17 +24,24 @@ func _build_ui():
 	backdrop.color = Color(0.0, 0.0, 0.0, 0.82)
 	add_child(backdrop)
 
-	# Centered card
+	# CenterContainer re-centers its child every time the child's size changes, unlike a
+	# one-shot anchor/offset calc (which only centers for the size at the moment it's set —
+	# the card grows taller once the title/subtitle/score rows/buttons are added, so a static
+	# offset ends up pinning the card's top-left corner at the viewport center instead).
+	var center = CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(center)
+
 	var card = PanelContainer.new()
-	card.set_anchors_preset(Control.PRESET_CENTER)
-	card.custom_minimum_size = Vector2(420, 360)
+	card.custom_minimum_size = Vector2(420, 380)
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.04, 0.04, 0.97)
 	style.set_border_width_all(3)
 	style.border_color = Color(0.75, 0.15, 0.10, 1.0)
 	style.set_corner_radius_all(8)
 	card.add_theme_stylebox_override("panel", style)
-	add_child(card)
+	center.add_child(card)
 
 	var vbox = VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -76,13 +83,27 @@ func _build_ui():
 	spacer.custom_minimum_size = Vector2(0, 6)
 	vbox.add_child(spacer)
 
-	# Return to Main Menu button — the only way out of this screen
+	# Button row — Return to Main Menu (the real exit) and Minimize (just hides this
+	# modal; the notification badge + End Day lock stay in effect, see game.gd)
+	var btn_row = HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 10)
+	vbox.add_child(btn_row)
+
+	var minimize_btn = Button.new()
+	minimize_btn.text = "Minimize"
+	minimize_btn.custom_minimum_size = Vector2(0, 44)
+	minimize_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	minimize_btn.add_theme_font_size_override("font_size", 15)
+	minimize_btn.pressed.connect(_on_minimize_pressed)
+	btn_row.add_child(minimize_btn)
+
 	var btn = Button.new()
 	btn.text = "Return to Main Menu"
-	btn.custom_minimum_size = Vector2(220, 44)
+	btn.custom_minimum_size = Vector2(0, 44)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.add_theme_font_size_override("font_size", 15)
 	btn.pressed.connect(_on_return_pressed)
-	vbox.add_child(btn)
+	btn_row.add_child(btn)
 
 func show_game_over(reason: String = "Your last Town Centre has fallen.", score: Dictionary = {}) -> void:
 	if _subtitle_lbl:
@@ -90,6 +111,15 @@ func show_game_over(reason: String = "Your last Town Centre has fallen.", score:
 	_populate_score(score)
 	visible = true
 	move_to_front()
+
+func reopen() -> void:
+	"""Re-show the modal with whatever reason/score it was last triggered with — used when
+	the player clicks the undismissable Game Over notification badge after minimizing."""
+	visible = true
+	move_to_front()
+
+func _on_minimize_pressed():
+	visible = false
 
 func _populate_score(score: Dictionary) -> void:
 	for child in _score_container.get_children():

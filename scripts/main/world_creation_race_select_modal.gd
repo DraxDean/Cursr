@@ -10,7 +10,7 @@ var races = {
 	"human": {
 		"name": "Human",
 		"description": "Versatile and adaptable, humans are skilled traders and diplomats. They build balanced settlements with strong economies and diverse capabilities.",
-		"buildings": ["town_center", "barracks", "house", "farmhouse", "fishing_hut", "lumberjack", "research", "stoneworker"]
+		"buildings": ["town_center", "house", "barracks", "farmhouse", "farm", "fishing_hut", "lumberjack", "stoneworker", "research", "merchant", "wonder"]
 	},
 	"elf": {
 		"name": "Elf",
@@ -39,6 +39,34 @@ var races = {
 	}
 }
 
+# Authoritative building type -> sprite path lookup (matches build_selection_modal.gd's data)
+# so the race-select grid and the detail panel both show the real building art.
+const BUILDING_SPRITE_PATHS: Dictionary = {
+	"house": "res://assets/buildings/human_house.png",
+	"barracks": "res://assets/buildings/human_barracks.png",
+	"fishing_hut": "res://assets/buildings/human_finshinghut.png",
+	"lumberjack": "res://assets/buildings/human_lumberjack.png",
+	"stoneworker": "res://assets/buildings/human_stoneworker.png",
+	"research": "res://assets/buildings/human_research.png",
+	"merchant": "res://assets/buildings/human_merchant1.png",
+	"town_center": "res://assets/buildings/human_towncentre-export.png",
+	"farmhouse": "res://assets/buildings/human_farmhouse.png",
+	"farm": "res://assets/buildings/human_farm_tilled.png",
+	"wonder": "res://assets/buildings/human_wonder.png",
+}
+
+# Human citizen look options for the sample-unit picker (occupations use their working sprite).
+const HUMAN_UNIT_SPRITES: Array = [
+	{"key": "male_peasant", "label": "Peasant (M)", "path": "res://assets/units/human_male_peasant_side.png"},
+	{"key": "female_peasant", "label": "Peasant (F)", "path": "res://assets/units/human_female_peasant_side.png"},
+	{"key": "male_peasant_2", "label": "Peasant (M) II", "path": "res://assets/units/human_peasant_male_2.png"},
+	{"key": "female_peasant_2", "label": "Peasant (F) II", "path": "res://assets/units/human_peasant_female_2.png"},
+	{"key": "farmer", "label": "Farmer", "path": "res://assets/units/human_farmer.png"},
+	{"key": "merchant", "label": "Merchant", "path": "res://assets/units/human_merchant.png"},
+	{"key": "scholar", "label": "Scholar", "path": "res://assets/units/human_scholar.png"},
+	{"key": "soldier", "label": "Soldier", "path": "res://assets/units/human_soldier.png"},
+]
+
 # UI Components
 var selected_race: String = "human"
 var selected_building: String = "town_center"  # Auto-select town center
@@ -50,6 +78,9 @@ var pet_name_field: LineEdit
 var pet_type_button: Button
 var pet_selection_popup: Control
 var selected_pet_type: String = "cat"
+var human_preview_image: TextureRect
+var selected_unit_sprite: String = "male_peasant"
+var unit_sprites_grid: GridContainer
 
 func setup_integrated(game_ref: Node, world_creation_ref: Node, ui_layer: CanvasLayer):
 	game_node = game_ref
@@ -131,23 +162,23 @@ func _create_race_ui_content(parent_container: VBoxContainer):
 	
 	# Right side - Building selection
 	var building_section = VBoxContainer.new()
-	building_section.custom_minimum_size = Vector2(400, 0)
+	building_section.custom_minimum_size = Vector2(420, 0)
 	building_section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	middle_container.add_child(building_section)
 	
-	# Building selected container
+	# Building selected container — bigger image + description now that it's the focal point
 	building_selected_container = VBoxContainer.new()
-	building_selected_container.custom_minimum_size = Vector2(0, 150)
+	building_selected_container.custom_minimum_size = Vector2(0, 260)
 	building_section.add_child(building_selected_container)
 	
-	# Buildings grid
+	# Buildings grid — sprite buttons, one per building this race can build
 	var grid_scroll = ScrollContainer.new()
 	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	grid_scroll.custom_minimum_size = Vector2(0, 200)
+	grid_scroll.custom_minimum_size = Vector2(0, 180)
 	building_section.add_child(grid_scroll)
 	
 	buildings_grid = GridContainer.new()
-	buildings_grid.columns = 2
+	buildings_grid.columns = 3
 	buildings_grid.add_theme_constant_override("h_separation", 10)
 	buildings_grid.add_theme_constant_override("v_separation", 10)
 	grid_scroll.add_child(buildings_grid)
@@ -201,6 +232,7 @@ func _update_race_info():
 	# Clear existing info
 	for child in race_info_container.get_children():
 		child.queue_free()
+	human_preview_image = null
 	
 	# Update race button states
 	for i in range(race_buttons.size()):
@@ -213,41 +245,23 @@ func _update_race_info():
 	
 	var race_data = races[selected_race]
 	
-	# Race image placeholder
+	# Sample-unit preview — smaller than before, since the unit picker list sits underneath it
 	if selected_race == "human":
-		# Load human peasant sprite for human race
-		var peasant_texture = load("res://assets/units/human_male_peasant_side.png")  # Use male sprite for preview
+		var sprite_path = _get_selected_unit_sprite_path()
+		var peasant_texture = load(sprite_path) if ResourceLoader.exists(sprite_path) else null
 		if peasant_texture:
-			var image_rect = TextureRect.new()
-			image_rect.texture = peasant_texture
-			image_rect.custom_minimum_size = Vector2(300, 200)
-			image_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-			image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			image_rect.texture_filter = TEXTURE_FILTER_NEAREST  # Keep pixels sharp
-			image_rect.modulate = Color(1.5, 1.5, 1.5)  # Brighten the sprite
-			race_info_container.add_child(image_rect)
+			human_preview_image = TextureRect.new()
+			human_preview_image.texture = peasant_texture
+			human_preview_image.custom_minimum_size = Vector2(140, 100)
+			human_preview_image.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+			human_preview_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			human_preview_image.texture_filter = TEXTURE_FILTER_NEAREST  # Keep pixels sharp
+			human_preview_image.modulate = Color(1.5, 1.5, 1.5)  # Brighten the sprite
+			race_info_container.add_child(human_preview_image)
 		else:
-			var image_bg = ColorRect.new()
-			image_bg.color = Color(0.3, 0.3, 0.3)
-			image_bg.custom_minimum_size = Vector2(300, 200)
-			race_info_container.add_child(image_bg)
-			
-			var image_label = Label.new()
-			image_label.text = race_data["name"] + " Image"
-			image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			image_bg.add_child(image_label)
+			_add_race_image_placeholder(race_data["name"])
 	else:
-		var image_bg = ColorRect.new()
-		image_bg.color = Color(0.3, 0.3, 0.3)
-		image_bg.custom_minimum_size = Vector2(300, 200)
-		race_info_container.add_child(image_bg)
-		
-		var image_label = Label.new()
-		image_label.text = race_data["name"] + " Image"
-		image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		image_bg.add_child(image_label)
+		_add_race_image_placeholder(race_data["name"])
 	
 	# Race name
 	var name_label = Label.new()
@@ -264,6 +278,99 @@ func _update_race_info():
 	desc_label.add_theme_font_size_override("font_size", 14)
 	desc_label.add_theme_color_override("font_color", Color.WHITE)  # White text for readability
 	race_info_container.add_child(desc_label)
+	
+	# Unit look picker — only human has sprite variants to choose between right now.
+	if selected_race == "human":
+		race_info_container.add_child(HSeparator.new())
+		
+		var picker_label = Label.new()
+		picker_label.text = "Choose Your People's Look:"
+		picker_label.add_theme_font_size_override("font_size", 14)
+		picker_label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+		picker_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		race_info_container.add_child(picker_label)
+		
+		var unit_scroll = ScrollContainer.new()
+		unit_scroll.custom_minimum_size = Vector2(0, 160)
+		unit_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		race_info_container.add_child(unit_scroll)
+		
+		unit_sprites_grid = GridContainer.new()
+		unit_sprites_grid.columns = 4
+		unit_sprites_grid.add_theme_constant_override("h_separation", 8)
+		unit_sprites_grid.add_theme_constant_override("v_separation", 8)
+		unit_scroll.add_child(unit_sprites_grid)
+		
+		_update_unit_sprites_grid()
+
+func _add_race_image_placeholder(race_name: String):
+	var image_bg = ColorRect.new()
+	image_bg.color = Color(0.3, 0.3, 0.3)
+	image_bg.custom_minimum_size = Vector2(140, 100)
+	race_info_container.add_child(image_bg)
+	
+	var image_label = Label.new()
+	image_label.text = race_name + " Image"
+	image_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	image_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	image_bg.add_child(image_label)
+
+func _get_selected_unit_sprite_path() -> String:
+	for entry in HUMAN_UNIT_SPRITES:
+		if entry["key"] == selected_unit_sprite:
+			return entry["path"]
+	return HUMAN_UNIT_SPRITES[0]["path"]
+
+func _update_unit_sprites_grid():
+	for child in unit_sprites_grid.get_children():
+		child.queue_free()
+	for entry in HUMAN_UNIT_SPRITES:
+		var option = _build_sprite_choice_button(entry["path"], entry["label"], Vector2(56, 56),
+			_on_unit_sprite_selected.bind(entry["key"]), "sprite_key", entry["key"])
+		_highlight_sprite_choice(option, entry["key"] == selected_unit_sprite)
+		unit_sprites_grid.add_child(option)
+
+func _on_unit_sprite_selected(key: String):
+	selected_unit_sprite = key
+	if is_instance_valid(human_preview_image):
+		var sprite_path = _get_selected_unit_sprite_path()
+		if ResourceLoader.exists(sprite_path):
+			human_preview_image.texture = load(sprite_path)
+	for child in unit_sprites_grid.get_children():
+		_highlight_sprite_choice(child, child.get_meta("sprite_key", "") == key)
+
+func _build_sprite_choice_button(texture_path: String, label_text: String, icon_size: Vector2,
+		callback: Callable, meta_key: String, meta_value: String) -> Control:
+	"""Reusable icon+label picker button — used for both the building grid and the unit look
+	picker, so both selection lists behave and look the same way."""
+	var option = VBoxContainer.new()
+	option.alignment = BoxContainer.ALIGNMENT_CENTER
+	option.set_meta(meta_key, meta_value)
+	
+	var button = TextureButton.new()
+	button.custom_minimum_size = icon_size
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	button.texture_filter = TEXTURE_FILTER_NEAREST
+	if ResourceLoader.exists(texture_path):
+		button.texture_normal = load(texture_path)
+	button.pressed.connect(callback)
+	option.add_child(button)
+	option.set_meta("icon_button", button)
+	
+	var label = Label.new()
+	label.text = label_text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 10)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	option.add_child(label)
+	
+	return option
+
+func _highlight_sprite_choice(option: Control, selected: bool):
+	var button = option.get_meta("icon_button", null)
+	if is_instance_valid(button):
+		button.modulate = Color(1.2, 1.2, 0.8) if selected else Color.WHITE
 
 func _update_buildings_grid():
 	# Clear existing buildings
@@ -272,16 +379,12 @@ func _update_buildings_grid():
 	
 	var race_data = races[selected_race]
 	for building in race_data["buildings"]:
-		var button = Button.new()
-		button.text = building.replace("_", " ").capitalize()
-		button.custom_minimum_size = Vector2(180, 60)
-		button.pressed.connect(_on_building_selected.bind(building))
-		
-		# Highlight town center as selected by default
-		if building == "town_center":
-			button.modulate = Color(1.2, 1.2, 0.8)  # Highlight selected
-		
-		buildings_grid.add_child(button)
+		var texture_path: String = BUILDING_SPRITE_PATHS.get(building, "res://assets/buildings/human_" + building.replace("_", "") + ".png")
+		var label_text: String = building.replace("_", " ").capitalize()
+		var option = _build_sprite_choice_button(texture_path, label_text, Vector2(84, 84),
+			_on_building_selected.bind(building), "building_key", building)
+		_highlight_sprite_choice(option, building == selected_building)
+		buildings_grid.add_child(option)
 	
 	_update_selected_building_info()
 
@@ -298,35 +401,15 @@ func _update_selected_building_info():
 		building_selected_container.add_child(placeholder)
 		return
 	
-	# Try to load the actual building image
-	var image_path = ""
-	# Handle special cases for file naming (building name to actual filename mapping)
-	if selected_building == "town_center":
-		image_path = "res://assets/buildings/human_towncentre-export.png"
-	elif selected_building == "fishing_hut":
-		image_path = "res://assets/buildings/human_finshinghut.png"
-	elif selected_building == "research":
-		image_path = "res://assets/buildings/human_research.png"
-	elif selected_building == "lumberjack":
-		image_path = "res://assets/buildings/human_lumberjack.png"
-	elif selected_building == "stoneworker":
-		image_path = "res://assets/buildings/human_stoneworker.png"
-	else:
-		# Generic mapping: human_[building_name].png
-		image_path = "res://assets/buildings/human_" + selected_building.replace("_", "") + ".png"
-	
+	var image_path: String = BUILDING_SPRITE_PATHS.get(selected_building, "res://assets/buildings/human_" + selected_building.replace("_", "") + ".png")
 	DebugConfig.dprint("world_gen", ["Trying to load building image: ", image_path])
-	
-	# Try to load the texture
-	var building_texture = null
-	if ResourceLoader.exists(image_path):
-		building_texture = load(image_path)
+	var building_texture = load(image_path) if ResourceLoader.exists(image_path) else null
 	
 	if building_texture:
-		# Create texture rect for the actual image
+		# Create texture rect for the actual image — bigger now that this panel is the focal point
 		var image_rect = TextureRect.new()
 		image_rect.texture = building_texture
-		image_rect.custom_minimum_size = Vector2(200, 100)
+		image_rect.custom_minimum_size = Vector2(260, 180)
 		image_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		image_rect.texture_filter = TEXTURE_FILTER_NEAREST  # Keep pixels sharp
@@ -335,7 +418,7 @@ func _update_selected_building_info():
 		# Fallback to colored background with text
 		var image_bg = ColorRect.new()
 		image_bg.color = Color(0.2, 0.4, 0.2)
-		image_bg.custom_minimum_size = Vector2(200, 100)
+		image_bg.custom_minimum_size = Vector2(260, 180)
 		building_selected_container.add_child(image_bg)
 		
 		var fallback_label = Label.new()
@@ -347,7 +430,7 @@ func _update_selected_building_info():
 	# Building title
 	var title_label = Label.new()
 	title_label.text = selected_building.replace("_", " ").capitalize()
-	title_label.add_theme_font_size_override("font_size", 20)
+	title_label.add_theme_font_size_override("font_size", 22)
 	title_label.add_theme_color_override("font_color", Color.WHITE)  # White text
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	building_selected_container.add_child(title_label)
@@ -356,7 +439,7 @@ func _update_selected_building_info():
 	var desc_label = Label.new()
 	desc_label.text = "A essential building for " + races[selected_race]["name"] + " settlements."
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.add_theme_font_size_override("font_size", 12)
+	desc_label.add_theme_font_size_override("font_size", 13)
 	desc_label.add_theme_color_override("font_color", Color.WHITE)  # White text
 	building_selected_container.add_child(desc_label)
 
@@ -368,17 +451,8 @@ func _on_race_selected(race_key: String):
 
 func _on_building_selected(building: String):
 	selected_building = building
-	
-	# Update button highlighting
 	for child in buildings_grid.get_children():
-		if child is Button:
-			var button = child as Button
-			var button_building = button.text.to_lower().replace(" ", "_")
-			if button_building == building:
-				button.modulate = Color(1.2, 1.2, 0.8)  # Highlight selected
-			else:
-				button.modulate = Color.WHITE  # Normal color
-	
+		_highlight_sprite_choice(child, child.get_meta("building_key", "") == building)
 	_update_selected_building_info()
 
 func _finish_race_selection():

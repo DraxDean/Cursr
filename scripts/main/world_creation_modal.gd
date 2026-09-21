@@ -9,9 +9,17 @@ const MAP_HEIGHT = 100
 const WorldGenerator = preload("res://scripts/world_gen/world_gen.gd")
 var generator: WorldGenerator
 var world_data: Dictionary = {}
-var step_states: Array[Dictionary] = []
+var step_states: Array[Dictionary] = []          # world_data BEFORE each step ran (reroll baseline)
+var step_after_states: Array[Dictionary] = []    # world_data AFTER each step ran (Back/Continue restore this, unchanged, unless Reroll/Regenerate is pressed)
 var current_step: int = 0
 var rng = RandomNumberGenerator.new()
+
+# Steps whose action actually mutates world_data via RNG — these are the ones that must NOT
+# reroll themselves just from navigating Back/Continue; only Reroll/Regenerate should.
+const REROLLABLE_STEP_ACTIONS := [
+	"_step_void", "_step_water", "_step_land", "_step_mountains",
+	"_step_forests", "_step_plains", "_step_fish"
+]
 
 # References to game elements
 var game_node: Node
@@ -46,34 +54,19 @@ var generation_steps = [
 		"action": "_step_land"
 	},
 	{
-		"title": "Let there be Ice",
-		"description": "At the world's edges, eternal winter takes hold,\nfreezing the northern and southern waters.",
-		"action": "_step_ice"
-	},
-	{
 		"title": "Let there be Mountains",
-		"description": "Great peaks rise from the earth,\ntowering monuments of stone and snow.\nPress Continue when satisfied or Reroll to try again.",
+		"description": "Great chains of peaks rise from the earth,\ntowering monuments of stone and snow.\nPress Continue when satisfied or Reroll to try again.",
 		"action": "_step_mountains"
 	},
 	{
 		"title": "Let there be Forests",
-		"description": "Vast woodlands spread across the land,\nbringing life and shelter to the world.\nPress Continue when satisfied or Reroll to try again.",
+		"description": "Vast woodlands take root across the land, ancient trees rising within\nthem to bring life and shelter to the world.\nPress Continue when satisfied or Reroll to try again.",
 		"action": "_step_forests"
 	},
 	{
 		"title": "Let there be Plains",
 		"description": "Rolling grasslands complete the world,\nperfect for civilization to take root.",
 		"action": "_step_plains"
-	},
-	{
-		"title": "Let there be Mountain Peaks",
-		"description": "Mighty peaks rise from the mountain ranges,\ncreating majestic landmarks across the world.\nPress Continue when satisfied or Reroll to try again.",
-		"action": "_step_mountain_peaks"
-	},
-	{
-		"title": "Let there be Ancient Forests",
-		"description": "Ancient trees take root in the fertile woodlands,\ncreating mystical forests full of life and wonder.\nPress Continue when satisfied or Reroll to try again.",
-		"action": "_step_ancient_forests"
 	},
 	{
 		"title": "Let there be Fish",
@@ -105,6 +98,22 @@ var selected_town_name: String = ""
 var selected_difficulty: String = "captain"
 var difficulty_buttons: Array[Button] = []
 
+# Land step (stage 3) slider values — kept in [0,1], 0.5 = default/middle. Persist across
+# reroll/regenerate within a session so revisiting the step keeps whatever the player set.
+var land_landmass_value: float = 0.5
+var land_coast_noise_value: float = 0.5
+
+# Mountains step slider values. num_ranges is an integer count (0-6); the rest are [0,1]
+# fractions, 0.5 = default/middle. Same persist-for-the-session behavior as the land sliders.
+var mountain_num_ranges: int = 3
+var mountain_range_size: float = 0.5
+var mountain_peak_sharpness: float = 0.5
+var mountain_density: float = 0.5
+
+# Forest step slider values — same [0,1]/0.5-default convention as the land/mountain sliders.
+var forest_size_value: float = 0.5
+var forest_tendril_spread: float = 0.5
+
 func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D):
 	game_node = game_ref
 	tilemap_layer = tilemap_ref
@@ -123,6 +132,21 @@ func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Came
 	generator = WorldGenerator.new()
 	current_step = 0
 	step_states.clear()
+	step_after_states.clear()
+	land_landmass_value = 0.5
+	land_coast_noise_value = 0.5
+	mountain_num_ranges = 3
+	mountain_range_size = 0.5
+	mountain_peak_sharpness = 0.5
+	mountain_density = 0.5
+	forest_size_value = 0.5
+	forest_tendril_spread = 0.5
+	
+	# Zoom all the way out so the whole map is visible from the water stage onward —
+	# replaces the old "Reset Camera" button, which is gone now.
+	if is_instance_valid(camera) and is_instance_valid(game_node) and is_instance_valid(game_node.camera_controller):
+		var min_zoom: float = game_node.camera_controller.min_zoom
+		camera.zoom = Vector2(min_zoom, min_zoom)
 	
 	# Start first step
 	_show_current_step()
@@ -181,6 +205,15 @@ func cleanup_ui():
 	
 	if has_meta("settlement_name_input"):
 		remove_meta("settlement_name_input")
+	
+	# Clean up land sliders modal if it exists
+	_hide_land_sliders_modal()
+	
+	# Clean up mountains sliders modal if it exists
+	_hide_mountains_sliders_modal()
+	
+	# Clean up forest sliders modal if it exists
+	_hide_forest_sliders_modal()
 	
 	# Clean up preview sprite if it exists
 	if has_meta("preview_sprite"):
@@ -248,7 +281,7 @@ func setup_modal(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Camera2D
 	# Keep this for compatibility but redirect to direct UI
 	setup_direct_ui(game_ref, tilemap_ref, camera_ref)
 
-func _show_current_step():
+func _show_current_step(force_regenerate: bool = false):
 	if current_step >= generation_steps.size():
 		DebugConfig.dprint("world_gen", ["WorldCreationModal: All steps completed"])
 		return
@@ -256,16 +289,31 @@ func _show_current_step():
 	DebugConfig.dprint("world_gen", ["WorldCreationModal: Showing step %d" % current_step])
 	var step_data = generation_steps[current_step]
 	
+	# Tear down any step-specific overlay UI that doesn't belong to the step we're about to
+	# show. Needed now that Back revisits earlier phases instead of always cancelling out to
+	# the main menu, so leftover UI from a later step can't stay on screen after going back.
+	var step_action: String = step_data["action"]
+	if step_action != "_step_race_select":
+		_hide_race_select_ui()
+	if step_action != "_step_name_settlement":
+		_hide_naming_ui()
+	if step_action != "_step_land":
+		_hide_land_sliders_modal()
+	if step_action != "_step_mountains":
+		_hide_mountains_sliders_modal()
+	if step_action != "_step_forests":
+		_hide_forest_sliders_modal()
+	if step_action != "_step_choose_starting_tile":
+		is_placing_town_center = false
+	
 	# Update UI text
 	if header_component:
 		header_component.update_step(step_data["title"], step_data["description"])
 	
-	# Store current state before executing step (for rerolling)
+	# Store current state before executing step (used as the reroll baseline)
 	if current_step < step_states.size():
-		# We're rerolling, restore previous state first
 		world_data = step_states[current_step].duplicate(true)
 	else:
-		# Store state before new step
 		step_states.append(world_data.duplicate(true))
 	
 	# Show/hide buttons based on step
@@ -273,22 +321,58 @@ func _show_current_step():
 		footer_component.reroll_button.visible = current_step > 0
 		footer_component.quick_start_button.visible = current_step == 0
 		# Check specific steps for custom button layouts
-		if current_step < generation_steps.size():
-			var step_action = generation_steps[current_step]["action"]
-			if step_action == "_step_race_select":
-				footer_component.update_buttons(["Back", "Next"])
-			elif step_action == "_step_choose_starting_tile":
-				footer_component.update_buttons(["Back", "Next"])
-			elif step_action == "_step_name_settlement":
-				footer_component.update_buttons(["Back", "Begin Game"])
-			else:
-				footer_component.update_buttons_for_step(current_step, generation_steps.size())
+		if step_action == "_step_race_select":
+			footer_component.update_buttons(["Back", "Next"])
+		elif step_action == "_step_choose_starting_tile":
+			footer_component.update_buttons(["Back", "Next"])
+		elif step_action == "_step_name_settlement":
+			footer_component.update_buttons(["Back", "Begin Game"])
+		else:
+			footer_component.update_buttons_for_step(current_step, generation_steps.size())
 	
-	# Execute the step action
-	if has_method(step_data["action"]):
-		call(step_data["action"])
+	# Revisiting an already-completed generative step (via Back, or Continuing forward again)
+	# must NOT reroll it — only an explicit Reroll/Regenerate should change its content.
+	var is_revisit_without_reroll: bool = (
+		not force_regenerate
+		and step_action in REROLLABLE_STEP_ACTIONS
+		and current_step < step_after_states.size()
+	)
+	
+	if is_revisit_without_reroll:
+		world_data = step_after_states[current_step].duplicate(true)
+		_redraw_current_step_view(step_action)
+	elif has_method(step_action):
+		call(step_action)
+		if step_action in REROLLABLE_STEP_ACTIONS:
+			_commit_step_regeneration(current_step)
 	else:
-		push_error("WorldCreationModal: Step action not found: " + step_data["action"])
+		push_error("WorldCreationModal: Step action not found: " + step_action)
+
+func _redraw_current_step_view(step_action: String):
+	"""Redraw the map/camera (and re-show any slider modal) for a step whose world_data we
+	just restored verbatim, without re-running its generation logic."""
+	_clear_and_draw_map()
+	_center_camera_position_only()
+	match step_action:
+		"_step_land":
+			_show_land_sliders_modal()
+		"_step_mountains":
+			_show_mountains_sliders_modal()
+		"_step_forests":
+			_show_forest_sliders_modal()
+
+func _commit_step_regeneration(step_index: int):
+	"""Record freshly (re)generated world_data as this step's canonical result, and drop any
+	later steps' cached results since they were built on the now-stale previous data."""
+	if step_index < step_after_states.size():
+		step_after_states[step_index] = world_data.duplicate(true)
+	else:
+		step_after_states.append(world_data.duplicate(true))
+	if step_after_states.size() > step_index + 1:
+		step_after_states.resize(step_index + 1)
+	if step_states.size() > step_index + 1:
+		step_states.resize(step_index + 1)
+
 
 func _step_void():
 	world_data.clear()
@@ -302,46 +386,174 @@ func _step_water():
 	_center_camera_position_only()
 
 func _step_land():
-	if world_data.is_empty():
-		generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
-	generator._generate_continent(MAP_WIDTH, MAP_HEIGHT, world_data)
+	_regenerate_land_terrain()
+	_show_land_sliders_modal()
+
+func _regenerate_land_terrain():
+	"""(Re)draw the ocean+continent from scratch using the current landmass/coast noise
+	slider values. Always resets to base ocean first so shrinking the landmass on a
+	regenerate doesn't leave stray land tiles behind from a previous, larger pass."""
+	generator._generate_base_ocean(MAP_WIDTH, MAP_HEIGHT, world_data)
+	generator._generate_continent(MAP_WIDTH, MAP_HEIGHT, world_data, land_landmass_value, land_coast_noise_value)
 	_clear_and_draw_map()
 	_center_camera_position_only()
 
-func _step_ice():
-	if world_data.is_empty():
-		_step_land()
-	generator._add_ice_caps(MAP_WIDTH, MAP_HEIGHT, world_data)
-	_clear_and_draw_map()
-	_center_camera_position_only()
+func regenerate_land_from_sliders(landmass: float, coast_noise: float):
+	"""Called by the land sliders modal's Regenerate button."""
+	land_landmass_value = landmass
+	land_coast_noise_value = coast_noise
+	_regenerate_land_terrain()
+	_commit_step_regeneration(current_step)
+
+func _show_land_sliders_modal():
+	if has_meta("land_sliders_ui"):
+		var existing = get_meta("land_sliders_ui")
+		if is_instance_valid(existing):
+			return  # Already showing
+		remove_meta("land_sliders_ui")
+	var ui_layer = game_node.get_node("UI_Layer")
+	var LandSlidersModal = preload("res://scripts/main/world_creation_land_sliders_modal.gd")
+	var sliders_ui = LandSlidersModal.new()
+	sliders_ui.setup_integrated(self, ui_layer)
+	set_meta("land_sliders_ui", sliders_ui)
+
+func _hide_land_sliders_modal():
+	if has_meta("land_sliders_ui"):
+		var ui = get_meta("land_sliders_ui")
+		if is_instance_valid(ui):
+			ui.queue_free()
+		remove_meta("land_sliders_ui")
+
+func _hide_race_select_ui():
+	if has_meta("race_select_ui"):
+		var ui = get_meta("race_select_ui")
+		if is_instance_valid(ui):
+			ui.queue_free()
+		remove_meta("race_select_ui")
+
+func _hide_naming_ui():
+	if has_meta("naming_ui"):
+		var ui = get_meta("naming_ui")
+		if is_instance_valid(ui):
+			ui.queue_free()
+		remove_meta("naming_ui")
+	if has_meta("settlement_name_input"):
+		remove_meta("settlement_name_input")
 
 func _step_mountains():
 	if world_data.is_empty():
-		_step_ice()
-	generator._place_patches(
-		generator.NUM_MOUNTAIN_PATCHES,
-		generator.MOUNTAIN_PATCH_RADIUS_MIN, 
-		generator.MOUNTAIN_PATCH_RADIUS_MAX,
-		generator.MOUNTAIN_COORDS,
-		MAP_WIDTH, MAP_HEIGHT, world_data
-	)
+		_step_land()
+	_regenerate_mountains()
+	_show_mountains_sliders_modal()
+
+func _regenerate_mountains():
+	"""Clear any existing mountain terrain+objects, then regenerate both from the current
+	slider values (chains/ranges for terrain, peak-weighted density for objects)."""
+	_clear_mountain_terrain()
+	generator._generate_mountain_ranges(MAP_WIDTH, MAP_HEIGHT, world_data, mountain_num_ranges, mountain_range_size, mountain_peak_sharpness)
 	_clear_and_draw_map()
-	# No object placement here - terrain only
 	_center_camera_position_only()
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
+		if map_object_manager:
+			if map_object_manager.has_method("clear_mountains_only"):
+				map_object_manager.clear_mountains_only()
+			if map_object_manager.has_method("place_mountains_weighted"):
+				map_object_manager.place_mountains_weighted(world_data, mountain_density)
+
+func _clear_mountain_terrain():
+	"""Revert any existing mountain tiles back to plain land before regenerating ranges,
+	so shrinking the range count/size on a regenerate doesn't leave stray peaks behind."""
+	for coords in world_data.keys():
+		var tile_info = world_data[coords]
+		if typeof(tile_info) == TYPE_DICTIONARY and tile_info.get("atlas_coords") == generator.MOUNTAIN_COORDS:
+			world_data[coords] = {"source_id": generator.SOURCE_ID, "atlas_coords": generator.DESERT_COORDS}
+
+func regenerate_mountains_from_sliders(num_ranges: int, range_size: float, peak_sharpness: float, density: float):
+	"""Called by the mountains sliders modal's Regenerate button."""
+	mountain_num_ranges = num_ranges
+	mountain_range_size = range_size
+	mountain_peak_sharpness = peak_sharpness
+	mountain_density = density
+	_regenerate_mountains()
+	_commit_step_regeneration(current_step)
+
+func _show_mountains_sliders_modal():
+	if has_meta("mountains_sliders_ui"):
+		var existing = get_meta("mountains_sliders_ui")
+		if is_instance_valid(existing):
+			return  # Already showing
+		remove_meta("mountains_sliders_ui")
+	var ui_layer = game_node.get_node("UI_Layer")
+	var MountainsSlidersModal = preload("res://scripts/main/world_creation_mountains_sliders_modal.gd")
+	var sliders_ui = MountainsSlidersModal.new()
+	sliders_ui.setup_integrated(self, ui_layer)
+	set_meta("mountains_sliders_ui", sliders_ui)
+
+func _hide_mountains_sliders_modal():
+	if has_meta("mountains_sliders_ui"):
+		var ui = get_meta("mountains_sliders_ui")
+		if is_instance_valid(ui):
+			ui.queue_free()
+		remove_meta("mountains_sliders_ui")
 
 func _step_forests():
 	if world_data.is_empty():
 		_step_mountains()
-	generator._place_patches(
-		generator.NUM_FOREST_PATCHES,
-		generator.FOREST_PATCH_RADIUS_MIN,
-		generator.FOREST_PATCH_RADIUS_MAX, 
-		generator.FOREST_COORDS,
-		MAP_WIDTH, MAP_HEIGHT, world_data
-	)
+	_regenerate_forest_terrain()
+	_show_forest_sliders_modal()
+
+func _regenerate_forest_terrain():
+	"""Clear any existing forest terrain+objects, then regenerate both from the current
+	slider values (tendril clusters for terrain, then tree objects placed on top). Always
+	clears existing forest tiles first so shrinking the forest on a regenerate doesn't leave
+	stray patches (or orphaned tree sprites) behind from a previous, larger pass."""
+	_clear_forest_terrain()
+	generator._generate_forest_clusters(MAP_WIDTH, MAP_HEIGHT, world_data, forest_size_value, forest_tendril_spread)
 	_clear_and_draw_map()
-	# No object placement here - terrain only
 	_center_camera_position_only()
+	var parent_game_node = get_parent()
+	if parent_game_node and parent_game_node.has_method("get_node"):
+		var map_object_manager = parent_game_node.get_node("MapObjectManager")
+		if map_object_manager:
+			if map_object_manager.has_method("clear_trees_only"):
+				map_object_manager.clear_trees_only()
+			if map_object_manager.has_method("place_trees_only"):
+				map_object_manager.place_trees_only(world_data)
+
+func _clear_forest_terrain():
+	"""Revert any existing forest tiles back to plain land before regenerating clusters."""
+	for coords in world_data.keys():
+		var tile_info = world_data[coords]
+		if typeof(tile_info) == TYPE_DICTIONARY and tile_info.get("atlas_coords") == generator.FOREST_COORDS:
+			world_data[coords] = {"source_id": generator.SOURCE_ID, "atlas_coords": generator.DESERT_COORDS}
+
+func regenerate_forest_from_sliders(size_value: float, tendril_spread: float):
+	"""Called by the forest sliders modal's Regenerate button."""
+	forest_size_value = size_value
+	forest_tendril_spread = tendril_spread
+	_regenerate_forest_terrain()
+	_commit_step_regeneration(current_step)
+
+func _show_forest_sliders_modal():
+	if has_meta("forest_sliders_ui"):
+		var existing = get_meta("forest_sliders_ui")
+		if is_instance_valid(existing):
+			return  # Already showing
+		remove_meta("forest_sliders_ui")
+	var ui_layer = game_node.get_node("UI_Layer")
+	var ForestSlidersModal = preload("res://scripts/main/world_creation_forest_sliders_modal.gd")
+	var sliders_ui = ForestSlidersModal.new()
+	sliders_ui.setup_integrated(self, ui_layer)
+	set_meta("forest_sliders_ui", sliders_ui)
+
+func _hide_forest_sliders_modal():
+	if has_meta("forest_sliders_ui"):
+		var ui = get_meta("forest_sliders_ui")
+		if is_instance_valid(ui):
+			ui.queue_free()
+		remove_meta("forest_sliders_ui")
 
 func _step_plains():
 	if world_data.is_empty():
@@ -354,32 +566,6 @@ func _step_plains():
 		MAP_WIDTH, MAP_HEIGHT, world_data
 	)
 	_clear_and_draw_map()
-	_center_camera_position_only()
-
-func _step_mountain_peaks():
-	DebugConfig.dprint("world_gen", ["WorldCreation: Executing mountain peaks step"])
-	# Place mountain objects on existing mountain terrain
-	var parent_game_node = get_parent()
-	if parent_game_node and parent_game_node.has_method("get_node"):
-		var map_object_manager = parent_game_node.get_node("MapObjectManager")
-		if map_object_manager and map_object_manager.has_method("place_mountains_only"):
-			map_object_manager.place_mountains_only(world_data)
-			DebugConfig.dprint("world_gen", ["WorldCreation: Mountain peaks placed"])
-		else:
-			DebugConfig.dprint("world_gen", ["WorldCreation: Map object manager not found or missing method"])
-	_center_camera_position_only()
-
-func _step_ancient_forests():
-	DebugConfig.dprint("world_gen", ["WorldCreation: Executing ancient forests step"])
-	# Place tree objects on existing forest terrain
-	var parent_game_node = get_parent()
-	if parent_game_node and parent_game_node.has_method("get_node"):
-		var map_object_manager = parent_game_node.get_node("MapObjectManager")
-		if map_object_manager and map_object_manager.has_method("place_trees_only"):
-			map_object_manager.place_trees_only(world_data)
-			DebugConfig.dprint("world_gen", ["WorldCreation: Ancient forests placed"])
-		else:
-			DebugConfig.dprint("world_gen", ["WorldCreation: Map object manager not found or missing method"])
 	_center_camera_position_only()
 
 func _step_fish():
@@ -638,18 +824,6 @@ func _center_camera_position_only():
 		camera.position = world_center
 		DebugConfig.dprint("world_gen", ["WorldCreation: Camera centered at: ", world_center])
 
-func _center_camera_on_map():
-	"""Full camera reset: center position AND reset zoom to default"""
-	if camera and tilemap_layer:
-		# Calculate the center of the map in world coordinates
-		var map_center_x = MAP_WIDTH / 2.0
-		var map_center_y = MAP_HEIGHT / 2.0
-		var world_center = tilemap_layer.map_to_local(Vector2i(int(map_center_x), int(map_center_y)))
-		
-		camera.position = world_center
-		camera.zoom = Vector2(0.6, 0.6)  # Zoom out to see more of the map
-		DebugConfig.dprint("world_gen", ["WorldCreation: Camera reset to: ", world_center, " with zoom: ", camera.zoom])
-
 func _clear_and_draw_map():
 	if not is_instance_valid(tilemap_layer):
 		return
@@ -662,58 +836,44 @@ func _clear_and_draw_map():
 			tilemap_layer.set_cell(coords, tile_info["source_id"], tile_info["atlas_coords"])
 
 func _on_back_pressed():
-	DebugConfig.dprint("world_gen", ["WorldCreation: Going back to main menu"])
-	cleanup_ui()
-	game_node._cancel_world_creation()
+	# Step 0 has nowhere earlier to go back to, so that's the only place Back still cancels
+	# out to the main menu — every later step just steps back one phase.
+	if current_step <= 0:
+		DebugConfig.dprint("world_gen", ["WorldCreation: Going back to main menu"])
+		cleanup_ui()
+		game_node._cancel_world_creation()
+		return
+	DebugConfig.dprint("world_gen", ["WorldCreationModal: Back pressed - stepping back from %d" % current_step])
+	current_step -= 1
+	_show_current_step()
 
 func _on_reset_camera_pressed():
-	# Check if we're in town center placement mode
+	# Only meaningful during town-center placement now — the "Reset Camera" behavior is gone
+	# since the camera stays fully zoomed out for the whole of world creation.
 	if is_placing_town_center:
 		_reset_town_center_placement()
-	else:
-		DebugConfig.dprint("world_gen", ["WorldCreation: Resetting camera view"])
-		_center_camera_on_map()
 
 func _on_quick_start_pressed():
 	"""Skip the step-by-step genesis narration and jump straight to race selection."""
 	DebugConfig.dprint("world_gen", ["WorldCreationModal: Quick Start pressed - skipping to race selection"])
-	var race_select_index = 10  # Race selection is at index 10
+	var race_select_index = 7  # Race selection is at index 7
 	while current_step < race_select_index:
 		current_step += 1
-		if current_step < step_states.size():
-			step_states.resize(current_step)
 		_show_current_step()
 
 func _on_reroll_pressed():
 	DebugConfig.dprint("world_gen", ["WorldCreation: Rerolling step %d" % current_step])
-	
-	# Special handling for object placement steps
-	if current_step < generation_steps.size():
-		var step_data = generation_steps[current_step]
-		if step_data["action"] == "_step_mountain_peaks":
-			# Clear only mountain objects before rerolling
-			var parent_game_node = get_parent()
-			if parent_game_node and parent_game_node.has_method("get_node"):
-				var map_object_manager = parent_game_node.get_node("MapObjectManager")
-				if map_object_manager and map_object_manager.has_method("clear_mountains_only"):
-					map_object_manager.clear_mountains_only()
-		elif step_data["action"] == "_step_ancient_forests":
-			# Clear only tree objects before rerolling
-			var parent_game_node = get_parent()
-			if parent_game_node and parent_game_node.has_method("get_node"):
-				var map_object_manager = parent_game_node.get_node("MapObjectManager")
-				if map_object_manager and map_object_manager.has_method("clear_trees_only"):
-					map_object_manager.clear_trees_only()
-	
-	_show_current_step()
+	# Mountains/forests clear+regenerate both terrain and objects themselves as part of their
+	# _regenerate_* functions, so no per-step special casing is needed here anymore.
+	_show_current_step(true)  # force_regenerate — this is the one action that's actually allowed to reroll
 
 func _on_continue_pressed():
 	DebugConfig.dprint("world_gen", ["WorldCreationModal: Continue/Next button pressed - current step: %d" % current_step])
 	
 	# Special handling for race selection step
-	var race_select_index = 10  # Race selection is at index 10
-	var _tile_select_index = 11  # Tile selection is at index 11
-	var _naming_index = 12  # Naming is at index 12
+	var race_select_index = 7  # Race selection is at index 7
+	var _tile_select_index = 8  # Tile selection is at index 8
+	var _naming_index = 9  # Naming is at index 9
 	
 	if current_step == race_select_index:
 		# Race selection finishing - need to finish the UI and advance
@@ -723,23 +883,19 @@ func _on_continue_pressed():
 				race_ui._finish_race_selection_internal()
 				# Manually advance the step since the race UI doesn't do it
 				current_step += 1
-				if current_step < step_states.size():
-					step_states.resize(current_step)
 				DebugConfig.dprint("world_gen", ["WorldCreationModal: Advanced to step: %d" % current_step])
 				_show_current_step()
 				return
 	
 	# Normal step progression
 	current_step += 1
-	if current_step < step_states.size():
-		step_states.resize(current_step)
 	DebugConfig.dprint("world_gen", ["WorldCreationModal: Advanced to step: %d" % current_step])
 	_show_current_step()
 
 func _on_start_game_pressed():
 	DebugConfig.dprint("world_gen", ["WorldCreationModal: Start game button pressed - step: %d" % current_step])
 	
-	var naming_index = 12  # Naming is at index 12
+	var naming_index = 9  # Naming is at index 9
 	
 	# If we're on the naming step, capture the name and finish
 	if current_step == naming_index:
@@ -766,6 +922,28 @@ func _on_start_game_pressed():
 	game_node._finish_world_creation(world_data)
 
 func _unhandled_input(event: InputEvent):
+	# Left/Right step between genesis phases, same as clicking the arrow buttons — skipped
+	# while a text field (e.g. the settlement name input) has focus so cursor movement still
+	# works there.
+	var focus_owner = get_viewport().gui_get_focus_owner() if get_viewport() else null
+	var is_typing: bool = focus_owner is LineEdit or focus_owner is TextEdit
+	if not is_typing:
+		if event.is_action_pressed("ui_left"):
+			if is_instance_valid(footer_component) and footer_component.back_button.visible:
+				_on_back_pressed()
+				get_viewport().set_input_as_handled()
+				return
+		elif event.is_action_pressed("ui_right"):
+			if is_instance_valid(footer_component):
+				if footer_component.continue_button.visible:
+					_on_continue_pressed()
+					get_viewport().set_input_as_handled()
+					return
+				elif footer_component.start_game_button.visible:
+					_on_start_game_pressed()
+					get_viewport().set_input_as_handled()
+					return
+
 	"""Handle input during town center placement"""
 	if not is_placing_town_center:
 		return

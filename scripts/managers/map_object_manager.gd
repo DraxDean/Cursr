@@ -98,6 +98,63 @@ func place_mountains_only(world_data: Dictionary):
 				var y_offset = rng.randi_range(0, 4)
 				_place_single_object(mountain_scene, coords, y_offset)
 
+func place_mountains_weighted(world_data: Dictionary, density: float = 0.5):
+	"""Density-aware mountain object placement: objects cluster at the interior/peaks of
+	each range and thin out toward the edges, instead of a flat per-tile chance. Interior-ness
+	is measured with a BFS distance transform from each range's edge tiles."""
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Placing mountains (weighted)..."])
+	if not is_instance_valid(map_objects_holder): push_error("MapObjects holder node invalid!"); return
+	if world_data.is_empty(): return
+	if mountain_tile_coords == Vector2i.ZERO:
+		push_warning("MapObjectManager: Mountain tile coordinates not set up.")
+		return
+	if not mountain_scene:
+		return
+
+	var mountain_tiles: Dictionary = {}
+	for coords in world_data:
+		var tile_info = world_data[coords]
+		if typeof(tile_info) == TYPE_DICTIONARY and tile_info.get("atlas_coords") == mountain_tile_coords:
+			mountain_tiles[coords] = true
+	if mountain_tiles.is_empty():
+		return
+
+	var neighbor_offsets := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]
+
+	# Multi-source BFS: depth 0 = tiles touching non-mountain terrain (the coastline of the
+	# range), increasing depth toward the interior — the deepest tiles are the "peaks".
+	var depth: Dictionary = {}
+	var queue: Array = []
+	for coords in mountain_tiles:
+		for off in neighbor_offsets:
+			if not mountain_tiles.has(coords + off):
+				depth[coords] = 0
+				queue.append(coords)
+				break
+
+	var head := 0
+	var max_depth := 0
+	while head < queue.size():
+		var current: Vector2i = queue[head]; head += 1
+		var d: int = depth[current]
+		for off in neighbor_offsets:
+			var n: Vector2i = current + off
+			if mountain_tiles.has(n) and not depth.has(n):
+				depth[n] = d + 1
+				max_depth = max(max_depth, d + 1)
+				queue.append(n)
+
+	for coords in mountain_tiles:
+		var normalized: float = float(depth.get(coords, 0)) / float(max(max_depth, 1))
+		# Sharp bias toward the interior — edge tiles rarely spawn an object, peaks almost always do.
+		var probability: float = clampf(density * (0.10 + 0.90 * pow(normalized, 0.6)), 0.0, 1.0)
+		if rng.randf() < probability:
+			var y_offset = rng.randi_range(0, 4)
+			_place_single_object(mountain_scene, coords, y_offset)
+
+	DebugConfig.dprint("map_objects", ["MapObjectManager: Weighted mountain placement finished (%d candidate tiles)." % mountain_tiles.size()])
+
 	DebugConfig.dprint("map_objects", ["MapObjectManager: Mountain placement finished."])
 
 func place_trees_only(world_data: Dictionary):

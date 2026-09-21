@@ -2029,10 +2029,23 @@ func _check_town_centre_game_over(player_id: int, demolished_building_name: Stri
 
 func _trigger_game_over(reason: String = "Your last Town Centre has fallen."):
 	"""Show the game over screen. Call this for any loss condition (town centre destroyed,
-	population wiped out, forfeit, etc.). Only ever shows once per session."""
+	population wiped out, forfeit, etc.). Only ever shows once per session.
+	Also raises an undismissable notification badge and permanently locks End Day, so
+	minimizing the modal (rather than returning to the main menu) can't be used to keep
+	playing — the only way to clear the lock is the badge's "Return to Main Menu" flow."""
 	if game_over_triggered:
 		return
 	game_over_triggered = true
+	if is_instance_valid(game_footer):
+		game_footer.set_end_day_blocked(true)
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			"💀 Game Over",
+			reason,
+			"💀",
+			Color(0.75, 0.15, 0.10),
+			{"action": "open_game_over"}
+		)
 	if is_instance_valid(game_over_modal):
 		game_over_modal.show_game_over(reason, calculate_victory_score(1))
 
@@ -2269,7 +2282,10 @@ func _ready():
 
 
 func _process(delta: float):
-	if is_instance_valid(camera_controller):
+	# Arrow/WASD camera panning is suppressed during world creation — the map is fully
+	# zoomed out there (see world_creation_modal.gd) and Left/Right are repurposed to
+	# step between genesis phases instead.
+	if is_instance_valid(camera_controller) and not is_in_world_creation:
 		camera_controller.process_movement(delta, get_tree().paused)
 	
 	# Update unit movements
@@ -5429,10 +5445,15 @@ func _on_modal_closed(modal_type: String):
 	DebugConfig.dprint("ui", ["Game: Modal closed: ", modal_type])
 
 func _on_end_day_blocked_pressed():
-	"""Show a small popup reminding the player to resolve the pending event."""
+	"""Show a small popup reminding the player to resolve the pending event (or, if the game
+	has ended, that there's nothing left to resolve)."""
 	var dialog = AcceptDialog.new()
-	dialog.title = "Event Pending"
-	dialog.dialog_text = "You must resolve the pending event before ending the day."
+	if game_over_triggered:
+		dialog.title = "Game Over"
+		dialog.dialog_text = "The game has ended. Return to the main menu from the Game Over screen."
+	else:
+		dialog.title = "Event Pending"
+		dialog.dialog_text = "You must resolve the pending event before ending the day."
 	dialog.confirmed.connect(func(): dialog.queue_free())
 	dialog.canceled.connect(func(): dialog.queue_free())
 	add_child(dialog)
@@ -5610,6 +5631,10 @@ func _on_notification_clicked(data: Dictionary):
 			# Reopen the still-unresolved raid choice modal (it keeps its own state)
 			if is_instance_valid(raid_choice_modal) and not raid_choice_modal.is_open:
 				raid_choice_modal.toggle()
+		"open_game_over":
+			# Reopen the Game Over screen after it was minimized
+			if is_instance_valid(game_over_modal):
+				game_over_modal.reopen()
 		_:
 			# Generic: open turn events modal
 			if is_instance_valid(turn_events_modal) and not turn_events_modal.is_open:
