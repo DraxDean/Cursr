@@ -1,17 +1,15 @@
 # scripts/managers/tutorial_manager.gd
-# Global autoload — placeholder tutorial content + persisted "seen" tracking,
-# so each tutorial only ever fires its notification card once.
-# Save location: user://tutorials.json (separate from game saves)
+# Global autoload — tutorial CONTENT only (mock data, filled in later with real steps/screenshots).
+# "Has this tutorial been seen" is tracked per-save-game on game.gd (triggered_tutorials),
+# NOT here — unlike achievements, tutorials reset for every new playthrough, so this manager
+# holds no persisted state of its own.
 extends Node
 
-const SAVE_PATH := "user://tutorials.json"
-
-# Mock data — content will be filled in later with real steps/screenshots.
 # Order here is the order shown in the Encyclopedia's Tutorials tab.
 const TUTORIALS: Array = [
 	{"id": "welcome", "icon": "👋", "title": "Welcome", "summary": "Start here — your goals and how to win.",
 		"pages": [
-			{"heading": "Welcome to Cursr!", "body": ""},
+			{"heading": "Welcome to Cursr!", "body": "", "image": "res://assets/tutorials/Welcome.JPG"},
 			{"heading": "How to Play", "body": "Grow your population and create a thriving city to fight off enemies! Click the End Day button to cycle a day."},
 			{"heading": "Win Condition: Day 100", "body": "Survive until day 100 to outlast the competition and settle permanently."},
 			{"heading": "Win Condition: Wonder", "body": "Research all tech to unlock the Wonder and stockpile resources to build this unique building, triggering a Wonder victory."},
@@ -28,9 +26,9 @@ const TUTORIALS: Array = [
 		"pages": [
 			{"heading": "Assigning Jobs", "body": "Placeholder: how villagers get assigned to open jobs."},
 		]},
-	{"id": "daily_events", "icon": "📜", "title": "Daily Events", "summary": "Random events that occur each day.",
+	{"id": "ending_day", "icon": "📜", "title": "Ending Day", "summary": "Rolling the dice and resolving what the day brings.",
 		"pages": [
-			{"heading": "Daily Events", "body": "Placeholder: how world events fire and how to resolve them."},
+			{"heading": "Ending Day", "body": "Press the End Day button if enabled to end the day and start the Random Daily Event roll. You cannot end the Day until a decision has been made for all pending actions. The D20 is associated with events in a range of good and bad based on your roll. There are also other events besides the dailies that trigger on conditions like population increase, camp spawn, or camp raid. Feel free to click the notifications for more event details if available, and right click to dismiss them.", "image": "res://assets/tutorials/Daily event.JPG"},
 		]},
 	{"id": "resource_overview", "icon": "📦", "title": "Resource Overview", "summary": "Understanding your resources.",
 		"pages": [
@@ -83,47 +81,8 @@ const TUTORIALS: Array = [
 		]},
 ]
 
-var _triggered: Dictionary = {}  # id -> true
-
-func _ready() -> void:
-	_load_triggered()
-
 func get_tutorial(id: String) -> Dictionary:
 	for t in TUTORIALS:
 		if t["id"] == id:
 			return t
 	return {}
-
-func has_been_triggered(id: String) -> bool:
-	return _triggered.get(id, false)
-
-func mark_triggered(id: String) -> void:
-	if _triggered.get(id, false):
-		return
-	_triggered[id] = true
-	_save_triggered()
-
-func _save_triggered() -> void:
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if file == null:
-		push_error("TutorialManager: Could not open %s for writing." % SAVE_PATH)
-		return
-	file.store_string(JSON.stringify(_triggered))
-	file.close()
-
-func _load_triggered() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		_triggered = {}
-		return
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if file == null:
-		push_error("TutorialManager: Could not open %s for reading." % SAVE_PATH)
-		return
-	var text := file.get_as_text()
-	file.close()
-	var parsed = JSON.parse_string(text)
-	if parsed is Dictionary:
-		_triggered = parsed
-	else:
-		push_warning("TutorialManager: Could not parse tutorials file -- resetting.")
-		_triggered = {}

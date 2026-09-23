@@ -49,6 +49,12 @@ const MULTI_TILE_BUILDINGS: Array = ["town_center", "wonder"]
 
 var game_difficulty: String = DEFAULT_DIFFICULTY
 
+# Tutorial settings — chosen at world creation, per-save-game (NOT account-wide like
+# achievements): "popup" shows the tutorial modal automatically, "notification" only leaves a
+# notification card for the player to open manually, "none" suppresses auto-triggers entirely.
+var game_tutorial_mode: String = "popup"
+var triggered_tutorials: Dictionary = {}  # tutorial id -> true, resets with every new game
+
 # Army reference guide — used to calculate aggregate army stats (hp pool, strength)
 # from unit roles instead of giving every unit its own combat fields.
 const ARMY_UNIT_STATS: Dictionary = {
@@ -2072,6 +2078,34 @@ func apply_difficulty(difficulty_id: String) -> void:
 	if is_instance_valid(wave_spawner):
 		wave_spawner.set_wave_interval(get_difficulty_wave_interval(difficulty_id))
 
+func has_tutorial_been_triggered(id: String) -> bool:
+	return triggered_tutorials.get(id, false)
+
+func mark_tutorial_triggered(id: String) -> void:
+	triggered_tutorials[id] = true
+
+func trigger_tutorial(id: String) -> void:
+	"""Fire a tutorial according to the player's chosen game_tutorial_mode. Idempotent — each
+	tutorial only ever auto-fires once per save game. "none" suppresses it entirely (the
+	player can still open it manually from the Encyclopedia); "notification" only drops a
+	notification card; "popup" also opens the tutorial modal immediately."""
+	if has_tutorial_been_triggered(id) or game_tutorial_mode == "none":
+		return
+	var tutorial: Dictionary = TutorialManager.get_tutorial(id)
+	if tutorial.is_empty():
+		return
+	mark_tutorial_triggered(id)
+	if is_instance_valid(notification_panel):
+		notification_panel.push(
+			tutorial.get("title", "Tutorial"),
+			tutorial.get("summary", ""),
+			tutorial.get("icon", "📘"),
+			Color(0.4, 0.75, 1.0),
+			{"action": "open_tutorial", "tutorial_id": id}
+		)
+	if game_tutorial_mode == "popup" and is_instance_valid(encyclopedia_modal):
+		encyclopedia_modal.show_tutorial(id)
+
 func _unhandled_input(event: InputEvent):
 	# Handle debug console toggle
 	if event.is_action_pressed("debug_console"):
@@ -2359,6 +2393,8 @@ func initialize_map():
 					DebugConfig.dprint("general", ["Game: Restored player data for ", players_data.size(), " players"])
 				# Restore difficulty (sets wave spawner interval) before restoring its exact saved state
 				apply_difficulty(loaded_state.get("difficulty", DEFAULT_DIFFICULTY))
+				game_tutorial_mode = loaded_state.get("tutorial_mode", "popup")
+				triggered_tutorials = loaded_state.get("triggered_tutorials", {})
 				# Restore wave spawner state
 				if loaded_state.has("wave_state") and is_instance_valid(wave_spawner):
 					wave_spawner.wave_number = loaded_state["wave_state"].get("wave_number", 0)
@@ -4803,6 +4839,8 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	
 	# Apply the difficulty chosen during world creation (controls wave spawner timing)
 	apply_difficulty(generated_world_data.get("player_data", {}).get("difficulty", DEFAULT_DIFFICULTY))
+	game_tutorial_mode = generated_world_data.get("player_data", {}).get("tutorial_mode", "popup")
+	triggered_tutorials.clear()
 	
 	# Close world creation modal
 	ui_manager.close_world_creation_modal()
@@ -4855,6 +4893,9 @@ func _finish_world_creation(generated_world_data: Dictionary):
 	# Don't center camera - preserve current position from world creation
 	# camera_controller.center_camera()
 	DebugConfig.dprint("world_gen", ["Game: World creation complete, game ready."])
+	
+	# First tutorial trigger — right as the game actually starts
+	trigger_tutorial("welcome")
 
 func _place_starting_town_center():
 	# Get starting tile position from world data
@@ -6740,6 +6781,8 @@ func _execute_save() -> bool:
 		"current_day": turn_manager.get_day(),
 		"wave_state": _get_wave_state_for_save(),
 		"difficulty": game_difficulty,
+		"tutorial_mode": game_tutorial_mode,
+		"triggered_tutorials": triggered_tutorials,
 		"current_save_path": current_save_path,
 		"log_entries": game_log.entries.duplicate() if is_instance_valid(game_log) else []
 	}

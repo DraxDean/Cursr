@@ -98,6 +98,17 @@ var selected_town_name: String = ""
 var selected_difficulty: String = "captain"
 var difficulty_buttons: Array[Button] = []
 
+# Tutorial mode selection (naming step) — per-save-game setting (stored in player_data like
+# difficulty/settlement name, NOT a global account setting like achievements), governs how
+# future tutorial trigger conditions present themselves. Not wired to any actual triggers yet.
+const TUTORIAL_MODES: Array = [
+	{"id": "popup", "label": "Popup"},
+	{"id": "notification", "label": "Notification Only"},
+	{"id": "none", "label": "No Tutorials"}
+]
+var selected_tutorial_mode: String = "popup"
+var tutorial_mode_buttons: Array[Button] = []
+
 # Land step (stage 3) slider values — kept in [0,1], 0.5 = default/middle. Persist across
 # reroll/regenerate within a session so revisiting the step keeps whatever the player set.
 var land_landmass_value: float = 0.5
@@ -141,6 +152,7 @@ func setup_direct_ui(game_ref: Node, tilemap_ref: TileMapLayer, camera_ref: Came
 	mountain_density = 0.5
 	forest_size_value = 0.5
 	forest_tendril_spread = 0.5
+	selected_tutorial_mode = "popup"
 	
 	# Zoom all the way out so the whole map is visible from the water stage onward —
 	# replaces the old "Reset Camera" button, which is gone now.
@@ -717,7 +729,7 @@ func _show_settlement_naming_ui():
 	
 	# Center it on screen
 	var center_panel = PanelContainer.new()
-	center_panel.custom_minimum_size = Vector2(460, 300)
+	center_panel.custom_minimum_size = Vector2(460, 400)
 	var screen_size = get_viewport().get_visible_rect().size
 	center_panel.position = (screen_size - center_panel.custom_minimum_size) / 2
 	
@@ -784,6 +796,39 @@ func _show_settlement_naming_ui():
 	diff_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner_vbox.add_child(diff_hint)
 	
+	# Tutorials selector
+	var tutorial_label = Label.new()
+	tutorial_label.text = "Tutorials:"
+	tutorial_label.add_theme_font_size_override("font_size", 16)
+	tutorial_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner_vbox.add_child(tutorial_label)
+	
+	var tutorial_row = HBoxContainer.new()
+	tutorial_row.add_theme_constant_override("separation", 6)
+	tutorial_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	tutorial_mode_buttons.clear()
+	var tutorial_group := ButtonGroup.new()
+	for mode in TUTORIAL_MODES:
+		var mode_btn = Button.new()
+		mode_btn.text = mode["label"]
+		mode_btn.custom_minimum_size = Vector2(100, 34)
+		mode_btn.toggle_mode = true
+		mode_btn.button_group = tutorial_group
+		mode_btn.set_meta("tutorial_mode_id", mode["id"])
+		mode_btn.button_pressed = (mode["id"] == selected_tutorial_mode)
+		mode_btn.modulate = Color(1.2, 1.2, 0.8) if mode["id"] == selected_tutorial_mode else Color.WHITE
+		mode_btn.pressed.connect(_on_tutorial_mode_selected.bind(mode["id"]))
+		tutorial_row.add_child(mode_btn)
+		tutorial_mode_buttons.append(mode_btn)
+	inner_vbox.add_child(tutorial_row)
+	
+	var tutorial_hint = Label.new()
+	tutorial_hint.text = "Saved with this settlement, not your account — change any time in a new game"
+	tutorial_hint.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	tutorial_hint.add_theme_font_size_override("font_size", 11)
+	tutorial_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner_vbox.add_child(tutorial_hint)
+	
 	center_panel.add_child(inner_vbox)
 	naming_container.add_child(center_panel)
 	
@@ -800,6 +845,14 @@ func _on_difficulty_selected(difficulty_id: String):
 		if is_instance_valid(btn):
 			btn.modulate = Color(1.2, 1.2, 0.8) if btn.get_meta("difficulty_id", "") == difficulty_id else Color.WHITE
 	DebugConfig.dprint("world_gen", ["WorldCreation: Difficulty selected: ", selected_difficulty])
+
+func _on_tutorial_mode_selected(mode_id: String):
+	"""Update the selected tutorial mode and refresh button highlighting"""
+	selected_tutorial_mode = mode_id
+	for btn in tutorial_mode_buttons:
+		if is_instance_valid(btn):
+			btn.modulate = Color(1.2, 1.2, 0.8) if btn.get_meta("tutorial_mode_id", "") == mode_id else Color.WHITE
+	DebugConfig.dprint("world_gen", ["WorldCreation: Tutorial mode selected: ", selected_tutorial_mode])
 
 func _on_reroll_settlement_name():
 	"""Pick a new random town name and update the input field"""
@@ -910,8 +963,9 @@ func _on_start_game_pressed():
 			world_data["player_data"] = {}
 		world_data["player_data"]["settlement_name"] = selected_town_name
 		world_data["player_data"]["difficulty"] = selected_difficulty
+		world_data["player_data"]["tutorial_mode"] = selected_tutorial_mode
 		
-		DebugConfig.dprint("world_gen", ["WorldCreation: Settlement named: ", selected_town_name, " — Difficulty: ", selected_difficulty])
+		DebugConfig.dprint("world_gen", ["WorldCreation: Settlement named: ", selected_town_name, " — Difficulty: ", selected_difficulty, " — Tutorials: ", selected_tutorial_mode])
 		
 		cleanup_ui()
 		game_node._finish_world_creation(world_data)

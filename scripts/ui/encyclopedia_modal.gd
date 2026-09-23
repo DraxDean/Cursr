@@ -24,11 +24,15 @@ func open_achievements_tab() -> void:
 		refresh_content()
 
 func show_tutorial(tutorial_id: String) -> void:
-	"""Open the paginated tutorial popup — used by both the Tutorials tab and notification card clicks."""
+	"""Open the paginated tutorial popup — used by both the Tutorials tab and notification card
+	clicks. Parented as a SIBLING (not a child) of this modal — a child's visibility is gated
+	by its ancestors', so nesting it here left it invisible whenever the Encyclopedia itself
+	was closed (i.e. every auto-trigger and every notification-card click)."""
 	if not is_instance_valid(_tutorial_modal):
 		var TutorialModalScript = preload("res://scripts/ui/tutorial_modal.gd")
 		_tutorial_modal = TutorialModalScript.new()
-		add_child(_tutorial_modal)
+		var host: Node = get_parent() if get_parent() else self
+		host.add_child(_tutorial_modal)
 	_tutorial_modal.show_tutorial(tutorial_id)
 
 func _ready() -> void:
@@ -403,7 +407,7 @@ func _build_tutorial_row(tutorial: Dictionary) -> Control:
 	summary_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(summary_lbl)
 
-	if TutorialManager.has_been_triggered(tutorial.get("id", "")):
+	if is_instance_valid(game_ref) and game_ref.has_tutorial_been_triggered(tutorial.get("id", "")):
 		var seen_lbl = Label.new()
 		seen_lbl.text = "✔ Seen"
 		seen_lbl.add_theme_font_size_override("font_size", 11)
@@ -415,8 +419,8 @@ func _build_tutorial_row(tutorial: Dictionary) -> Control:
 
 func _on_tutorial_pressed(tutorial_id: String) -> void:
 	show_tutorial(tutorial_id)
-	if not TutorialManager.has_been_triggered(tutorial_id):
-		TutorialManager.mark_triggered(tutorial_id)
+	if is_instance_valid(game_ref) and not game_ref.has_tutorial_been_triggered(tutorial_id):
+		game_ref.mark_tutorial_triggered(tutorial_id)
 		_push_tutorial_notification(tutorial_id)
 	refresh_content()
 
