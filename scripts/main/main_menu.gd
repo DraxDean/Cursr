@@ -66,14 +66,15 @@ func _ready():
 
 
 func _show_version_label() -> void:
-	"""Version = v0.8.<commit count>, read from git so it advances with every commit."""
+	"""Version = v<CURRENT_VERSION>.<commit count> (e.g. v0.8.9.153) — the milestone segment
+	comes from RoadmapData.CURRENT_VERSION so it advances with the roadmap, not a fixed "0.8"."""
 	if not is_instance_valid(version_label):
 		return
 	var commit_count := _get_git_commit_count()
 	if commit_count < 0:
 		version_label.visible = false
 		return
-	version_label.text = "v0.8.%d" % commit_count
+	version_label.text = "v%s.%d" % [RoadmapData.CURRENT_VERSION, commit_count]
 
 
 func _get_git_commit_count() -> int:

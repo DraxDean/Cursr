@@ -1,11 +1,24 @@
 # data/roadmap/roadmap.gd
 # Version milestone recaps shown in the main menu's Roadmap list. Each entry has:
-#   version    - short version tag, e.g. "0.8"
+#   version    - short version tag, e.g. "0.8" or "0.8.9"
 #   title      - one/two-word theme for the milestone
 #   status     - "completed" or "planned"
 #   summary    - one-line scope description shown at the top of the full review
 #   highlights - list of condensed feature bullets covered by the milestone
+#
+# Versioning scheme: MAJOR.MINOR.MILESTONE.PUSH (e.g. "v0.8.9.153"), shown in the main menu
+# by _show_version_label() as "v" + CURRENT_VERSION + "." + <git commit count>.
+#   MAJOR.MINOR ("0.8") - the project's overall version, bumped rarely.
+#   MILESTONE ("0.8.9", "0.8.10", ...) - one of the big roadmap milestones below, worked on
+#     in whatever order makes sense rather than strictly sequentially. Milestones that used
+#     to bump MINOR (0.9, 0.10, 0.11...) now live under 0.8 instead, so MINOR doesn't have to
+#     move until a large amount of these milestones are actually done.
+#   PUSH ("153") - the git commit count, same rolling push tracker as before.
+# Update CURRENT_VERSION by hand to whichever milestone was MOST RECENTLY completed (not the
+# next one being worked toward) — it only advances once that next milestone is actually done.
 extends Object
+
+const CURRENT_VERSION := "0.8.9"
 
 const MILESTONES: Array = [
 	{
@@ -30,19 +43,19 @@ const MILESTONES: Array = [
 		],
 	},
 	{
-		"version":    "0.9",
+		"version":    "0.8.9",
 		"title":      "New Game Overhaul",
-		"status":     "planned",
+		"status":     "completed",
 		"summary":    "Making the first few minutes of a run feel intentional, from camera framing to how the world itself comes into being.",
 		"highlights": [
-			"Camera/zoom tuned per world-creation stage so the full map stays visible while it builds.",
-			"World-creation animation pass — combine the resource-generation step, fade in from black onto the opening ocean (with an ambient ocean sound bed), then reveal the land rising up through a fading blue overlay.",
-			"World generation tuning — resource density, winding forest/mountain ranges, a larger map, and better-placed marauder spawns.",
-			"Intro/welcome screen after the world is built, with a toggle for whether tutorial popups show.",
+			"Camera/zoom tuned per world-creation stage so the full map stays visible while it builds. ✅ (completed)",
+			"World-creation animation pass — combine the resource-generation step, fade in from black onto the opening ocean (with an ambient ocean sound bed), then reveal the land rising up through a fading blue overlay. 🔁 (rescheduled)",
+			"World generation tuning — resource density, winding forest/mountain ranges, a larger map, and better-placed marauder spawns. ✅ (completed)",
+			"Intro/welcome screen after the world is built, with a toggle for whether tutorial popups show. ✅ (completed)",
 		],
 	},
 	{
-		"version":    "0.10",
+		"version":    "0.8.10",
 		"title":      "Tutorials & Onboarding",
 		"status":     "planned",
 		"summary":    "Teaching new players the loop without a wall of text, one system at a time.",
@@ -51,7 +64,7 @@ const MILESTONES: Array = [
 		],
 	},
 	{
-		"version":    "0.11",
+		"version":    "0.8.11",
 		"title":      "Events & Notifications Overhaul",
 		"status":     "planned",
 		"summary":    "Cleaning up how the game talks to the player — less clutter, clearer signal.",
@@ -63,7 +76,7 @@ const MILESTONES: Array = [
 		],
 	},
 	{
-		"version":    "0.12",
+		"version":    "0.8.12",
 		"title":      "Long-Term Ideas",
 		"status":     "planned",
 		"summary":    "Bigger swings that aren't scheduled yet, but are worth writing down before they're forgotten.",
@@ -78,7 +91,7 @@ const MILESTONES: Array = [
 		],
 	},
 	{
-		"version":    "0.13",
+		"version":    "0.8.13",
 		"title":      "Yes, I know",
 		"status":     "planned",
 		"summary":    "I need a placeholder and yes I need more than ten versions before 1.0.",

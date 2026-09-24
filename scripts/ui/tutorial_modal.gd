@@ -2,10 +2,12 @@
 # Paginated popup for a single tutorial's pages, with prev/next navigation.
 extends "res://scripts/ui/info_modal.gd"
 
+var game_ref: Node
 var _tutorial: Dictionary = {}
 var _page_index: int = 0
 
-func _init():
+func _init(game_reference: Node = null):
+	game_ref = game_reference
 	super("tutorial", "📘 Tutorial", Vector2.ZERO)
 
 func _ready() -> void:
@@ -140,6 +142,16 @@ func refresh_content():
 	next_btn.pressed.connect(_on_next_pressed)
 	nav_row.add_child(next_btn)
 
+	# Last page of a tutorial that chains into another one gets a "Continue Tutorial" button
+	# instead of relying on the player to notice/reopen it later.
+	var next_tutorial_id: String = _tutorial.get("next_tutorial", "")
+	if _page_index >= pages.size() - 1 and next_tutorial_id != "":
+		var continue_btn = Button.new()
+		continue_btn.text = "Continue Tutorial ▶▶"
+		continue_btn.custom_minimum_size = Vector2(0, 32)
+		continue_btn.pressed.connect(_on_continue_tutorial_pressed.bind(next_tutorial_id))
+		body_vbox.add_child(continue_btn)
+
 func _on_prev_pressed() -> void:
 	if _page_index > 0:
 		_page_index -= 1
@@ -150,3 +162,31 @@ func _on_next_pressed() -> void:
 	if _page_index < pages.size() - 1:
 		_page_index += 1
 		refresh_content()
+
+func _on_continue_tutorial_pressed(next_tutorial_id: String) -> void:
+	"""Explicit "keep going" action — always opens the next tutorial's popup immediately,
+	regardless of the player's tutorial_mode setting (that setting only governs automatic
+	triggers, not an explicit click like this one)."""
+	if not is_instance_valid(game_ref):
+		return
+	if not game_ref.has_tutorial_been_triggered(next_tutorial_id):
+		game_ref.mark_tutorial_triggered(next_tutorial_id)
+		if is_instance_valid(game_ref.notification_panel):
+			var next_tutorial: Dictionary = TutorialManager.get_tutorial(next_tutorial_id)
+			game_ref.notification_panel.push(
+				next_tutorial.get("title", "Tutorial"),
+				next_tutorial.get("summary", ""),
+				next_tutorial.get("icon", "📘"),
+				Color(0.4, 0.75, 1.0),
+				{"action": "open_tutorial", "tutorial_id": next_tutorial_id}
+			)
+	show_tutorial(next_tutorial_id)
+
+func _on_close_pressed() -> void:
+	"""Minimizing (vs. explicitly continuing) still queues up the next tutorial in the chain,
+	but through the normal auto-trigger path so it respects the player's tutorial_mode setting
+	(popup/notification/none) instead of forcing the popup open."""
+	var next_tutorial_id: String = _tutorial.get("next_tutorial", "")
+	super._on_close_pressed()
+	if next_tutorial_id != "" and is_instance_valid(game_ref) and not game_ref.has_tutorial_been_triggered(next_tutorial_id):
+		game_ref.trigger_tutorial(next_tutorial_id)

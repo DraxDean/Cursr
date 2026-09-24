@@ -8,6 +8,7 @@ extends Node
 # Order here is the order shown in the Encyclopedia's Tutorials tab.
 const TUTORIALS: Array = [
 	{"id": "welcome", "icon": "👋", "title": "Welcome", "summary": "Start here — your goals and how to win.",
+		"next_tutorial": "first_building",
 		"pages": [
 			{"heading": "Welcome to Cursr!", "body": "This is a solo dev fantasy city builder, with the main purpose to have interesting and fun cities. There is no 'right' way to play, although there are victory and loss conditions.", "image": "res://assets/tutorials/Welcome.JPG"},
 			{"heading": "How to Play", "body": "Grow your population and create a thriving city to fight off enemies! Click the End Day button to cycle a day.", "image": "res://assets/tutorials/day 100.JPG"},

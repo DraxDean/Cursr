@@ -67,9 +67,9 @@ func refresh_content():
 	
 	# Building grid inside scroll
 	building_grid = GridContainer.new()
-	building_grid.columns = 2
-	building_grid.add_theme_constant_override("h_separation", 10)
-	building_grid.add_theme_constant_override("v_separation", 10)
+	building_grid.columns = 3
+	building_grid.add_theme_constant_override("h_separation", 6)
+	building_grid.add_theme_constant_override("v_separation", 8)
 	building_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll_container.add_child(building_grid)
 	
@@ -206,12 +206,12 @@ func _refresh_details_panel():
 
 func _create_building_button(building_data: Dictionary):
 	var button_container = VBoxContainer.new()
-	button_container.custom_minimum_size = Vector2(100, 120)
+	button_container.custom_minimum_size = Vector2(74, 92)
 	building_grid.add_child(button_container)
 	
 	# Building image button
 	var building_button = Button.new()
-	building_button.custom_minimum_size = Vector2(80, 80)
+	building_button.custom_minimum_size = Vector2(60, 60)
 	building_button.flat = false
 	building_button.name = building_data["type"]
 	
@@ -220,6 +220,7 @@ func _create_building_button(building_data: Dictionary):
 		var texture = load(building_data["icon"])
 		building_button.icon = texture
 		building_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		building_button.expand_icon = true
 	
 	var locked = _is_building_locked(building_data["type"])
 	building_button.disabled = locked
@@ -233,8 +234,9 @@ func _create_building_button(building_data: Dictionary):
 	var name_label = Label.new()
 	name_label.text = building_data["name"]
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	name_label.add_theme_color_override("font_color", Color.WHITE)
-	name_label.add_theme_font_size_override("font_size", 11)
+	name_label.add_theme_font_size_override("font_size", 9)
 	button_container.add_child(name_label)
 
 func _is_building_locked(btype: String) -> bool:

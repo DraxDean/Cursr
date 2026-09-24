@@ -30,7 +30,7 @@ func show_tutorial(tutorial_id: String) -> void:
 	was closed (i.e. every auto-trigger and every notification-card click)."""
 	if not is_instance_valid(_tutorial_modal):
 		var TutorialModalScript = preload("res://scripts/ui/tutorial_modal.gd")
-		_tutorial_modal = TutorialModalScript.new()
+		_tutorial_modal = TutorialModalScript.new(game_ref)
 		var host: Node = get_parent() if get_parent() else self
 		host.add_child(_tutorial_modal)
 	_tutorial_modal.show_tutorial(tutorial_id)
