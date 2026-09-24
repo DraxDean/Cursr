@@ -57,6 +57,10 @@ func get_unlock_time(id: String) -> String:
 func get_all_unlocked() -> Dictionary:
 	return _unlocked.duplicate()
 
+func reset_all() -> void:
+	_unlocked = {}
+	_save_achievements()
+
 # -- Persistence ---------------------------------------------------------------
 
 func _save_achievements() -> void:

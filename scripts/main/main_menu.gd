@@ -18,6 +18,9 @@ const RoadmapData = preload("res://data/roadmap/roadmap.gd")
 @onready var achievements_button: Button = $TopRightContainer/AchievementsButton
 @onready var settings_button: Button = $TopRightContainer/SettingsButton
 @onready var version_label: Label = $VersionLabel
+@onready var background_image: TextureRect = $BackgroundImage
+@onready var background_toggle_button: Button = $BackgroundToggleButton
+@onready var reset_achievements_button: Button = $ResetAchievementsButton
 @onready var announcements_list: VBoxContainer = $AnnouncementsPanel/MarginContainer/VBoxContainer/ScrollContainer/AnnouncementsList
 @onready var roadmap_list: VBoxContainer = $RoadmapPanel/MarginContainer/VBoxContainer/ScrollContainer/RoadmapList
 
@@ -26,6 +29,7 @@ var _achievements_modal: Control = null
 var _settings_modal: Control = null
 var _announcement_modal: Control = null
 var _roadmap_modal: Control = null
+var _reset_achievements_dialog: ConfirmationDialog = null
 
 func _ready():
 	# Ensure SaveLoadManager is ready (Autoloads initialize before scene _ready)
@@ -48,21 +52,14 @@ func _ready():
 	load_game_button.pressed.connect(_on_load_game_pressed)
 	achievements_button.pressed.connect(_on_achievements_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
+	background_toggle_button.pressed.connect(_on_background_toggle_pressed)
+	background_image.visible = false
+	reset_achievements_button.pressed.connect(_on_reset_achievements_pressed)
 
 	_populate_announcements()
 	_populate_roadmap()
 
-	# Enable/disable buttons based on save availability
-	var saves_exist = SaveLoadManager.check_saves_exist()
-	continue_button.disabled = not saves_exist
-	load_game_button.disabled = not saves_exist
-	
-	if continue_button.disabled:
-		continue_button.tooltip_text = "No saved games found."
-	else:
-		_update_continue_button_label()
-	if load_game_button.disabled:
-		load_game_button.tooltip_text = "No saved games found."
+	_refresh_save_dependent_buttons()
 
 
 func _show_version_label() -> void:
@@ -94,6 +91,16 @@ func _update_continue_button_label() -> void:
 	var most_recent_save = SaveLoadManager.get_most_recent_save()
 	var town_name = _get_save_town_name(most_recent_save)
 	continue_button.text = "Continue (%s)" % town_name if not town_name.is_empty() else "Continue"
+
+
+func _refresh_save_dependent_buttons() -> void:
+	"""Continue/Load Game are fully hidden (not just disabled) whenever no save files exist,
+	so resetting saves doesn't leave disabled 'ghost' buttons behind."""
+	var saves_exist = SaveLoadManager.check_saves_exist()
+	continue_button.visible = saves_exist
+	load_game_button.visible = saves_exist
+	if saves_exist:
+		_update_continue_button_label()
 
 
 func _get_save_town_name(file_path: String) -> String:
@@ -146,6 +153,10 @@ func _style_list_button(btn: Button) -> void:
 
 func _on_continue_pressed():
 	DebugConfig.dprint("ui", ["Main Menu: Continuing from last save..."])
+	if not SaveLoadManager.check_saves_exist():
+		push_warning("Continue pressed, but no save file found.")
+		_refresh_save_dependent_buttons()
+		return
 	var most_recent_save = SaveLoadManager.get_most_recent_save()
 	if most_recent_save.is_empty():
 		push_warning("Continue pressed, but no save file found.")
@@ -198,6 +209,26 @@ func _on_settings_pressed():
 		_settings_modal = SettingsModalScript.new(null)
 		add_child(_settings_modal)
 	_settings_modal.toggle()
+
+
+func _on_background_toggle_pressed() -> void:
+	background_image.visible = not background_image.visible
+
+
+func _on_reset_achievements_pressed() -> void:
+	if not is_instance_valid(_reset_achievements_dialog):
+		_reset_achievements_dialog = ConfirmationDialog.new()
+		_reset_achievements_dialog.title = "Reset Achievements & Saves"
+		_reset_achievements_dialog.dialog_text = "Reset all achievements and delete all saved games? This cannot be undone."
+		_reset_achievements_dialog.confirmed.connect(_on_reset_achievements_confirmed)
+		add_child(_reset_achievements_dialog)
+	_reset_achievements_dialog.popup_centered()
+
+
+func _on_reset_achievements_confirmed() -> void:
+	AchievementManager.reset_all()
+	SaveLoadManager.delete_all_saves()
+	_refresh_save_dependent_buttons()
 
 
 func _populate_announcements() -> void:

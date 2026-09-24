@@ -1,6 +1,7 @@
-[gd_scene load_steps=4 format=3 uid="uid://mum5lufhtls8"]
+[gd_scene load_steps=5 format=3 uid="uid://mum5lufhtls8"]
 
 [ext_resource type="Script" uid="uid://dymwskp0radr4" path="res://scripts/main/main_menu.gd" id="1_xhf6x"]
+[ext_resource type="Texture2D" path="res://assets/backgrounds/background_1.png" id="2_bg1"]
 
 [sub_resource type="SystemFont" id="SystemFont_title"]
 font_names = PackedStringArray("Old English Text MT", "Blackletter686 BT", "UnifrakturMaguntia", "Cambria", "Garamond", "Palatino Linotype")
@@ -25,6 +26,18 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_xhf6x")
+
+[node name="BackgroundImage" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_bg1")
+expand_mode = 1
+stretch_mode = 6
+visible = false
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -190,6 +203,32 @@ size_flags_vertical = 3
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
+
+[node name="BackgroundToggleButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -44.0
+offset_right = 84.0
+offset_bottom = -10.0
+grow_vertical = 0
+tooltip_text = "Toggle Background"
+text = "🖼"
+
+[node name="ResetAchievementsButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 94.0
+offset_top = -44.0
+offset_right = 168.0
+offset_bottom = -10.0
+grow_vertical = 0
+tooltip_text = "Reset All Achievements & Saves"
+text = "❗"
 
 [node name="VersionLabel" type="Label" parent="."]
 layout_mode = 1

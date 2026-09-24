@@ -170,3 +170,16 @@ func delete_save(file_path: String) -> bool:
 		return false
 	var err = DirAccess.remove_absolute(file_path)
 	return err == OK
+
+func delete_all_saves() -> void:
+	var dir = DirAccess.open(SAVE_DIR)
+	if not dir:
+		return
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".save"):
+			DirAccess.remove_absolute(SAVE_DIR.path_join(file_name))
+		file_name = dir.get_next()
+	dir.list_dir_end()
+
