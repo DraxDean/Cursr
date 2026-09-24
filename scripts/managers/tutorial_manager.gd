@@ -31,6 +31,11 @@ const TUTORIALS: Array = [
 		"pages": [
 			{"heading": "Ending Day", "body": "Press the End Day button if enabled to end the day and start the Random Daily Event roll. You cannot end the Day until a decision has been made for all pending actions. The D20 is associated with events in a range of good and bad based on your roll. There are also other events besides the dailies that trigger on conditions like population increase, camp spawn, or camp raid. Feel free to click the notifications for more event details if available, and right click to dismiss them.", "image": "res://assets/tutorials/Daily event.JPG"},
 		]},
+	{"id": "living", "icon": "🏠", "title": "Living", "summary": "Housing, employment, and population growth caps.",
+		"pages": [
+			{"heading": "Living Spaces", "body": "Living situations are automatically decided based on open housing, unless you want to move people around.", "images": ["res://assets/tutorials/living.JPG", "res://assets/tutorials/employment tab.JPG"]},
+			{"heading": "Population Cap", "body": "Important: if you don't have space for new population to be born, you will be capped. Check your pop growth in the population screen.", "image": "res://assets/tutorials/pop.JPG"},
+		]},
 	{"id": "resource_overview", "icon": "📦", "title": "Resource Overview", "summary": "Understanding your resources.",
 		"pages": [
 			{"heading": "Resources", "body": "Placeholder: gold, food, wood, stone, and science explained."},

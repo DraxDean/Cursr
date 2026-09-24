@@ -101,10 +101,10 @@ func _setup_modal():
 	visible = true
 	z_index = 100
 	
-	# Set initial position and size like other modals
+	# Set initial position and size like other modals — width is 1.5x the base 0.3 for readability
 	if get_viewport():
 		var viewport_size = get_viewport().get_visible_rect().size
-		custom_minimum_size = Vector2(viewport_size.x * 0.3, viewport_size.y * 0.4)
+		custom_minimum_size = Vector2(viewport_size.x * 0.45, viewport_size.y * 0.4)
 		size = custom_minimum_size
 		position = Vector2(50, 80)  # Below header
 	
@@ -127,11 +127,23 @@ func _setup_modal():
 	background_panel.add_theme_stylebox_override("panel", style_box)
 	add_child(background_panel)
 	
+	# Padding wrapper — VBoxContainer doesn't support margin_* theme constants (silent no-op,
+	# which is why all the text used to sit flush against the panel edges); a real
+	# MarginContainer is required to actually inset the content from the border. Horizontal
+	# only — vertical padding pushed the header/content down without adding anything useful.
+	var padding = MarginContainer.new()
+	padding.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	padding.add_theme_constant_override("margin_left", 12)
+	padding.add_theme_constant_override("margin_right", 12)
+	padding.add_theme_constant_override("margin_top", 0)
+	padding.add_theme_constant_override("margin_bottom", 0)
+	add_child(padding)
+	
 	# Main container
 	var main_container = VBoxContainer.new()
-	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	main_container.name = "MainVBox"  # So _populate_building_info can find it via find_child regardless of nesting
 	main_container.add_theme_constant_override("separation", 10)
-	add_child(main_container)
+	padding.add_child(main_container)
 	
 	# Header container with title and close button (draggable area)
 	var header_container = HBoxContainer.new()
@@ -166,12 +178,6 @@ func _setup_modal():
 	content_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_container.add_theme_constant_override("separation", 15)
 	content_scroll.add_child(content_container)
-	
-	# Add padding to main container
-	main_container.add_theme_constant_override("margin_left", 10)
-	main_container.add_theme_constant_override("margin_right", 10)
-	main_container.add_theme_constant_override("margin_top", 10)
-	main_container.add_theme_constant_override("margin_bottom", 10)
 	
 	# Building image and capacity section
 	var image_capacity_section = _create_image_capacity_section()
@@ -893,11 +899,10 @@ func clear_all_connections():
 	_clear_connection_lines()
 
 func _populate_building_info():
-	# The main VBoxContainer should be the second child (first is Panel background)
-	var main_vbox = null
-	if get_child_count() > 1:
-		main_vbox = get_child(1)  # Skip the Panel background
-		
+	# Find the main content VBox by name (it's nested inside a padding MarginContainer, not
+	# necessarily a direct child of self, so a fixed child index/type check isn't reliable).
+	var main_vbox = find_child("MainVBox", true, false)
+	
 	if not main_vbox or not main_vbox is VBoxContainer:
 		# Try to find it by class
 		for child in get_children():

@@ -1197,6 +1197,15 @@ func update_player_population(player_id: int):
 	
 	DebugConfig.dprint("population", ["DEBUG: Population update - Total: ", total_pop, " | Housed: ", total_housed, " (unhoused: ", pop_data["unhoused"], ") | Working: ", total_working, " (unemployed: ", pop_data["unemployed"], ")"])
 
+	# Housing hit capacity (e.g. 20/20) — surface the "Living" tutorial explaining the pop
+	# cap. trigger_tutorial() already encodes the mode semantics (popup = notification +
+	# popup, notification = notification only, none = nothing) and is idempotent, so this
+	# only actually fires once per game regardless of mode.
+	if player_id == 1:
+		var housing_capacity: int = get_total_housing_capacity(player_id)
+		if housing_capacity > 0 and total_housed >= housing_capacity:
+			trigger_tutorial("living")
+
 	# Loss condition: the player's whole (non-pet) population has been wiped out.
 	# Guarded by is_in_world_creation and the >0→0 transition so a fresh game with no
 	# units spawned yet never falsely triggers this.
