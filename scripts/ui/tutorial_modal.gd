@@ -30,6 +30,34 @@ func show_tutorial(tutorial_id: String) -> void:
 		move_to_front()
 		refresh_content()
 
+func _build_image_box(image_path: String) -> PanelContainer:
+	"""One image slot — falls back to a placeholder icon if the path is empty/missing."""
+	var image_box = PanelContainer.new()
+	image_box.custom_minimum_size = Vector2(0, 220)
+	image_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.12, 0.16, 0.9)
+	style.set_border_width_all(1)
+	style.border_color = Color(0.4, 0.4, 0.45)
+	style.set_corner_radius_all(4)
+	image_box.add_theme_stylebox_override("panel", style)
+	if image_path != "" and ResourceLoader.exists(image_path):
+		var tex_rect = TextureRect.new()
+		tex_rect.texture = load(image_path)
+		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image_box.add_child(tex_rect)
+	else:
+		var image_lbl = Label.new()
+		image_lbl.text = "🖼"
+		image_lbl.add_theme_font_size_override("font_size", 32)
+		image_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		image_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		image_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		image_box.add_child(image_lbl)
+	return image_box
+
+
 func refresh_content():
 	clear_content()
 	if _tutorial.is_empty():
@@ -61,31 +89,20 @@ func refresh_content():
 
 	body_vbox.add_child(HSeparator.new())
 
-	# Step image — falls back to a placeholder icon until a page defines "image"
-	var image_path: String = page.get("image", "")
-	var image_box = PanelContainer.new()
-	image_box.custom_minimum_size = Vector2(0, 220)
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.12, 0.16, 0.9)
-	style.set_border_width_all(1)
-	style.border_color = Color(0.4, 0.4, 0.45)
-	style.set_corner_radius_all(4)
-	image_box.add_theme_stylebox_override("panel", style)
-	if image_path != "" and ResourceLoader.exists(image_path):
-		var tex_rect = TextureRect.new()
-		tex_rect.texture = load(image_path)
-		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		image_box.add_child(tex_rect)
+	# Step image(s) — a page can define a single "image" or an "images" array shown side by
+	# side (e.g. a before/after pair); falls back to a placeholder icon if none are set.
+	var image_paths: Array = page.get("images", [])
+	if image_paths.is_empty() and page.get("image", "") != "":
+		image_paths = [page["image"]]
+
+	if image_paths.size() > 1:
+		var images_row = HBoxContainer.new()
+		images_row.add_theme_constant_override("separation", 10)
+		for path in image_paths:
+			images_row.add_child(_build_image_box(str(path)))
+		body_vbox.add_child(images_row)
 	else:
-		var image_lbl = Label.new()
-		image_lbl.text = "🖼"
-		image_lbl.add_theme_font_size_override("font_size", 32)
-		image_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		image_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		image_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		image_box.add_child(image_lbl)
-	body_vbox.add_child(image_box)
+		body_vbox.add_child(_build_image_box(image_paths[0] if not image_paths.is_empty() else ""))
 
 	var body_lbl = Label.new()
 	body_lbl.text = page.get("body", "")

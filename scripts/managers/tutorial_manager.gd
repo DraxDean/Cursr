@@ -9,10 +9,10 @@ extends Node
 const TUTORIALS: Array = [
 	{"id": "welcome", "icon": "👋", "title": "Welcome", "summary": "Start here — your goals and how to win.",
 		"pages": [
-			{"heading": "Welcome to Cursr!", "body": "", "image": "res://assets/tutorials/Welcome.JPG"},
-			{"heading": "How to Play", "body": "Grow your population and create a thriving city to fight off enemies! Click the End Day button to cycle a day."},
-			{"heading": "Win Condition: Day 100", "body": "Survive until day 100 to outlast the competition and settle permanently."},
-			{"heading": "Win Condition: Wonder", "body": "Research all tech to unlock the Wonder and stockpile resources to build this unique building, triggering a Wonder victory."},
+			{"heading": "Welcome to Cursr!", "body": "This is a solo dev fantasy city builder, with the main purpose to have interesting and fun cities. There is no 'right' way to play, although there are victory and loss conditions.", "image": "res://assets/tutorials/Welcome.JPG"},
+			{"heading": "How to Play", "body": "Grow your population and create a thriving city to fight off enemies! Click the End Day button to cycle a day.", "image": "res://assets/tutorials/day 100.JPG"},
+			{"heading": "Win Condition: Day 100", "body": "Survive until day 100 to outlast the competition and settle permanently.", "image": "res://assets/tutorials/victory_100.JPG"},
+			{"heading": "Win Condition: Wonder", "body": "Research all tech to unlock the Wonder and stockpile resources to build this unique building, triggering a Wonder victory.", "images": ["res://assets/tutorials/wonder_research.JPG", "res://assets/tutorials/wonder built.JPG"]},
 			{"heading": "Need Help?", "body": "If you ever get stuck, you can see all tutorials and information in the Encyclopedia. Good luck!", "image": "res://assets/tutorials/encyclopedia.JPG"},
 		]},
 	{"id": "first_building", "icon": "🏗", "title": "Building Your First Building", "summary": "Placing your first structure.",

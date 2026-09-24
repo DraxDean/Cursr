@@ -6,7 +6,6 @@ const TechTree = preload("res://scripts/managers/tech_tree.gd")
 
 var selected_tech: String = ""
 var details_panel: VBoxContainer
-var tree_container: VBoxContainer
 
 func _init(game_reference: Node, start_position: Vector2 = Vector2.ZERO):
 	game_ref = game_reference
@@ -68,46 +67,49 @@ func refresh_content():
 
 	main_row.add_child(VSeparator.new())
 
-	# RIGHT: scrollable vertical tech tree, grouped into labelled category sections
+	# RIGHT: scrollable tech tree — one column per category (Labour, Crafts, HP Pool,
+	# Battle Power), laid out side by side; each column's own tree still
+	# grows vertically underneath its header.
 	var tree_scroll = ScrollContainer.new()
-	tree_scroll.custom_minimum_size = Vector2(260, 300)
+	tree_scroll.custom_minimum_size = Vector2(320, 300)
 	tree_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tree_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tree_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	main_row.add_child(tree_scroll)
 
-	tree_container = VBoxContainer.new()
-	tree_container.add_theme_constant_override("separation", 6)
-	tree_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tree_scroll.add_child(tree_container)
+	var categories_row = HBoxContainer.new()
+	categories_row.add_theme_constant_override("separation", 18)
+	tree_scroll.add_child(categories_row)
 
 	if selected_tech == "":
 		selected_tech = TechTree.TECHS[0]["id"]
 
-	for cat_index in range(TechTree.CATEGORIES.size()):
-		var category = TechTree.CATEGORIES[cat_index]
-		if cat_index > 0:
-			tree_container.add_child(HSeparator.new())
+	for category in TechTree.CATEGORIES:
+		var category_column = VBoxContainer.new()
+		category_column.add_theme_constant_override("separation", 6)
+		categories_row.add_child(category_column)
 
 		var cat_header = Label.new()
 		cat_header.text = category["name"]
 		cat_header.add_theme_font_size_override("font_size", 13)
 		cat_header.add_theme_color_override("font_color", Color.YELLOW)
-		tree_container.add_child(cat_header)
+		category_column.add_child(cat_header)
+		category_column.add_child(HSeparator.new())
 
 		var roots = TechTree.TECHS.filter(func(t): return t["category"] == category["id"] and (t["prereq"] == "" or t["prereq"] == TechTree.ALL_PREREQ))
 		for i in range(roots.size()):
-			_render_tech_node(player_id, roots[i], 0, true)
+			_render_tech_node(category_column, player_id, roots[i], 0, true)
 
 	_render_details(player_id, selected_tech)
 
 	# Resize background to fit all content
 	fit_to_content()
 
-func _render_tech_node(player_id: int, tech: Dictionary, depth: int, is_last: bool):
+func _render_tech_node(parent_container: Control, player_id: int, tech: Dictionary, depth: int, is_last: bool):
 	"""Render one ASCII-tree row (icon node + connector) and recurse into its children"""
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
-	tree_container.add_child(row)
+	parent_container.add_child(row)
 
 	if depth > 0:
 		var indent = Label.new()
@@ -124,10 +126,12 @@ func _render_tech_node(player_id: int, tech: Dictionary, depth: int, is_last: bo
 
 	var children = TechTree.TECHS.filter(func(t): return t["prereq"] == tech["id"])
 	for i in range(children.size()):
-		_render_tech_node(player_id, children[i], depth + 1, i == children.size() - 1)
+		_render_tech_node(parent_container, player_id, children[i], depth + 1, i == children.size() - 1)
 
 func _make_tech_node_widget(player_id: int, tech: Dictionary) -> Control:
-	"""A rounded-square icon button + caption labels representing one tech node"""
+	"""A square icon button + level indicator representing one tech node — the tech's name
+	is intentionally not shown here (only icon + level), it appears in the details panel
+	once clicked."""
 	var tech_id = tech["id"]
 	var max_level = tech.get("max_level", 10)
 	var technologies = game_ref.players_data.get(player_id, {}).get("technologies", {}) if game_ref else {}
@@ -139,16 +143,20 @@ func _make_tech_node_widget(player_id: int, tech: Dictionary) -> Control:
 
 	var wrapper = VBoxContainer.new()
 	wrapper.add_theme_constant_override("separation", 2)
-	wrapper.custom_minimum_size = Vector2(74, 0)
+	wrapper.custom_minimum_size = Vector2(44, 0)
 
 	var node_button = Button.new()
 	node_button.text = tech["icon"]
-	node_button.add_theme_font_size_override("font_size", 24)
-	node_button.custom_minimum_size = Vector2(56, 56)
+	node_button.add_theme_font_size_override("font_size", 18)
+	node_button.custom_minimum_size = Vector2(40, 40)
+	# Shrink instead of fill — otherwise the VBoxContainer stretches the button to the
+	# wrapper's full width, turning the square icon into a rectangle.
+	node_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	node_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	node_button.focus_mode = Control.FOCUS_NONE
 
 	var style = StyleBoxFlat.new()
-	style.set_corner_radius_all(12)
+	style.set_corner_radius_all(6)
 	style.set_border_width_all(3 if is_selected else 2)
 	if maxed:
 		style.bg_color = Color(0.28, 0.22, 0.05, 1.0)
@@ -165,16 +173,9 @@ func _make_tech_node_widget(player_id: int, tech: Dictionary) -> Control:
 	for state in ["normal", "hover", "pressed", "focus"]:
 		node_button.add_theme_stylebox_override(state, style)
 
+	node_button.tooltip_text = tech["name"]
 	node_button.pressed.connect(_on_tech_node_pressed.bind(tech_id))
 	wrapper.add_child(node_button)
-
-	var caption = Label.new()
-	caption.text = tech["name"]
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	caption.autowrap_mode = TextServer.AUTOWRAP_WORD
-	caption.add_theme_font_size_override("font_size", 9)
-	caption.add_theme_color_override("font_color", Color.WHITE if prereq_met else Color(0.5, 0.5, 0.5))
-	wrapper.add_child(caption)
 
 	var level_caption = Label.new()
 	level_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

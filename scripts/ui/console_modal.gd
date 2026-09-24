@@ -181,6 +181,11 @@ func _process_command(command: String):
 		_cmd_fire_event(query)
 		return
 	
+	if cmd == "day":
+		var day_arg = parts[1] if parts.size() > 1 else ""
+		_cmd_set_day(day_arg)
+		return
+	
 	match full_cmd:
 		"help":
 			_show_help()
@@ -261,6 +266,7 @@ func _show_help():
 	add_debug_message("10k - Give player 1 +10,000 of every resource (testing)")
 	add_debug_message("raid - Force an immediate raid choice from an existing enemy barracks (testing)")
 	add_debug_message("gameover / game over / die - Trigger the Game Over screen, badge, and End Day lock (testing)")
+	add_debug_message("day <number> - Jump straight to a given day number (e.g. 'day 99')")
 	add_debug_message("===============================\n")
 
 func _show_players_info():
@@ -595,6 +601,21 @@ func _cmd_trigger_game_over():
 		return
 	game._trigger_game_over("Console-triggered Game Over (testing).")
 	add_debug_message("💀 Game Over triggered.")
+
+func _cmd_set_day(day_arg: String):
+	"""Jump straight to a given day number (e.g. 'day 99' sets the current day to 99)."""
+	if not day_arg.is_valid_int():
+		add_debug_message("Usage: day <number> (e.g. 'day 99')")
+		return
+	var day: int = int(day_arg)
+	var game = get_parent().get_parent()
+	if not is_instance_valid(game) or not is_instance_valid(game.turn_manager):
+		add_debug_message("ERROR: turn_manager not found.")
+		return
+	game.turn_manager.set_day(day)
+	if is_instance_valid(game.game_footer):
+		game.game_footer.set_day_text(game.turn_manager.get_day())
+	add_debug_message("📅 Day set to %d." % game.turn_manager.get_day())
 
 func _cmd_spawn_wave():
 	"""Force-spawn the next enemy wave immediately."""

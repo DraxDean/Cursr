@@ -8,8 +8,8 @@ const ALL_PREREQ := "__ALL__"  # sentinel: unlocked only once every other tech i
 const CATEGORIES := [
 	{"id": "labour", "name": "Labour"},
 	{"id": "crafts", "name": "Crafts"},
-	{"id": "military_hp", "name": "Military — HP Pool"},
-	{"id": "military_power", "name": "Military — Battle Power"},
+	{"id": "military_hp", "name": "HP Pool"},
+	{"id": "military_power", "name": "Battle Power"},
 ]
 
 # bonus_target: "all" | "food" | "wood" | "stone" | "gold" | "science" | "hp" | "atk" | "none"
