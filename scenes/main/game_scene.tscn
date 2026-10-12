@@ -255,6 +255,7 @@ layout_mode = 1
 [node name="Camera2D" type="Camera2D" parent="."]
 
 [node name="MapObjects" type="Node2D" parent="."]
+y_sort_enabled = true
 
 [node name="CameraController" type="Node" parent="."]
 script = ExtResource("5_ynmmy")

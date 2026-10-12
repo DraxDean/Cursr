@@ -193,7 +193,7 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2
 
 	var world_pos: Vector2 = game.tilemap_layer.map_to_local(tile_coords)
 	building_scene.position = world_pos
-	building_scene.z_index = 5
+	building_scene.z_index = 0  # MapObjects.y_sort_enabled draws it relative to units/objects by position.y
 
 	var setup_data = {
 		"type": building_type,
@@ -215,6 +215,7 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2
 
 	game.map_objects_holder.add_child(building_scene)
 	game._register_building_occupancy(building_scene, tile_coords, building_type)
+	game._invalidate_paths_through_tiles(building_scene.get_meta("footprint_tiles", []))
 
 	# Schedule this camp's first raid on a player building
 	building_scene.set_meta("next_attack_day", game.turn_manager.get_day() + ATTACK_INTERVAL)

@@ -148,6 +148,7 @@ var building_counter: Dictionary = {}  # Track building counts for unique IDs
 var unit_counter: int = 0  # Track unit counts for unique IDs
 var buildings_connections_cache: Dictionary = {}  # Cache for building-to-building connections with paths (no recalculation)
 var building_tile_occupancy: Dictionary = {}  # Vector2i -> building_name, blocks A* pathfinding from routing through buildings
+var path_tile_index: Dictionary = {}  # Vector2i -> Array[{building, job_index}], tracks which cached resource-job paths cross a tile
 var unit_movement_paused: bool = false  # Pause unit movement paths
 var unit_movement_speed: float = 1.0  # Speed multiplier for unit movement (0.5 = half speed, 2.0 = double speed)
 
@@ -247,6 +248,101 @@ func _unregister_building_occupancy(building_node: Node2D) -> void:
 		if building_tile_occupancy.get(tile) == building_node.name:
 			building_tile_occupancy.erase(tile)
 
+func _reindex_building_job_paths(building_node: Node2D) -> void:
+	"""Rebuild path_tile_index entries for this building's current resource_jobs tile_paths.
+	Must be called any time a job's tile_path is set/changed so invalidation lookups stay accurate."""
+	var bname: String = building_node.name
+	# Remove this building's previously indexed tiles first (snapshot taken last time this ran)
+	var old_snapshot: Dictionary = building_node.get_meta("_indexed_tile_paths", {})
+	for job_index in old_snapshot:
+		for tile in old_snapshot[job_index]:
+			if path_tile_index.has(tile):
+				path_tile_index[tile] = path_tile_index[tile].filter(func(e): return not (e["building"] == bname and e["job_index"] == job_index))
+				if path_tile_index[tile].is_empty():
+					path_tile_index.erase(tile)
+	# Index the current paths
+	var jobs: Array = building_node.get_meta("resource_jobs", [])
+	var new_snapshot: Dictionary = {}
+	for i in range(jobs.size()):
+		var tile_path: Array = jobs[i].get("tile_path", [])
+		if tile_path.is_empty():
+			continue
+		new_snapshot[i] = tile_path
+		for tile in tile_path:
+			if not path_tile_index.has(tile):
+				path_tile_index[tile] = []
+			path_tile_index[tile].append({"building": bname, "job_index": i})
+	building_node.set_meta("_indexed_tile_paths", new_snapshot)
+
+func _invalidate_paths_through_tiles(tiles: Array) -> void:
+	"""When a building's footprint overlaps existing cached resource-job paths, reroute only
+	those specific jobs around it instead of resetting every path in every building."""
+	var affected: Dictionary = {}  # "building|job_index" -> {building, job_index}
+	for tile in tiles:
+		for entry in path_tile_index.get(tile, []):
+			affected["%s|%d" % [entry["building"], entry["job_index"]]] = entry
+	for key in affected:
+		var entry = affected[key]
+		_recalculate_job_path(entry["building"], entry["job_index"])
+
+func _recalculate_job_path(building_name: String, job_index: int) -> void:
+	"""Re-path a single already-assigned job to its same resource, routing around current building
+	occupancy. Used to isolate-and-fix the one job a newly placed building actually blocks."""
+	if not map_objects_holder or not tilemap_layer:
+		return
+	var building_node = map_objects_holder.get_node_or_null(NodePath(building_name))
+	if not is_instance_valid(building_node):
+		return
+	var jobs: Array = building_node.get_meta("resource_jobs", [])
+	if job_index < 0 or job_index >= jobs.size():
+		return
+	var job: Dictionary = jobs[job_index]
+	var resource_id: String = job.get("resource_id", "")
+	var resource_type: String = job.get("resource_type", "")
+	if resource_id == "":
+		return
+	var resource_tile: Vector2i
+	if resource_type == "farm":
+		var farm_node = map_objects_holder.get_node_or_null(NodePath(resource_id))
+		if not is_instance_valid(farm_node):
+			return
+		resource_tile = tilemap_layer.local_to_map(farm_node.position)
+	else:
+		var objects = get_environment_objects(resource_type)
+		if not objects.has(resource_id):
+			return
+		resource_tile = objects[resource_id].get("tile_coords")
+	var building_tile: Vector2i = tilemap_layer.local_to_map(building_node.position)
+	var new_tile_path: Array = _astar_pathfind_for_game(building_tile, resource_tile)
+	if new_tile_path.is_empty():
+		DebugConfig.dprint("jobs", ["Game: WARNING - could not reroute job ", job_index, " on ", building_name, " around new building, keeping stale path"])
+		return
+	var new_world_path: Array = []
+	for t in new_tile_path:
+		new_world_path.append(tilemap_layer.map_to_local(t))
+	jobs[job_index]["tile_path"] = new_tile_path
+	jobs[job_index]["world_path"] = new_world_path
+	building_node.set_meta("resource_jobs", jobs)
+	_reindex_building_job_paths(building_node)
+	building_jobs_updated.emit(building_name)
+	DebugConfig.dprint("jobs", ["Game: Rerouted job ", job_index, " on ", building_name, " around newly placed building (", new_tile_path.size(), " tiles)"])
+	_refresh_units_on_job_path(building_name, job_index, new_world_path)
+
+func _refresh_units_on_job_path(building_name: String, job_index: int, new_world_path: Array) -> void:
+	"""If a unit is mid-transit along the stale version of this exact job path right now, swap it
+	to the freshly rerouted path immediately instead of waiting for its next work cycle."""
+	for player_id in players_data:
+		if str(player_id) == "environment":
+			continue
+		for unit in players_data[player_id].get("units", []):
+			if unit.get("job") != building_name or unit.get("assigned_job_index", -1) != job_index:
+				continue
+			# cycle_step 1 + moving == currently walking from work to the resource (see _start_unit_movement_cycle)
+			if unit.get("movement_state") == "moving" and unit.get("movement_cycle_step") == 1:
+				unit["current_path"] = new_world_path.duplicate()
+				unit["path_index"] = 0
+				unit["resource_path"] = new_world_path.duplicate()
+
 func _get_building_anchor_world_pos(tile_coords: Vector2i, building_type: String) -> Vector2:
 	"""World position for the building sprite — large buildings sit at the triangle meeting point
 	between the two tiles above the anchor tile (same math as the starting town centre placement)"""
@@ -330,7 +426,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		# triangle meeting point instead, matching their 3-tile footprint
 		var world_pos = _get_building_anchor_world_pos(tile_coords, building_type)
 		building_scene.position = world_pos
-		building_scene.z_index = 5  # Above terrain but below UI
+		building_scene.z_index = 0  # MapObjects.y_sort_enabled draws it relative to units/objects by position.y
 		
 		# Setup building with all data including texture and initial occupancy
 		var setup_data = {
@@ -369,6 +465,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		
 		DebugConfig.dprint("buildings", ["Game: Placing building at tile ", tile_coords, " world pos ", world_pos])
 		_register_building_occupancy(building_scene, tile_coords, building_type)
+		_invalidate_paths_through_tiles(building_scene.get_meta("footprint_tiles", []))
 		
 		# Deduct building costs from player resources
 		var owner_player = setup_data.get("owner_player", 1)
@@ -1630,6 +1727,7 @@ func _initialize_job_paths_on_load(building_node: Node2D):
 	
 	# Update building metadata
 	building_node.set_meta("resource_jobs", jobs)
+	_reindex_building_job_paths(building_node)
 	# Notify modal that jobs have been updated
 	building_jobs_updated.emit(building_node.name)
 	DebugConfig.dprint("jobs", ["DEBUG: Initialized %d job paths for %s (building: %s). Total jobs: %d" % [resource_paths.size(), building_type, building_node.name, jobs.size()]])
@@ -2758,7 +2856,7 @@ func _spawn_unit(unit_data: Dictionary):
 		var unit_sprite = Sprite2D.new()
 		unit_sprite.name = unit_data["unique_id"]  # Use unique_id for node name
 		unit_sprite.position = unit_data["position"]
-		unit_sprite.z_index = 6  # Above buildings but below UI
+		unit_sprite.z_index = 0  # MapObjects.y_sort_enabled draws it relative to buildings/objects by position.y
 		unit_sprite.scale = _get_unit_sprite_scale(unit_data)
 		
 	# Load appropriate texture based on race and type
@@ -2905,7 +3003,7 @@ func _spawn_event_unit_sprite(unit: Dictionary):
 	var unit_sprite = Sprite2D.new()
 	unit_sprite.name = uid
 	unit_sprite.position = unit["position"]
-	unit_sprite.z_index = 6
+	unit_sprite.z_index = 0  # MapObjects.y_sort_enabled draws it relative to buildings/objects by position.y
 	unit_sprite.centered = true
 	unit_sprite.scale = _get_unit_sprite_scale(unit)
 
@@ -3545,7 +3643,7 @@ func _create_unit_sprite_and_start_cycle(unit: Dictionary):
 			unit_sprite.position = anchor_pos + offset
 			unit["position"] = unit_sprite.position
 		
-		unit_sprite.z_index = 6
+		unit_sprite.z_index = 0  # MapObjects.y_sort_enabled draws it relative to buildings/objects by position.y
 		unit_sprite.centered = true  # Center the sprite on its position
 		unit_sprite.scale = _get_unit_sprite_scale(unit)
 		
@@ -4572,6 +4670,7 @@ func _initialize_farmhouse_paths(farmhouse_node: Node2D) -> void:
 		DebugConfig.dprint("movement", ["Game: Farmhouse %s -> farm job to %s (%d tiles)" % [farmhouse_node.name, farm_node.name, tile_path.size()]])
 
 	farmhouse_node.set_meta("resource_jobs", jobs)
+	_reindex_building_job_paths(farmhouse_node)
 	building_jobs_updated.emit(farmhouse_node.name)
 
 
@@ -4644,6 +4743,7 @@ func _register_farm_with_nearby_farmhouse(farm_node: Node2D) -> void:
 			"created_day":   0
 		})
 	best_farmhouse.set_meta("resource_jobs", jobs)
+	_reindex_building_job_paths(best_farmhouse)
 	farm_node.set_meta("farm_worker_assigned", false)
 	building_jobs_updated.emit(best_farmhouse.name)
 	DebugConfig.dprint("jobs", ["Game: Registered farm %s with farmhouse %s (%d tiles)" % [farm_node.name, best_farmhouse.name, tile_path.size()]])
@@ -4988,7 +5088,7 @@ func _place_town_center_building(tile_coords: Vector2i):
 		var tile_above_right = tilemap_layer.map_to_local(Vector2i(tile_coords.x, tile_coords.y - 1))
 		var world_pos = (tile_above_left + tile_above_right) / 2.0
 		building_scene.position = world_pos
-		building_scene.z_index = 5  # Above terrain but below UI
+		building_scene.z_index = 0  # MapObjects.y_sort_enabled draws it relative to units/objects by position.y
 		
 		# Setup building with all data including texture
 		var setup_data = {
@@ -5005,6 +5105,7 @@ func _place_town_center_building(tile_coords: Vector2i):
 		# Add to map objects holder
 		map_objects_holder.add_child(building_scene)
 		_register_building_occupancy(building_scene, tile_coords, starting_building)
+		_invalidate_paths_through_tiles(building_scene.get_meta("footprint_tiles", []))
 		
 		# Set the display name from settlement name if available
 		var settlement_name = player_data.get("settlement_name", "")
@@ -5180,7 +5281,7 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 				if jobs_need_paths:
 					_initialize_job_paths_on_load(building_scene)
 			
-			building_scene.z_index = building_info.get("z_index", 5)
+			building_scene.z_index = 0  # MapObjects.y_sort_enabled draws it relative to units/objects by position.y
 			map_objects_holder.add_child(building_scene)
 			_register_building_occupancy(building_scene, tile_coords, building_type)
 			
