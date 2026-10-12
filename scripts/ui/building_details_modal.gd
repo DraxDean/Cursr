@@ -535,7 +535,7 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
 	return connections
-func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMapLayer, blocked_tiles: Dictionary = {}) -> Array:
+func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, tilemap: TileMapLayer, blocked_tiles: Dictionary = {}) -> Array:
 	# Simple A* implementation for tile-based pathfinding.
 	# blocked_tiles (Vector2i -> building_name) marks tiles occupied by buildings — routed around
 	# unless they happen to be the start or end tile (e.g. the unit's own building, or its destination).
@@ -545,12 +545,21 @@ func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMap
 	var g_score = {}
 	var f_score = {}
 	
+	# Bounds for neighbor expansion — without this, an unreachable end_tile (e.g. fully boxed in
+	# by buildings) makes the search wander outward forever across the unbounded hex coordinate
+	# space instead of giving up, hanging the game. Also cap total explored tiles as a hard backstop.
+	var used_rect: Rect2i = tilemap.get_used_rect() if is_instance_valid(tilemap) else Rect2i()
+	var has_bounds: bool = used_rect.size.x > 0 and used_rect.size.y > 0
+	var max_nodes: int = (used_rect.size.x * used_rect.size.y + 64) if has_bounds else 5000
+	
 	# Initialize starting tile
 	open_set.append(start_tile)
 	g_score[start_tile] = 0
 	f_score[start_tile] = _heuristic(start_tile, end_tile)
 	
 	while open_set.size() > 0:
+		if closed_set.size() > max_nodes:
+			return []  # Explored more tiles than the whole map can hold — end_tile is unreachable
 		# Find tile with lowest f_score
 		var current = open_set[0]
 		var current_index = 0
@@ -572,6 +581,10 @@ func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMap
 		
 		for neighbor in neighbors:
 			if closed_set.has(neighbor):
+				continue
+			
+			# Stay within the actual map — otherwise a dead-end search wanders off-map forever
+			if has_bounds and not used_rect.has_point(neighbor):
 				continue
 			
 			# Buildings block the path — unless the blocked tile is where we're starting or ending
