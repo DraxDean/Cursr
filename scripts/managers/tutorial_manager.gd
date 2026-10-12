@@ -17,6 +17,7 @@ const TUTORIALS: Array = [
 			{"heading": "Need Help?", "body": "If you ever get stuck, you can see all tutorials and information in the Encyclopedia. Good luck!", "image": "res://assets/tutorials/encyclopedia.JPG"},
 		]},
 	{"id": "first_building", "icon": "🏗", "title": "Building Your First Building", "summary": "Placing your first structure.",
+		"next_tutorial": "employment",
 		"pages": [
 			{"heading": "Open the Build Menu", "body": "Click the Build button to bring up the construction list.", "image": "res://assets/tutorials/BuildButton.JPG"},
 			{"heading": "Choose a Building", "body": "Select the building you want to construct.", "image": "res://assets/tutorials/buildingmenu.JPG"},
@@ -24,8 +25,11 @@ const TUTORIALS: Array = [
 			{"heading": "View the Details", "body": "Click on your placed building to get the details!", "image": "res://assets/tutorials/buildingdetails.JPG"},
 		]},
 	{"id": "employment", "icon": "💼", "title": "Employment", "summary": "Getting villagers into jobs.",
+		"next_tutorial": "ending_day",
 		"pages": [
-			{"heading": "Assigning Jobs", "body": "Placeholder: how villagers get assigned to open jobs."},
+			{"heading": "Assigning Jobs", "body": "Click on any building to bring up its details. Here you can assign workers to jobs.", "image": "res://assets/tutorials/employment_1.JPG"},
+			{"heading": "Filling Jobs", "body": "When buildings are created, jobs are as well. You just have to fill them. You can click on each job to see its path and see who is assigned to that job.", "image": "res://assets/tutorials/employment_2.JPG"},
+			{"heading": "Unemployment Rate", "body": "That's pretty much it. Be sure to keep an eye on the unemployment rate for inactive villagers.", "image": "res://assets/tutorials/employment tab.JPG"},
 		]},
 	{"id": "ending_day", "icon": "📜", "title": "Ending Day", "summary": "Rolling the dice and resolving what the day brings.",
 		"pages": [
