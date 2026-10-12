@@ -13,8 +13,8 @@ const MAX_WAVE_ARMY_SIZE: int = 10   # Marauders once army size scaling caps out
 
 # Atlas coords from world_gen — tiles we can build on
 const BUILDABLE_ATLAS = [
-	Vector2i(0, 5),  # DESERT_COORDS
-	Vector2i(0, 6),  # GRASS_COORDS
+	Vector2i(0, 5),  # GRASS_COORDS
+	Vector2i(0, 6),  # DESERT_COORDS
 	Vector2i(0, 4),  # FOREST_COORDS
 ]
 

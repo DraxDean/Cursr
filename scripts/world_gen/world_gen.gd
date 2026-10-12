@@ -7,10 +7,10 @@ const BORDER_SIZE = 2
 # Tile Atlas Coordinates (Assuming Source ID 0 for all)
 const SOURCE_ID = 0
 const OCEAN_COORDS = Vector2i(0, 2)
-const DESERT_COORDS = Vector2i(0, 5) # Desert (sand) - was GRASS_COORDS
+const GRASS_COORDS = Vector2i(0, 5) # Grasslands (plains, light green in the atlas)
 const MOUNTAIN_COORDS = Vector2i(0, 3)
 const FOREST_COORDS = Vector2i(0, 4)
-const GRASS_COORDS = Vector2i(0, 6) # Grasslands (plains) - was DESERT_COORDS
+const DESERT_COORDS = Vector2i(0, 6) # Desert (sand, tan in the atlas)
 const ICE_COORDS = Vector2i(0, 1)
 
 # Biome generation parameters
@@ -110,7 +110,7 @@ func _generate_continent(width: int, height: int, world_data: Dictionary, landma
 				   y >= BORDER_SIZE and y < height - BORDER_SIZE:
 					world_data[Vector2i(x, y)] = {
 						"source_id": SOURCE_ID,
-						"atlas_coords": DESERT_COORDS
+						"atlas_coords": GRASS_COORDS
 					}
 
 
@@ -194,14 +194,14 @@ func _stamp_mountain_ellipse(world_data: Dictionary, center: Vector2, radius: fl
 			var ry: float = dx * sin_a + dy * cos_a
 			if (rx * rx) / (major * major) + (ry * ry) / (minor * minor) <= 1.0:
 				var coords := Vector2i(x, y)
-				if world_data.has(coords) and world_data[coords]["atlas_coords"] == DESERT_COORDS:
+				if world_data.has(coords) and world_data[coords]["atlas_coords"] == GRASS_COORDS:
 					world_data[coords] = {
 						"source_id": SOURCE_ID,
 						"atlas_coords": MOUNTAIN_COORDS
 					}
 
 func _pick_random_land_tile(width: int, height: int, world_data: Dictionary):
-	return _pick_random_tile_of_types(width, height, world_data, [DESERT_COORDS])
+	return _pick_random_tile_of_types(width, height, world_data, [GRASS_COORDS])
 
 func _pick_random_tile_of_types(width: int, height: int, world_data: Dictionary, allowed_types: Array):
 	var candidates: Array[Vector2i] = []
@@ -232,7 +232,7 @@ func _generate_single_forest_cluster(width: int, height: int, world_data: Dictio
 	# Forests only take root on open land now — mountains are solid and never get eaten into
 	# by tendril growth or the hole-filler (previously they could, which visibly ate away at
 	# mountain terrain once forest clusters got big enough to reliably reach their target size).
-	var start = _pick_random_tile_of_types(width, height, world_data, [DESERT_COORDS])
+	var start = _pick_random_tile_of_types(width, height, world_data, [GRASS_COORDS])
 	if start == null:
 		return
 	var target_count: int = int(round(lerp(float(FOREST_CLUSTER_MIN_TILES), float(FOREST_CLUSTER_MAX_TILES), forest_size)))
@@ -254,7 +254,7 @@ func _generate_single_forest_cluster(width: int, height: int, world_data: Dictio
 		if not world_data.has(candidate):
 			continue
 		var tile = world_data[candidate]["atlas_coords"]
-		if tile != DESERT_COORDS:
+		if tile != GRASS_COORDS:
 			continue  # Something else claimed this tile since it was queued (e.g. another cluster)
 		world_data[candidate] = {"source_id": SOURCE_ID, "atlas_coords": FOREST_COORDS}
 		forest_tiles[candidate] = true
@@ -272,7 +272,7 @@ func _add_forest_boundary_neighbors(coords: Vector2i, world_data: Dictionary, fo
 		if not world_data.has(n):
 			continue
 		var tile = world_data[n]["atlas_coords"]
-		if tile != DESERT_COORDS:
+		if tile != GRASS_COORDS:
 			continue
 		boundary[n] = true
 
@@ -373,11 +373,11 @@ func _place_patches(num_patches: int, min_radius: int, max_radius: int, biome_co
 			
 			# Determine if we can place this biome at this location
 			if biome_coords == FOREST_COORDS:
-				# Forests can be placed on desert or mountains
-				can_place = (current_tile == DESERT_COORDS or current_tile == MOUNTAIN_COORDS)
+				# Forests can be placed on grass or mountains
+				can_place = (current_tile == GRASS_COORDS or current_tile == MOUNTAIN_COORDS)
 			else:
-				# Other biomes only on desert
-				can_place = (current_tile == DESERT_COORDS)
+				# Other biomes only on grass
+				can_place = (current_tile == GRASS_COORDS)
 			
 			if can_place:
 				var patch_radius = _rng.randi_range(min_radius, max_radius)
@@ -399,19 +399,19 @@ func _apply_circular_patch(center: Vector2i, radius: int, tile_coords: Vector2i,
 				if current_coords.x >= 0 and current_coords.x < width and \
 				   current_coords.y >= 0 and current_coords.y < height:
 
-					# Check if the target tile is Desert or Mountain before overwriting (allow forests on mountains)
+					# Check if the target tile is Grass or Mountain before overwriting (allow forests on mountains)
 					if world_data.has(current_coords):
 						var current_tile = world_data[current_coords]["atlas_coords"]
 						if tile_coords == FOREST_COORDS:
-							# Forests can grow on desert or mountains
-							if current_tile == DESERT_COORDS or current_tile == MOUNTAIN_COORDS:
+							# Forests can grow on grass or mountains
+							if current_tile == GRASS_COORDS or current_tile == MOUNTAIN_COORDS:
 								world_data[current_coords] = {
 									"source_id": SOURCE_ID,
 									"atlas_coords": tile_coords
 								}
 						else:
-							# Other biomes only on desert
-							if current_tile == DESERT_COORDS:
+							# Other biomes only on grass
+							if current_tile == GRASS_COORDS:
 								world_data[current_coords] = {
 									"source_id": SOURCE_ID,
 									"atlas_coords": tile_coords

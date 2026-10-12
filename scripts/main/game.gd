@@ -392,6 +392,11 @@ func _can_place_building_at_tile(tile_coords: Vector2i) -> bool:
 			if tile_info.get("atlas_coords") != WorldGenerator.GRASS_COORDS:
 				return false
 	
+	# Re-check affordability per placement, not just once when the build menu opened — matters
+	# most in Build More mode, where repeated clicks would otherwise drain resources negative.
+	if not _can_afford_building_cost(1, building_to_place):
+		return false
+	
 	return true
 
 func _try_place_building(_mouse_pos: Vector2):
@@ -408,6 +413,29 @@ func _try_place_building(_mouse_pos: Vector2):
 		# If in build more mode, placement continues with same preview
 	else:
 		DebugConfig.dprint("buildings", ["Cannot place building at this location"])
+		_notify_placement_failure(tile_coords)
+
+func _notify_placement_failure(tile_coords: Vector2i) -> void:
+	"""Tell the player why their click didn't place anything instead of failing silently."""
+	if not is_instance_valid(notification_panel):
+		return
+	var reason := "Can't build here."
+	if not _can_afford_building_cost(1, building_to_place):
+		reason = "Not enough resources to build this."
+		# Build More can't keep going once funds run out — drop back to the build menu instead of
+		# leaving the player stuck in placement mode with a silent failure on every click.
+		if building_placement_build_more:
+			_cancel_building_placement()
+	elif building_to_place == "farm":
+		var footprint = _get_building_footprint_tiles(tile_coords, building_to_place)
+		var on_grass := true
+		for tile in footprint:
+			if world_data.get(tile, {}).get("atlas_coords") != WorldGenerator.GRASS_COORDS:
+				on_grass = false
+				break
+		if not on_grass:
+			reason = "Farms can only be placed on grass."
+	notification_panel.push("Can't Build There", reason, "🚧", Color(0.8, 0.6, 0.1))
 
 func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 	# Get building texture path
@@ -933,12 +961,9 @@ func apply_resource_production(player_id: int):
 		resources["food"] = max(0, resources["food"] - pop_total)
 		DebugConfig.dprint("general", ["Player ", player_id, " food upkeep: -", pop_total, " (population)"])
 
-func _deduct_building_cost(player_id: int, building_type: String):
-	"""Deduct building cost from player resources"""
-	if not players_data.has(player_id):
-		return
-	
-	var building_costs = {
+func _get_building_costs(building_type: String) -> Dictionary:
+	"""Authoritative resource cost per building type (lowercase keys matching players_data["resources"])."""
+	return {
 		"house": {"wood": 10, "stone": 5},
 		"barracks": {"wood": 10, "stone": 5},
 		"fishing_hut": {"wood": 12, "stone": 3},
@@ -951,9 +976,27 @@ func _deduct_building_cost(player_id: int, building_type: String):
 		"farm": {"wood": 10},
 		"lumber_mill": {"wood": 20, "stone": 10},
 		"wonder": {"wood": 10000, "stone": 10000, "gold": 10000}
-	}
+	}.get(building_type, {})
+
+func _can_afford_building_cost(player_id: int, building_type: String) -> bool:
+	"""True if the player currently has enough of every resource this building costs. Must be
+	checked per-placement (not just once when the build menu opens) so Build More mode can't
+	drain resources into the negatives."""
+	var costs = _get_building_costs(building_type)
+	if costs.is_empty():
+		return true
+	var resources: Dictionary = players_data.get(player_id, {}).get("resources", {})
+	for resource_type in costs:
+		if resources.get(resource_type, 0) < costs[resource_type]:
+			return false
+	return true
+
+func _deduct_building_cost(player_id: int, building_type: String):
+	"""Deduct building cost from player resources"""
+	if not players_data.has(player_id):
+		return
 	
-	var costs = building_costs.get(building_type, {})
+	var costs = _get_building_costs(building_type)
 	var player_data = players_data[player_id]
 	var resources = player_data.get("resources", {})
 	
