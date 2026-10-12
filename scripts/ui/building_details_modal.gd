@@ -535,8 +535,10 @@ func _find_building_connections(building: Node2D, game_node: Node) -> Array:
 	connections.sort_custom(func(a, b): return a.distance < b.distance)
 	
 	return connections
-func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMapLayer) -> Array:
-	# Simple A* implementation for tile-based pathfinding
+func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMapLayer, blocked_tiles: Dictionary = {}) -> Array:
+	# Simple A* implementation for tile-based pathfinding.
+	# blocked_tiles (Vector2i -> building_name) marks tiles occupied by buildings — routed around
+	# unless they happen to be the start or end tile (e.g. the unit's own building, or its destination).
 	var open_set = []
 	var closed_set = {}
 	var came_from = {}
@@ -570,6 +572,10 @@ func _astar_pathfind(start_tile: Vector2i, end_tile: Vector2i, _tilemap: TileMap
 		
 		for neighbor in neighbors:
 			if closed_set.has(neighbor):
+				continue
+			
+			# Buildings block the path — unless the blocked tile is where we're starting or ending
+			if blocked_tiles.has(neighbor) and neighbor != end_tile and neighbor != start_tile:
 				continue
 			
 			# Simple walkability check - assume empty tiles are walkable
@@ -815,7 +821,8 @@ func _redraw_connections():
 				var target_tile_coords = tilemap.local_to_map(target_node.position)
 				
 				# Find path using A*
-				path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap)
+				var blocked_tiles: Dictionary = game_node.building_tile_occupancy if is_instance_valid(game_node) else {}
+				path = _astar_pathfind(building_tile_coords, target_tile_coords, tilemap, blocked_tiles)
 				path_is_world_coords = false  # Calculated paths are in tile coordinates
 				DebugConfig.dprint("buildings", ["BuildingDetailsModal: Calculated path for ", connection.name, " (", connection.type, ") - ", path.size(), " tiles"])
 		
@@ -1476,7 +1483,8 @@ func _draw_selected_building_path(connection: Dictionary):
 		if connection.has("tile_coords"):
 			# Use A* pathfinding to get tile path
 			var target_tile = connection["tile_coords"]
-			var tile_path = _astar_pathfind(building_tile_coords, target_tile, tilemap)
+			var blocked_tiles: Dictionary = game_node.building_tile_occupancy if is_instance_valid(game_node) else {}
+			var tile_path = _astar_pathfind(building_tile_coords, target_tile, tilemap, blocked_tiles)
 			if not tile_path.is_empty():
 				path = tile_path
 				DebugConfig.dprint("buildings", ["BuildingDetailsModal: Calculated A* path to ", connection.name, " with ", tile_path.size(), " tiles"])

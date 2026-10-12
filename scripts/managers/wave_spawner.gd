@@ -214,6 +214,7 @@ func _place_enemy_barracks(tile_coords: Vector2i, owner_player_id: int) -> Node2
 	building_scene.set_meta("resource_jobs", [])
 
 	game.map_objects_holder.add_child(building_scene)
+	game._register_building_occupancy(building_scene, tile_coords, building_type)
 
 	# Schedule this camp's first raid on a player building
 	building_scene.set_meta("next_attack_day", game.turn_manager.get_day() + ATTACK_INTERVAL)

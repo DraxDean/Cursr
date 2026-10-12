@@ -147,6 +147,7 @@ var building_outline_material: ShaderMaterial
 var building_counter: Dictionary = {}  # Track building counts for unique IDs
 var unit_counter: int = 0  # Track unit counts for unique IDs
 var buildings_connections_cache: Dictionary = {}  # Cache for building-to-building connections with paths (no recalculation)
+var building_tile_occupancy: Dictionary = {}  # Vector2i -> building_name, blocks A* pathfinding from routing through buildings
 var unit_movement_paused: bool = false  # Pause unit movement paths
 var unit_movement_speed: float = 1.0  # Speed multiplier for unit movement (0.5 = half speed, 2.0 = double speed)
 
@@ -230,6 +231,21 @@ func _get_building_footprint_tiles(tile_coords: Vector2i, building_type: String)
 	if building_type in MULTI_TILE_BUILDINGS:
 		return [tile_coords, Vector2i(tile_coords.x - 1, tile_coords.y - 1), Vector2i(tile_coords.x, tile_coords.y - 1)]
 	return [tile_coords]
+
+func _register_building_occupancy(building_node: Node2D, tile_coords: Vector2i, building_type: String) -> void:
+	"""Mark this building's footprint tiles as blocked for pathfinding, and remember them on the
+	node itself (meta) so they can be cleared again later regardless of how the building is removed."""
+	var footprint = _get_building_footprint_tiles(tile_coords, building_type)
+	building_node.set_meta("footprint_tiles", footprint)
+	for tile in footprint:
+		building_tile_occupancy[tile] = building_node.name
+
+func _unregister_building_occupancy(building_node: Node2D) -> void:
+	"""Clear this building's footprint tiles from the pathfinding collision map (call before removing it)."""
+	var footprint: Array = building_node.get_meta("footprint_tiles", [])
+	for tile in footprint:
+		if building_tile_occupancy.get(tile) == building_node.name:
+			building_tile_occupancy.erase(tile)
 
 func _get_building_anchor_world_pos(tile_coords: Vector2i, building_type: String) -> Vector2:
 	"""World position for the building sprite — large buildings sit at the triangle meeting point
@@ -352,6 +368,7 @@ func _place_building_at_tile(tile_coords: Vector2i, building_type: String):
 		building_scene.set_meta("resource_jobs", [])
 		
 		DebugConfig.dprint("buildings", ["Game: Placing building at tile ", tile_coords, " world pos ", world_pos])
+		_register_building_occupancy(building_scene, tile_coords, building_type)
 		
 		# Deduct building costs from player resources
 		var owner_player = setup_data.get("owner_player", 1)
@@ -544,6 +561,10 @@ func convert_building_to_ruins(building_node: Node2D) -> void:
 	building_node.set_meta("living_occupancy", 0)
 	building_node.set_meta("worker_occupancy", 0)
 	building_node.set_meta("resource_jobs", [])
+	# Ruins keep blocking the same tiles — re-key the occupancy entries to the new name
+	var footprint: Array = building_node.get_meta("footprint_tiles", [])
+	for tile in footprint:
+		building_tile_occupancy[tile] = building_node.name
 
 	var ruins_texture_path = _get_building_texture_path("ruins")
 	if building_node.has_node("Sprite2D") and ResourceLoader.exists(ruins_texture_path):
@@ -2014,6 +2035,7 @@ func _on_building_demolish_confirmed(building_data_to_delete: Dictionary):
 		update_building_occupancy(building_node, "working", 0)
 	
 	# Remove building from game
+	_unregister_building_occupancy(building_node)
 	building_node.queue_free()
 	
 	# Check for game over: did the player just lose their last town centre?
@@ -4352,10 +4374,10 @@ func _calculate_building_connections_directly(building: Node2D) -> Array:
 	return connections
 
 func _astar_pathfind_for_game(start: Vector2i, end: Vector2i) -> Array:
-	"""A* pathfinding wrapper using the modal's algorithm"""
+	"""A* pathfinding wrapper using the modal's algorithm, routing around occupied building tiles"""
 	var BuildingDetailsModalScript = preload("res://scripts/ui/building_details_modal.gd")
 	var temp_modal = BuildingDetailsModalScript.new()
-	var path = temp_modal._astar_pathfind(start, end, tilemap_layer)
+	var path = temp_modal._astar_pathfind(start, end, tilemap_layer, building_tile_occupancy)
 	temp_modal.queue_free()
 	return path
 
@@ -4398,7 +4420,7 @@ func _get_path_between_positions(start_pos: Vector2, end_pos: Vector2) -> Array:
 	var start_tile = tilemap_layer.local_to_map(start_pos)
 	var end_tile = tilemap_layer.local_to_map(end_pos)
 	
-	var tile_path = temp_modal._astar_pathfind(start_tile, end_tile, tilemap_layer)
+	var tile_path = temp_modal._astar_pathfind(start_tile, end_tile, tilemap_layer, building_tile_occupancy)
 	temp_modal.queue_free()  # Clean up temp modal
 	
 	if tile_path.is_empty():
@@ -4982,6 +5004,7 @@ func _place_town_center_building(tile_coords: Vector2i):
 		
 		# Add to map objects holder
 		map_objects_holder.add_child(building_scene)
+		_register_building_occupancy(building_scene, tile_coords, starting_building)
 		
 		# Set the display name from settlement name if available
 		var settlement_name = player_data.get("settlement_name", "")
@@ -5054,6 +5077,7 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 		for child in map_objects_holder.get_children():
 			if _is_building_node(child):
 				child.queue_free()
+	building_tile_occupancy.clear()
 	
 	# Reset building counters and rebuild them from saved data
 	building_counter.clear()
@@ -5158,6 +5182,7 @@ func _restore_buildings_with_proper_centering(buildings_data: Array):
 			
 			building_scene.z_index = building_info.get("z_index", 5)
 			map_objects_holder.add_child(building_scene)
+			_register_building_occupancy(building_scene, tile_coords, building_type)
 			
 			# Add building to player's buildings list (ruins are inert debris, not owned buildings)
 			var owner_player = setup_data.get("owner_player", 1)
@@ -6093,6 +6118,7 @@ func remove_enemy_barracks_node(building_node: Node2D) -> void:
 	var owner_player: int = building_node.get_meta("owner_player", -1)
 	var bname: String = building_node.name
 	remove_building_from_player(bname, owner_player)
+	_unregister_building_occupancy(building_node)
 	building_node.queue_free()
 
 	# Wipe out the rest of the camp — its marauders don't survive the barracks
